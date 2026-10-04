@@ -10,14 +10,14 @@ import { renderAboutPage } from '../pages/aboutPage';
 import { GuidedTour } from '../components/tourOverlay';
 import { store } from '../state/store';
 import { initAutoSync, setAutoSyncToastHandler, performPublicDiscovery } from '../services/autoSyncService';
-import { APP_VERSION } from '../v17/sync/schemaFormat';
+import { APP_VERSION, APP_NAME } from '../v17/sync/schemaFormat';
 import type { Route } from '../types';
 const VALID: Route[] = ['quickstart', 'readonly', 'cr', 'schema-used', 'error-rectifier', 'settings', 'about'];
 const SIGNATURE_NAME = 'Subham Ain';
 export function mountAppShell(root: HTMLElement): void {
   root.innerHTML = ''; const shell = document.createElement('div'); shell.className = 'app-shell'; const navSlot = document.createElement('div'); const main = document.createElement('main'); main.className = 'app-main'; shell.appendChild(navSlot); shell.appendChild(main); root.appendChild(shell);
-  const footer = document.createElement('footer'); footer.className = 'app-footer'; footer.innerHTML = `<span>AP-SQL Assistant · Version ${APP_VERSION}</span><span>Crafted by ${SIGNATURE_NAME}</span>`; root.appendChild(footer);
-  mountToastContainer(root); setAutoSyncToastHandler((k, t) => store.pushToast(k, t)); initAutoSync(); performPublicDiscovery('app-load').catch(() => {});
+  const footer = document.createElement('footer'); footer.className = 'app-footer'; footer.innerHTML = `<span>${APP_NAME} · Version ${APP_VERSION}</span><span>Crafted by ${SIGNATURE_NAME}</span>`; root.appendChild(footer);
+  mountToastContainer(root); setAutoSyncToastHandler((k, t) => store.pushToast(k, t)); initAutoSync(); performPublicDiscovery('app-load', true).catch(() => {});
   const routeFromHash = (): Route => { const h = window.location.hash.replace('#', '') as Route; return VALID.includes(h) ? h : 'quickstart'; };
   const navigate = (r: Route) => { if (window.location.hash === `#${r}`) renderAll(); else window.location.hash = r; };
   const tour = new GuidedTour(navigate);

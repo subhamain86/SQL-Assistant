@@ -1,7 +1,7 @@
 /**
- * V17.0 — Settings → AI / LLM Model (replaces "Online AI/NLP Endpoint"). Optional additional layer:
- * the offline NLU stays primary. Non-secret settings live in localStorage; the API key lives ONLY in
- * the encrypted Secret Vault. Model SQL is accepted only after read-only + Active Schema validation.
+ * Settings → "AI/LLM Model" (replaces "Online AI/NLP Endpoint"). Optional secondary layer: the offline NLU stays
+ * primary/default. Non-secret settings live in localStorage; the API key lives ONLY in the encrypted Secret Vault.
+ * Model SQL is accepted only after read-only + structural + Active Schema validation.
  */
 import { makeError, redactSecrets, type AppError } from '../errors/appErrors';
 export type LlmProvider = 'openai-compatible' | 'azure-openai' | 'anthropic' | 'custom-endpoint';
@@ -70,20 +70,20 @@ export function parseLlmResponse(provider: LlmProvider, json: unknown): LlmSugge
 export async function callLlm(cfg: LlmModelConfig, apiKey: string | null, prompt: LlmPrompt, schemaContext: string, fetchImpl: typeof fetch = fetch): Promise<{ ok: true; suggestion: LlmSuggestion } | { ok: false; error: AppError }> {
   const secrets = [apiKey];
   const issues = validateLlmConfig(cfg, !!apiKey);
-  if (issues.length) return { ok: false, error: makeError('AI_LLM_CONFIG_INVALID', 'The AI / LLM Model configuration is incomplete or invalid.', issues, secrets) };
+  if (issues.length) return { ok: false, error: makeError('AI_LLM_CONFIG_INVALID', 'The AI/LLM Model configuration is incomplete or invalid.', issues, secrets) };
   const { url, init } = buildLlmRequest(cfg, apiKey, prompt, schemaContext);
   const ctrl = new AbortController(); const timer = setTimeout(() => ctrl.abort(), cfg.timeoutMs);
   let res: Response;
   try { res = await fetchImpl(url, { ...init, signal: ctrl.signal }); }
-  catch (e) { clearTimeout(timer); const aborted = (e as Error)?.name === 'AbortError'; return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', aborted ? `The AI / LLM Model did not respond within ${Math.round(cfg.timeoutMs / 1000)} s — the offline engine result is used.` : 'The AI / LLM endpoint could not be reached (network error, firewall, or the endpoint does not allow browser/CORS requests) — the offline engine result is used.', undefined, secrets) }; }
+  catch (e) { clearTimeout(timer); const aborted = (e as Error)?.name === 'AbortError'; return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', aborted ? `The AI/LLM Model did not respond within ${Math.round(cfg.timeoutMs / 1000)} s — the offline engine result is used.` : 'The AI/LLM endpoint could not be reached (network error, firewall, or the endpoint does not allow browser/CORS requests) — the offline engine result is used.', undefined, secrets) }; }
   clearTimeout(timer);
   if (!res.ok) {
     let detail = ''; try { const body = await res.json(); detail = String(body?.error?.message || body?.message || '').slice(0, 200); } catch { /* ignore */ }
     const reason = res.status === 401 || res.status === 403 ? 'the API key was rejected (check the key and its permissions)' : res.status === 404 ? 'the endpoint, model or deployment name was not found' : res.status === 429 ? 'the provider rate limit or quota was exceeded' : res.status >= 500 ? 'the provider reported a server error' : 'the request was rejected';
-    return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', `AI / LLM request failed with HTTP ${res.status}: ${reason}${detail ? ` (${redactSecrets(detail, secrets)})` : ''}. The offline engine result is used.`, undefined, secrets) };
+    return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', `AI/LLM request failed with HTTP ${res.status}: ${reason}${detail ? ` (${redactSecrets(detail, secrets)})` : ''}. The offline engine result is used.`, undefined, secrets) };
   }
-  let json: unknown; try { json = await res.json(); } catch { return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', 'The AI / LLM Model returned a response that is not JSON. The offline engine result is used.') }; }
+  let json: unknown; try { json = await res.json(); } catch { return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', 'The AI/LLM Model returned a response that is not JSON. The offline engine result is used.') }; }
   const suggestion = parseLlmResponse(cfg.provider, json);
-  if (!suggestion) return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', 'The AI / LLM Model response did not contain a usable SQL/JSON answer. The offline engine result is used.') };
+  if (!suggestion) return { ok: false, error: makeError('AI_LLM_REQUEST_FAILED', 'The AI/LLM Model response did not contain a usable SQL/JSON answer. The offline engine result is used.') };
   return { ok: true, suggestion };
 }

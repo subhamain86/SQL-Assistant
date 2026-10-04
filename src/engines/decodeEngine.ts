@@ -1,6 +1,7 @@
 import type { ColumnDef, DecodeEntry, Dialect } from '../types';
-import { safeTrim, safeUpperTrim } from '../utils/validation';
-export function validateDecodeEntries(entries: DecodeEntry[]): string[] { const issues: string[] = []; const seen = new Set<string>(); entries.forEach((e) => { const raw = safeTrim(e?.rawValue); if (!raw) { issues.push('Every decode entry needs a raw value.'); return; } const k = safeUpperTrim(raw); if (seen.has(k)) issues.push(`Duplicate decode raw value "${raw}".`); seen.add(k); }); return issues; }
+import { safeTrim } from '../utils/validation';
+/** V17.2: raw values are compared exactly (database values are case-sensitive: 'a' and 'A' are different codes). */
+export function validateDecodeEntries(entries: DecodeEntry[]): string[] { const issues: string[] = []; const seen = new Set<string>(); entries.forEach((e) => { const raw = safeTrim(e?.rawValue); if (!raw) { issues.push('Every decode entry needs a raw value.'); return; } if (seen.has(raw)) issues.push(`Duplicate decode raw value "${raw}".`); seen.add(raw); }); return issues; }
 export function decodeLegend(column: ColumnDef): string { if (!column.decode || !column.decode.length) return ''; return column.decode.map((d) => `${safeTrim(d.rawValue)}=${safeTrim(d.label)}`).join(', '); }
 function quoteLiteral(v: string): string { return `'${v.replace(/'/g, "''")}'`; }
 export function buildSchemaDecodeExpression(sourceExpr: string, column: ColumnDef, alias: string, dialect: Dialect): string {

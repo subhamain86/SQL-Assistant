@@ -7,6 +7,7 @@ import { secretVaultService, DEFAULT_BOOTSTRAP_CONFIG } from '../services/secret
 import { getFile, putFile } from '../services/githubApiService';
 import { getConfiguredEndpoint, isBrowserOnline } from '../services/onlineNlpService';
 import { tryM365Copilot, isCopilotConfigured, buildMinimalSchemaContext } from '../services/copilotNlpService';
+import { rememberedSyncLocation } from '../services/syncLocation';
 import { getDeviceTag } from '../engines/schemaVersionEngine';
 import { icon } from '../components/icons';
 import { openModal } from '../components/modal';
@@ -31,13 +32,14 @@ export function bootV17(): void {
   if (booted) return; booted = true;
   migrateFromV16Endpoint(kv, getConfiguredEndpoint());
   schemaService.subscribe(() => { invalidateSchemaContext(); if (lastResult && isResultStale(lastResult, schemaService.getActiveSchema())) lastResult = null; });
-  pullLearning(learningStore, repoApi, DEFAULT_BOOTSTRAP_CONFIG.githubRepo, DEFAULT_BOOTSTRAP_CONFIG.githubBranch, '').catch(() => undefined);
+  const loc = rememberedSyncLocation();
+  pullLearning(learningStore, repoApi, loc.repo, loc.branch, '').catch(() => undefined);
   let pulledWithToken = false;
   secretVaultService.subscribe(() => { const c = secretVaultService.getConfig(); if (c?.githubToken && !pulledWithToken) { pulledWithToken = true; pullLearning(learningStore, repoApi, c.githubRepo, c.githubBranch, c.githubToken).catch(() => undefined); } if (!c) pulledWithToken = false; });
 }
 export function getLastDescribeResult(): DescribeResult | null { return lastResult && !isResultStale(lastResult, schemaService.getActiveSchema()) ? lastResult : null; }
 /** Describe What You Need — always runs against the CURRENT Active Schema (never a copy held by the page). */
-export async function orchestrateReadOnlyNlpV17(rawText: string, _schemaFromPage: SchemaModel): Promise<NlpOrchestrationResult<QueryRequirement>> {
+export async function orchestrateReadOnlyNlpV17(rawText: string, _schemaFromPage: SchemaModel | null): Promise<NlpOrchestrationResult<QueryRequirement>> {
   const useSchema = schemaService.getActiveSchema();
   const vault = secretVaultService.isUnlocked() ? secretVaultService.getConfig() : null;
   const r = await describeWhatYouNeed(rawText, useSchema, store.readOnly, { learning: learningStore, online: isBrowserOnline(), llm: { config: loadLlmConfig(kv), apiKey: vault?.llmApiKey || null, vaultLocked: !vault } });
@@ -58,7 +60,7 @@ export function applyV17ResultToStore(requirement: QueryRequirement): void {
   store.updateReadOnly((s) => { const next = applyV17ToState(s, req, advancedOverrides).state; Object.assign(s, { selectedTables: next.selectedTables, selectedColumns: next.selectedColumns, filters: next.filters, sorts: next.sorts, advanced: next.advanced }); });
   if (lastResult?.usedLlmSql) store.readOnly.generatedSql = lastResult.sql;
 }
-export function renderV17Extras(notesMount: Element, rerenderSql: () => void): void { renderDescribeExtras(notesMount as HTMLElement, getLastDescribeResult(), { onUseLlmSql: (sql) => { store.readOnly.generatedSql = sql; rerenderSql(); store.pushToast('info', 'AI / LLM SQL placed in Generated SQL. Changing Manual Selectors regenerates SQL from the selectors.'); } }); }
+export function renderV17Extras(notesMount: Element, rerenderSql: () => void): void { renderDescribeExtras(notesMount as HTMLElement, getLastDescribeResult(), { onUseLlmSql: (sql) => { store.readOnly.generatedSql = sql; rerenderSql(); store.pushToast('info', 'AI/LLM SQL placed in Generated SQL. Changing Manual Selectors regenerates SQL from the selectors.'); } }); }
 export function recordV17Use(sql: string): void { try { learningStore.recordUse(sql); } catch { /* learning never blocks copying */ } }
 export function openV17AcceptAndLearn(rerenderSql: () => void): void {
   const schema = schemaService.getActiveSchema(); const lr = getLastDescribeResult();

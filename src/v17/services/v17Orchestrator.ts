@@ -1,10 +1,13 @@
 /**
- * V17.0 — "Describe What You Need" pipeline: offline NLU on the CURRENT Active Schema → learned hints →
- * optional AI / LLM layer → validation (read-only + Active Schema) → presentation → controlled learning.
+ * "Describe What You Need" pipeline:
+ *   User request → Offline NLU → Active Schema analysis → learned query patterns → SQL generation
+ *   → validation (read-only + structure + Active Schema + Advanced Options) → optional AI/LLM layer → Generated SQL
+ *   → controlled learning.
+ * Learned examples never bypass validation.
  */
 import type { SchemaModel, ReadOnlyQueryState, TableDef } from '../../types';
 import { buildSelectSQL } from '../../engines/sqlEngine';
-import { validateReadOnlySql } from '../../engines/validationEngine';
+import { validateReadOnlySql, validateSqlStructure } from '../../engines/validationEngine';
 import { validateSqlAgainstSchema } from '../../engines/sqlSchemaValidator';
 import { computeAutoJoinPlan } from '../../engines/joinAutoEngine';
 import { runOfflineNlu, type V17Requirement } from '../engines/nluEngine';
@@ -43,6 +46,7 @@ export function validateLlmSql(sql: string, schema: SchemaModel): string[] {
   if (!/^(WITH|SELECT)\b/i.test(s)) problems.push('The model SQL does not start with SELECT or WITH.');
   if (/;\s*\S/.test(s.replace(/'(?:[^']|'')*'/g, "''").replace(/--.*$/gm, ''))) problems.push('The model SQL contains more than one statement.');
   validateReadOnlySql(s).issues.filter((i) => i.severity === 'error').forEach((i) => problems.push(i.message));
+  validateSqlStructure(s).filter((i) => i.severity === 'error').forEach((i) => problems.push(i.message));
   problems.push(...validateSqlAgainstSchema(s, schema).warnings);
   return problems;
 }
@@ -68,10 +72,12 @@ export async function describeWhatYouNeed(text: string, schema: SchemaModel, cur
     const explicit = new Set(state.joins.map((j) => j.table));
     const plan = computeAutoJoinPlan(withFkRelationships(schema), state.selectedTables[0], state.selectedTables.slice(1).filter((t) => !explicit.has(t)), state.joinPathChoices);
     plan.unresolvedWarnings.forEach((w) => errors.push(makeError('JOIN_PATH_NOT_FOUND', w.replace(/ — no JOIN was generated for it\.?/, '') + ' — no JOIN was generated for it. Add a relationship in Settings → Manual Schema Update, or add an explicit join.')));
-    plan.resolutions.filter((r) => r.isAmbiguous && !r.chosenOptionId).forEach((r) => warnings.push(`More than one join path exists between ${r.tableA} and ${r.tableB}; choose one in Manual Selectors so the JOIN can be generated.`));
+    plan.resolutions.filter((r) => r.isAmbiguous && !r.chosenOptionId).forEach((r) => warnings.push(`More than one join path exists between ${r.tableA} and ${r.tableB}; choose one in Manual Selectors → Advanced Options → Join paths so the JOIN can be generated.`));
   }
   const safety = validateReadOnlySql(sql);
   if (!safety.valid) { errors.push(makeError('SQL_VALIDATION_FAILED', 'The generated statement was blocked by the read-only safety check.', safety.issues.map((i) => i.message))); sql = '-- Generated statement blocked by the read-only safety check. Refine the request or use Manual Selectors.'; }
+  const structure = validateSqlStructure(sql).filter((i) => i.severity === 'error');
+  if (structure.length) errors.push(makeError('SQL_VALIDATION_FAILED', 'The generated SQL failed the structural check.', structure.map((i) => i.message)));
   const schemaCheck = validateSqlAgainstSchema(sql, schema);
   if (!schemaCheck.valid) errors.push(makeError('SQL_VALIDATION_FAILED', 'The generated SQL references elements that are not in the Active Schema.', schemaCheck.warnings));
   validateAdvancedConsistency(state).forEach((i) => (i.severity === 'error' ? errors.push(makeError('SQL_VALIDATION_FAILED', i.message)) : warnings.push(i.message)));
@@ -85,7 +91,7 @@ export async function describeWhatYouNeed(text: string, schema: SchemaModel, cur
     else if (llm.config.useWhen === 'low-confidence' && requirement.confidence >= 0.7 && requirement.matchedTables.length) llmStatus = 'skipped — offline confidence was high';
     else {
       const cfgIssues = validateLlmConfig(llm.config, !!llm.apiKey);
-      if (cfgIssues.length) { errors.push(makeError('AI_LLM_CONFIG_INVALID', 'The AI / LLM Model is enabled but its configuration is incomplete — the offline engine result is used.', cfgIssues)); llmStatus = 'configuration invalid'; }
+      if (cfgIssues.length) { errors.push(makeError('AI_LLM_CONFIG_INVALID', 'The AI/LLM Model is enabled but its configuration is incomplete — the offline engine result is used.', cfgIssues)); llmStatus = 'configuration invalid'; }
       else {
         llmAttempted = true;
         const examples = (deps.learning?.findHints(text, schema, 0.5) || []).filter((h) => h.status === 'confirmed').map((h) => { const r = deps.learning!.get(h.patternId); return r?.finalSql ? { request: r.nlText, sql: r.finalSql } : null; }).filter((x): x is { request: string; sql: string } => !!x);
@@ -96,17 +102,17 @@ export async function describeWhatYouNeed(text: string, schema: SchemaModel, cur
           llmExplanation = res.suggestion.explanation ?? null;
           if (res.suggestion.sql) {
             const problems = validateLlmSql(res.suggestion.sql, schema);
-            if (problems.length) { errors.push(makeError('AI_LLM_RESPONSE_REJECTED', 'The AI / LLM suggestion was discarded because it failed validation against the Active Schema.', problems)); llmStatus = 'suggestion rejected by validation — offline engine used'; }
+            if (problems.length) { errors.push(makeError('AI_LLM_RESPONSE_REJECTED', 'The AI/LLM suggestion was discarded because it failed validation against the Active Schema.', problems)); llmStatus = 'suggestion rejected by validation — offline engine used'; }
             else { llmSql = res.suggestion.sql.replace(/;?\s*$/, ';'); llmStatus = 'suggestion validated'; if (requirement.confidence < 0.5 || !requirement.matchedTables.length) { sql = llmSql; usedLlmSql = true; llmStatus = 'suggestion validated and used (offline confidence was low)'; } }
           } else llmStatus = res.suggestion.explanation ? 'model returned no SQL (see explanation)' : 'model returned no SQL';
           const unknown = (res.suggestion.tables || []).filter((t) => !schema.tables.some((x) => x.name === t));
-          if (unknown.length) warnings.push(`The AI / LLM Model mentioned table(s) not in the Active Schema, which were ignored: ${unknown.join(', ')}.`);
+          if (unknown.length) warnings.push(`The AI/LLM Model mentioned table(s) not in the Active Schema, which were ignored: ${unknown.join(', ')}.`);
         }
       }
     }
   }
   let learningId: string | null = null;
-  if (deps.learning && text.trim() && requirement.matchedTables.length) {
+  if (deps.learning && text.trim() && requirement.matchedTables.length && !errors.some((e) => e.code === 'SQL_VALIDATION_FAILED')) {
     const r = deps.learning.recordGeneration({ nlText: text, schema, generatedSql: sql, options: { distinct: state.advanced.distinct, limit: state.advanced.limit, groupBy: state.advanced.groupByColumns, having: state.advanced.havingClause, sorts: state.sorts.filter((s) => !s.expression).map((s) => ({ table: s.table, column: s.column, direction: s.direction })), dialect: state.dialect } });
     learningId = r.id; if (r.error) warnings.push(r.error.message);
   }

@@ -1,17 +1,17 @@
 /**
- * GitHub Contents API access. V17.1 fixes:
- *  - Files larger than 1 MB: the Contents API returns `content: ""` with `encoding: "none"`; V17.0
- *    decoded the empty string and the schema then failed as "invalid JSON". Large files are now
- *    downloaded through the raw media type.
- *  - Non-JSON / unexpected API responses, corrupted base64 and non-UTF-8 content are reported precisely.
- *  - 401 (invalid/expired token), 403 (rate limit vs. missing permission), 404, 409/422, 5xx and network
- *    timeouts each have a specific message. Tokens are never included in messages.
+ * GitHub Contents API access.
+ *  - V17.2: every request uses `cache: 'no-store'`. GitHub API responses are cacheable for 60 s; V17.1 let the
+ *    browser serve a cached copy of the registry, so right after a repair was published a device could re-read the
+ *    OLD (invalid) file and show the validation error again, or fast-forward to it.
+ *  - V17.1: files > 1 MB are downloaded through the raw media type; non-JSON responses, corrupted base64 and
+ *    non-UTF-8 content are reported precisely; 401/403/404/409/422/5xx/timeouts have specific messages.
+ *  - Tokens are never included in messages.
  */
 import { utf8ToBase64, base64ToUtf8 } from '../utils/base64';
 import { safeString, safeTrim, isNonEmptyString } from '../utils/validation';
 export interface GitHubFileResult { content: string; sha: string; size?: number; }
 export interface GitHubApiError { status: number | null; message: string; field?: string; }
-const TIMEOUT_MS = 8000; // V16.5: every GitHub call fails fast instead of hanging
+const TIMEOUT_MS = 8000;
 function authHeaders(token: string, accept = 'application/vnd.github+json'): Record<string, string> { const h: Record<string, string> = { Accept: accept }; if (isNonEmptyString(token)) h.Authorization = `token ${token}`; return h; }
 function splitRepo(raw: unknown): { owner: string; repo: string } | GitHubApiError {
   const full = safeTrim(raw);
@@ -22,7 +22,7 @@ function splitRepo(raw: unknown): { owner: string; repo: string } | GitHubApiErr
 function isRepoError(x: { owner: string; repo: string } | GitHubApiError): x is GitHubApiError { return 'message' in x; }
 async function timedFetch(url: string, init: RequestInit): Promise<Response> {
   const c = new AbortController(); const t = setTimeout(() => c.abort(), TIMEOUT_MS);
-  try { return await fetch(url, { ...init, signal: c.signal }); }
+  try { return await fetch(url, { ...init, cache: 'no-store', signal: c.signal }); }
   catch (e) { throw { status: null, message: (e as Error)?.name === 'AbortError' ? `GitHub did not respond within ${TIMEOUT_MS / 1000} s (network, proxy or firewall).` : 'Network error — could not reach GitHub (offline, blocked by a firewall/proxy, or CORS).' } as GitHubApiError; }
   finally { clearTimeout(t); }
 }
@@ -48,7 +48,6 @@ export async function getFile(repoRaw: unknown, branchRaw: unknown, pathRaw: unk
   if (data.type && data.type !== 'file') throw { status: null, message: `"${path}" is a ${data.type}, not a regular file.`, field: 'githubSchemaPath' } as GitHubApiError;
   const size = typeof data.size === 'number' ? data.size : undefined;
   if ((data.encoding === 'none' || !data.content) && (size ?? 0) > 0) {
-    // Files > 1 MB are not inlined by the Contents API — download the raw content instead.
     const raw = await timedFetch(url, { headers: authHeaders(token, 'application/vnd.github.raw') });
     if (raw.status === 401 || raw.status === 403) throw authError(raw, false);
     if (!raw.ok) throw { status: raw.status, message: `GitHub could not deliver the large schema file (${Math.round((size ?? 0) / 1024)} KB, HTTP ${raw.status}).` } as GitHubApiError;

@@ -1,17 +1,19 @@
 /**
- * V17.0 — Offline, self-training NLU engine for "Describe What You Need".
- * Runs in the browser and is grounded exclusively in the schema object passed in (the Active
- * Schema at call time). It never invents identifiers; explicitly named tables/columns that are not
- * in the Active Schema are reported as schema gaps. The V16 rule-based parser runs first and its
- * result is the starting point; confirmed learned patterns are applied as hints only.
+ * Offline, self-training NLU engine for "Describe What You Need" (primary engine; no network needed).
+ * Grounded exclusively in the schema object passed in (the Active Schema at call time). It never invents
+ * identifiers; explicitly named tables/columns that are not in the Active Schema are reported as schema
+ * gaps. The V16 rule-based parser runs first; confirmed learned patterns are applied as hints only and
+ * are always re-checked against the Active Schema (the Active Schema always has priority).
  */
-import type { SchemaModel, QueryRequirement, SelectedColumnSpec, FilterCondition, SortSpec, Dialect, ColumnDef, ClarificationQuestion, FilterOperator } from '../../types';
+import type { SchemaModel, QueryRequirement, SelectedColumnSpec, FilterCondition, SortSpec, Dialect, ColumnDef, ClarificationQuestion, FilterOperator, JoinType } from '../../types';
 import { parseRequirement } from '../../engines/nlpEngine';
 import { makeId } from '../../utils/id';
 import { getSchemaContext, softNormalize, findPhrase, isNumericType, isDateType, isStringType, relationshipDistance, wordTokens, type SchemaContext, type ColumnEntry, type TableEntry } from './schemaContext';
 import { agoExpr, startOfExpr, todayExpr, nextDayExpr, dateLiteral, parseDateToken, monthIndex, monthRange, monthBucketExpr, yearBucketExpr, DATE_TOKEN_RE } from './dateExpressions';
+import { countryNameToIso2 } from './countryCodes';
 
-export type AutoOptionKind = 'table' | 'join' | 'filter' | 'date-filter' | 'aggregation' | 'group-by' | 'having' | 'sort' | 'limit' | 'distinct' | 'learned';
+export const NLU_ENGINE_VERSION = 'offline-nlu-17.2';
+export type AutoOptionKind = 'table' | 'join' | 'filter' | 'date-filter' | 'aggregation' | 'group-by' | 'having' | 'sort' | 'limit' | 'distinct' | 'alias' | 'learned';
 export interface AutoOption { kind: AutoOptionKind; description: string; confidence: number; applied: boolean; }
 export interface SchemaGap { kind: 'table' | 'column' | 'term'; term: string; }
 export interface LearnedHint {
@@ -22,6 +24,7 @@ export interface LearnedHint {
 export interface V17Requirement extends QueryRequirement {
   groupBy: string[]; having: string; aggregateMode: boolean; autoOptions: AutoOption[]; schemaGaps: SchemaGap[];
   learnedPatternIds: string[]; schemaFingerprint: string; schemaId: string; engine: 'v17-offline-nlu';
+  tableAliases?: boolean; joinType?: JoinType; dateLogic?: string[];
 }
 export interface NluOptions { dialect: Dialect; hints?: LearnedHint[]; }
 export const AUTO_APPLY_THRESHOLD = 0.6;
@@ -30,7 +33,7 @@ interface Span { start: number; end: number; }
 interface ColHit { entry: ColumnEntry; span: Span; }
 interface TableHit { entry: TableEntry; span: Span; }
 
-const STOP_AFTER = '(?:and|or|with|where|for|in|during|since|from|order|ordered|sorted|sort|having|top|limit|last|this|between|over|above|greater|more|less|below|under|which|that|by|per|whose|of|on|before|after|until|grouped|group|including|excluding|showing|show|plus|then)';
+const STOP_AFTER = '(?:and|or|with|where|for|in|during|since|from|order|ordered|sorted|sort|having|top|limit|last|this|between|over|above|greater|more|less|below|under|which|that|by|per|whose|of|on|before|after|until|grouped|group|including|excluding|showing|show|plus|then|created|dated|posted|due)';
 const NEGATORS = /(?:\bnot|\bnon|\bexcluding|\bexcept|\bother than|\bwithout|\bisn't|\baren't|\bnot in)\s*$/;
 const COMPARATORS: { re: RegExp; op: FilterOperator }[] = [
   { re: /^(?:is\s+)?(?:greater than or equal to|at least|no less than|>=|minimum of)/, op: '>=' },
@@ -72,7 +75,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   if (!text) return empty({});
   const dialect = opts.dialect;
   const soft = softNormalize(text);
-  const auto: AutoOption[] = []; const notes: string[] = []; const plan: string[] = []; const clarifications: ClarificationQuestion[] = [];
+  const auto: AutoOption[] = []; const notes: string[] = []; const plan: string[] = []; const clarifications: ClarificationQuestion[] = []; const dateLogic: string[] = [];
   const add = (kind: AutoOptionKind, description: string, confidence: number) => { auto.push({ kind, description, confidence, applied: confidence >= AUTO_APPLY_THRESHOLD }); return confidence >= AUTO_APPLY_THRESHOLD; };
 
   // ---------- 1. Tables & columns (Active Schema only) ----------
@@ -222,14 +225,14 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     let m: RegExpExecArray | null;
     while ((m = groupRe.exec(soft))) {
       const before = soft.slice(Math.max(0, m.index - 10), m.index);
-      if (/(sort|sorted|order|ordered)\s*$/.test(before) || /^by\s/.test(m[0]) && /(top|first|highest|lowest)\s+\d*\s*[a-z ]*$/.test(soft.slice(Math.max(0, m.index - 30), m.index))) continue;
+      if (/(sort|sorted|order|ordered|them|results)\s*$/.test(before) || /^by\s/.test(m[0]) && /(top|first|highest|lowest)\s+\d*\s*[a-z ]*$/.test(soft.slice(Math.max(0, m.index - 30), m.index))) continue;
       const phrase = m[1].trim();
       if (/^(month|monthly|year|yearly|annually)$/.test(phrase.split(' ').pop() || '')) {
         const dcol = pickDateColumn(phrase); if (!dcol) continue;
         const ref = q(dcol.table, dcol.column.name); const isMonth = /month/.test(phrase);
         const expr = isMonth ? monthBucketExpr(ref, dialect) : yearBucketExpr(ref, dialect); const alias = isMonth ? 'PERIOD_MONTH' : 'PERIOD_YEAR';
         groupBy.push(expr); groupSelect.push({ id: makeId('col'), table: dcol.table, column: alias, alias, useDecode: false, aggregate: null, manualExpr: `${expr} AS ${alias}` });
-        add('group-by', `GROUP BY ${expr}`, 0.75); continue;
+        add('group-by', `GROUP BY ${expr}`, 0.75); dateLogic.push(`grouped by ${isMonth ? 'month' : 'year'} of ${ref}`); continue;
       }
       const col = findColumnByWords(phrase, (c) => !isNumericType(c.type) || !!c.isPrimaryKey || !!c.isForeignKey, true);
       const tbl = tableByWords(phrase);
@@ -287,6 +290,11 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       having = `${expr} ${op} ${n}`; add('having', `HAVING ${having}`, 0.75);
     }
   }
+  /** V17.2 — ISO-coded country columns accept country names ("Finland" → 'FI'). */
+  const mapCountry = (col: ColumnDef, v: string): string => {
+    if (!/country/i.test(`${col.name} ${col.label}`) || !(Number(col.length) <= 3 || /\biso\b/i.test(col.description || ''))) return v;
+    const iso = countryNameToIso2(v); if (iso) { notes.push(`"${v}" was mapped to the ISO country code '${iso}' used by ${col.name}.`); return iso; } return v;
+  };
   resolvedHits.filter((h) => isStringType(h.entry.column.type) && !h.entry.column.decode?.length).forEach((h) => {
     const normText = text.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
     const after = normText.toLowerCase().slice(h.span.end, h.span.end + 90).replace(/^\s+/, '');
@@ -297,13 +305,14 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     let m: RegExpMatchArray | null;
     if ((m = after.match(/^(?:is\s+)?(?:empty|null|missing|blank|not set|not provided)\b/))) return push('IS NULL', '', 'IS NULL');
     if ((m = after.match(/^(?:is\s+)?(?:not\s+(?:empty|null|blank|missing)|present|provided|set)\b/))) return push('IS NOT NULL', '', 'IS NOT NULL');
+    if ((m = after.match(/^(?:that\s+|which\s+)?(?:does\s+not|doesn't|not)\s+(?:contain|include|like)\s+/))) { const v = valueAt(m[0].length); if (v) push('NOT LIKE', `%${v}%`, `NOT LIKE '%${v}%'`); return; }
     if ((m = after.match(/^(?:that\s+|which\s+)?(?:contains?|containing|includes?|including|like|matching|mentions?)\s+/))) { const v = valueAt(m[0].length); if (v) push('LIKE', `%${v}%`, `LIKE '%${v}%'`); return; }
     if ((m = after.match(/^(?:that\s+|which\s+)?(?:starts?|starting|begins?|beginning)\s+with\s+/))) { const v = valueAt(m[0].length); if (v) push('LIKE', `${v}%`, `LIKE '${v}%'`); return; }
     if ((m = after.match(/^(?:that\s+|which\s+)?(?:ends?|ending)\s+with\s+/))) { const v = valueAt(m[0].length); if (v) push('LIKE', `%${v}`, `LIKE '%${v}'`); return; }
-    if ((m = after.match(/^(?:is\s+)?(?:not\s+in|none of)\s*\(?/))) { const list = raw.slice(m[0].length).match(/^\(?([^)]+?)\)?(?=\s+(?:and|or|sorted|order|with)\b|$|[.;])/); if (list) { const vals = list[1].split(/\s*(?:,|\bor\b|\band\b)\s*/).map((v) => v.replace(/['"]/g, '').trim()).filter(Boolean); if (vals.length) push('NOT IN', vals.join(','), `NOT IN (${vals.join(', ')})`); } return; }
-    if ((m = after.match(/^(?:is\s+)?(?:in|one of|any of)\s*\(?/))) { const list = raw.slice(m[0].length).match(/^\(?([^)]+?)\)?(?=\s+(?:and|sorted|order|with)\b|$|[.;])/); if (list) { const vals = list[1].split(/\s*(?:,|\bor\b)\s*/).map((v) => v.replace(/['"]/g, '').trim()).filter(Boolean); if (vals.length > 1) push('IN', vals.join(','), `IN (${vals.join(', ')})`); else if (vals.length === 1) push('=', vals[0], `= '${vals[0]}'`); } return; }
-    if ((m = after.match(/^(?:is\s+not|not|<>|!=|other than)\s+/))) { const v = valueAt(m[0].length); if (v) push('<>', v, `<> '${v}'`); return; }
-    if ((m = after.match(/^(?:is|=|equals?|equal to|named|called|:)\s*/))) { const v = valueAt(m[0].length); if (v && !/^(the|a|an|not|null|empty|in|of)$/i.test(v) && !tableByWords(v.toLowerCase())) push('=', v, `= '${v}'`); }
+    if ((m = after.match(/^(?:is\s+)?(?:not\s+in|none of)\s*\(?/))) { const list = raw.slice(m[0].length).match(/^\(?([^)]+?)\)?(?=\s+(?:and|or|sorted|order|with)\b|$|[.;])/); if (list) { const vals = list[1].split(/\s*(?:,|\bor\b|\band\b)\s*/).map((v) => mapCountry(h.entry.column, v.replace(/['"]/g, '').trim())).filter(Boolean); if (vals.length) push('NOT IN', vals.join(','), `NOT IN (${vals.join(', ')})`); } return; }
+    if ((m = after.match(/^(?:is\s+)?(?:in|one of|any of)\s*\(?/))) { const list = raw.slice(m[0].length).match(/^\(?([^)]+?)\)?(?=\s+(?:and|sorted|order|with)\b|$|[.;])/); if (list) { const vals = list[1].split(/\s*(?:,|\bor\b)\s*/).map((v) => mapCountry(h.entry.column, v.replace(/['"]/g, '').trim())).filter(Boolean); if (vals.length > 1) push('IN', vals.join(','), `IN (${vals.join(', ')})`); else if (vals.length === 1) push('=', vals[0], `= '${vals[0]}'`); } return; }
+    if ((m = after.match(/^(?:is\s+not|not|<>|!=|other than)\s+/))) { const v = valueAt(m[0].length); if (v) { const mv = mapCountry(h.entry.column, v); push('<>', mv, `<> '${mv}'`); } return; }
+    if ((m = after.match(/^(?:is|=|equals?|equal to|named|called|:)\s*/))) { const v = valueAt(m[0].length); if (v && !/^(the|a|an|not|null|empty|in|of)$/i.test(v) && !tableByWords(v.toLowerCase())) { const mv = mapCountry(h.entry.column, v); push('=', mv, `= '${mv}'`); } }
   });
   mentions.tables.forEach((th) => {
     const m = soft.slice(th.span.end, th.span.end + 30).match(/^\s*(?:#|no\.?|number|num)?\s*(\d{1,18})\b(?!\s*(?:days?|weeks?|months?|years?|rows?|records?|results?|%))/);
@@ -319,7 +328,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
 
   // ---------- 6. Date filtering ----------
   const dateFilters: FilterCondition[] = [];
-  const dcol = /\b(today|yesterday|this|last|past|previous|since|before|after|until|between|during|in|on|from)\b/.test(soft) ? pickDateColumn('') : null;
+  const dcol = /\b(today|yesterday|this|current|last|past|previous|since|before|after|until|between|during|in|on|from)\b/.test(soft) ? pickDateColumn('') : null;
   if (dcol) {
     const T = dcol.table, C = dcol.column.name; const ref = q(T, C);
     const isTs = /TIME/i.test(dcol.column.type);
@@ -346,11 +355,11 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       f('>=', agoExpr(+m[1], unitOf(m[2]), dialect)); desc = `${ref} within the last ${m[1]} ${m[2]}`;
     } else if (/\btoday\b/.test(soft)) { range(todayExpr(dialect), nextDayExpr(dialect)); desc = `${ref} = today`; }
     else if (/\byesterday\b/.test(soft)) { range(agoExpr(1, 'DAY', dialect), todayExpr(dialect)); desc = `${ref} = yesterday`; }
-    else if ((m = soft.match(/\bthis\s+(week|month|year)\b/))) { f('>=', startOfExpr(unitOf(m[1]) as 'WEEK', 0, dialect)); desc = `${ref} in this ${m[1]}`; }
-    else if ((m = soft.match(/\b(?:last|previous|past)\s+(week|month|year)\b/))) { const u = unitOf(m[1]) as 'WEEK'; range(startOfExpr(u, 1, dialect), startOfExpr(u, 0, dialect)); desc = `${ref} in the previous ${m[1]}`; }
+    else if ((m = soft.match(/\b(?:this|current)\s+(week|month|year)\b/))) { f('>=', startOfExpr(unitOf(m[1]) as 'WEEK', 0, dialect)); desc = `${ref} in the current ${m[1]}`; }
+    else if ((m = soft.match(/\b(?:last|previous|past|prior)\s+(week|month|year)\b/))) { const u = unitOf(m[1]) as 'WEEK'; range(startOfExpr(u, 1, dialect), startOfExpr(u, 0, dialect)); desc = `${ref} in the previous ${m[1]}`; }
     if (dateFilters.length) {
       for (let i = filters.length - 1; i >= 0; i--) if (/^(CURRENT_DATE|DATE_TRUNC)/.test(filters[i].value)) filters.splice(i, 1);
-      filters.push(...dateFilters); add('date-filter', desc, 0.85);
+      filters.push(...dateFilters); add('date-filter', desc, 0.85); dateLogic.push(desc);
       const others = ctx.columns.filter((c) => isDateType(c.column.type) && inScope(c.table) && c !== dcol);
       if (others.length && !resolvedHits.some((r) => r.entry === dcol)) clarifications.push({ question: `Date filter applied to ${ref}. Other date columns exist — choose a different one if needed.`, options: others.map((o) => q(o.table, o.column.name)) });
     }
@@ -362,7 +371,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   let m2: RegExpMatchArray | null;
   if ((m2 = soft.match(/\b(?:top|first|limit(?:ed)? to|only|bottom|last|latest|newest|most recent|recent|oldest|earliest|highest|lowest|largest|smallest|biggest)\s+(\d{1,6})\b(?!\s*(?:days?|weeks?|months?|years?))/)) || (m2 = soft.match(/\b(\d{1,6})\s+(?:rows|records|results|entries)\b/))) { limit = parseInt(m2[1], 10); add('limit', `Limit to ${limit} rows`, 0.85); }
   const sortAgg = (desc: boolean, why: string) => { const a = aggregates.find((x) => x.agg !== 'COUNT') || aggregates[0]; if (a) { sorts.push({ id: makeId('sort'), table: '', column: a.alias, direction: desc ? 'DESC' : 'ASC', expression: a.expr }); add('sort', `ORDER BY ${a.expr} ${desc ? 'DESC' : 'ASC'} (${why})`, 0.8); return true; } return false; };
-  const explicitSort = soft.match(/\b(?:sort|sorted|order|ordered|rank|ranked)\s+(?:them\s+|results\s+)?by\s+([a-z0-9 ]{2,40}?)(?:\s+(asc|ascending|desc|descending|highest first|lowest first|newest first|oldest first|latest first))?(?=\s+(?:and|with|where|limit|top|for|in)\b|[,.;]|$)/);
+  const explicitSort = soft.match(/\b(?:sort|sorted|order|ordered|rank|ranked)\s+(?:them\s+|results\s+|the results\s+|it\s+)?by\s+([a-z0-9 ]{2,40}?)(?:\s+(asc|ascending|desc|descending|highest first|lowest first|newest first|oldest first|latest first))?(?=\s+(?:and|with|where|limit|top|for|in)\b|[,.;]|$)/);
   if (explicitSort) {
     const desc = /desc|highest|newest|latest/.test(explicitSort[2] || '');
     const phrase = explicitSort[1].trim();
@@ -384,13 +393,18 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   if (!sorts.length && base.matchedSorts.length) base.matchedSorts.filter((s) => inScope(s.table)).forEach((s) => sorts.push(s));
   const distinct = !aggregateMode && /\b(distinct|unique|different|without duplicates|de-?duplicated?)\b/.test(soft);
   if (distinct) add('distinct', 'SELECT DISTINCT', 0.85);
+  // V17.2: table aliases and join type
+  const tableAliases = /\b(?:with|using|use)\s+(?:short\s+)?(?:table\s+)?alias(?:es)?\b/.test(soft) ? true : undefined;
+  if (tableAliases) add('alias', 'Table aliases (e.g. INVOICE_HEADER ih)', 0.85);
+  const joinType: JoinType | undefined = /\b(left join|left outer join|including (?:those|ones|records|rows|items|entries) (?:without|with no)|even (?:if|when) (?:there (?:is|are) )?no|with or without)\b/.test(soft) ? 'LEFT JOIN' : undefined;
+  if (joinType) add('join', 'LEFT JOIN (keep rows without a match)', 0.8);
 
-  // ---------- 8. Learned query patterns (hints only) ----------
+  // ---------- 8. Learned query patterns (hints only; Active Schema always wins) ----------
   const learnedIds: string[] = [];
   (opts.hints || []).filter((h) => h.similarity >= 0.6).sort((a, b) => b.weight * b.similarity - a.weight * a.similarity).slice(0, 1).forEach((h) => {
     const validTables = h.tables.filter((t) => ctx.tableUpper.has(t.toUpperCase()));
     const validCols = h.columns.filter((c) => ctx.columns.some((e) => e.table === c.table && e.column.name === c.column));
-    if (validTables.length !== h.tables.length || validCols.length !== h.columns.length) { notes.push('A learned pattern referenced schema elements that no longer exist in the Active Schema and was ignored.'); return; }
+    if (validTables.length !== h.tables.length || validCols.length !== h.columns.length) { notes.push('A learned pattern referenced schema elements that no longer exist in the Active Schema and was ignored; the request was evaluated against the current Active Schema.'); return; }
     let used = false;
     if (!tables.length && validTables.length) { tables = [...validTables]; used = true; }
     else validTables.forEach((t) => { if (!inScope(t) && relationshipDistance(ctx, primary(), t) <= 2) { tables.push(t); used = true; } });
@@ -408,7 +422,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   const allTableNames = new Set(schema.tables.map((t) => t.name.toUpperCase()));
   const allColNames = new Set(schema.tables.flatMap((t) => t.columns.map((c) => c.name.toUpperCase())));
   (text.match(/\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b/g) || []).forEach((id) => { const u = id.toUpperCase(); if (!allTableNames.has(u) && !allColNames.has(u)) gaps.push({ kind: /_(ID|DATE|NAME|CODE|AMOUNT|STATUS|FLAG|NO|NUMBER)$/i.test(id) ? 'column' : 'term', term: id }); });
-  [...text.matchAll(/\b(?:table|from table)\s+["'`]?([A-Za-z][A-Za-z0-9_]*)["'`]?/gi)].forEach((m) => { if (!allTableNames.has(m[1].toUpperCase()) && !tableByWords(m[1])) gaps.push({ kind: 'table', term: m[1] }); });
+  [...text.matchAll(/\b(?:table|from table)\s+["'`]?([A-Za-z][A-Za-z0-9_]*)["'`]?/gi)].forEach((m) => { if (/^(alias(es)?|aliasing|names?|joins?|rows?|columns?|data)$/i.test(m[1])) return; if (!allTableNames.has(m[1].toUpperCase()) && !tableByWords(m[1])) gaps.push({ kind: 'table', term: m[1] }); });
   [...text.matchAll(/\b(?:column|field)\s+["'`]?([A-Za-z][A-Za-z0-9_ ]{1,30}?)["'`]?(?=\s|$|[,.;])/gi)].forEach((m) => { const t = m[1].trim(); if (!allColNames.has(t.toUpperCase().replace(/ /g, '_')) && !findColumnByWords(t, () => true, true)) gaps.push({ kind: 'column', term: t }); });
   const vocab = new Set<string>([...ctx.tables.flatMap((t) => t.phrases.flatMap((p) => p.split(' '))), ...ctx.columns.flatMap((c) => c.phrases.flatMap((p) => p.split(' ')))]);
   base.unresolvedTerms.forEach((t) => { const words = softNormalize(t).split(' ').filter((w) => w.length > 2); if (/_/.test(t) || gaps.some((g) => g.term.toLowerCase() === t.toLowerCase()) || words.some((w) => vocab.has(w) || vocab.has(w.replace(/s$/, '')) || (/^un/.test(w) && vocab.has(w.slice(2))))) return; gaps.push({ kind: 'term', term: t }); });
@@ -424,7 +438,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     const seen = new Set<string>();
     matchedColumns = resolvedHits.filter((h) => inScope(h.entry.table)).filter((h) => { const k = q(h.entry.table, h.entry.column.name); if (seen.has(k)) return false; seen.add(k); return true; })
       .map((h) => ({ id: makeId('col'), table: h.entry.table, column: h.entry.column.name, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' as const }));
-    if (matchedColumns.length > 0 && matchedColumns.every((c) => filters.some((f) => f.table === c.table && f.column === c.column))) matchedColumns = [];
+    if (matchedColumns.length > 0 && matchedColumns.every((c) => filters.some((f) => f.table === c.table && f.column === c.column) || sorts.some((s) => s.table === c.table && s.column === c.column))) matchedColumns = [];
     if (matchedColumns.length && tables.length > 1 && !matchedColumns.some((c) => c.table === primary())) {
       const pt = ctx.tableUpper.get(primary().toUpperCase());
       [pt?.pk, pt?.nameColumn].filter((c): c is ColumnDef => !!c).forEach((c) => matchedColumns.unshift({ id: makeId('col'), table: primary(), column: c.name, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' }));
@@ -454,6 +468,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     rawText, matchedTables: tables, matchedColumns, matchedFilters: filters, matchedSorts: sorts, limit, distinct, confidence: Math.max(0, confidence),
     notes: [...notes], queryPlan: plan, clarifications: [...clarifications, ...base.clarifications.filter((c) => !/Multiple date columns/.test(c.question) || !dateFilters.length)],
     unresolvedTerms: gaps.map((g) => g.term), groupBy, having, aggregateMode, autoOptions: auto, schemaGaps: gaps, learnedPatternIds: learnedIds,
-    schemaFingerprint: ctx.fingerprint, schemaId: schema.id, engine: 'v17-offline-nlu'
+    schemaFingerprint: ctx.fingerprint, schemaId: schema.id, engine: 'v17-offline-nlu', tableAliases, joinType, dateLogic
   };
 }

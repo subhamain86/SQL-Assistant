@@ -9,6 +9,7 @@ function bridgeTablesBetween(schema: SchemaModel, a: string, b: string, excludeT
   for (const t of schema.tables) { if (t.name === a || t.name === b || excludeTables.has(t.name)) continue; const relsToA = directRelationships(schema, t.name, a); const relsToB = directRelationships(schema, t.name, b); if (relsToA.length > 0 && relsToB.length > 0) results.push({ bridge: t.name, relA: relsToA[0], relB: relsToB[0] }); }
   return results;
 }
+function describeRel(r: RelationshipDef): string { return `${r.fromTable}.${r.fromColumn} = ${r.toTable}.${r.toColumn}`; }
 function relationshipJoinLine(rel: RelationshipDef, alreadyIncluded: string, joining: string): string {
   if (rel.fromTable === alreadyIncluded) return `INNER JOIN ${joining} ON ${alreadyIncluded}.${rel.fromColumn} = ${joining}.${rel.toColumn}`;
   return `INNER JOIN ${joining} ON ${joining}.${rel.fromColumn} = ${alreadyIncluded}.${rel.toColumn}`;
@@ -26,7 +27,7 @@ export function computeAutoJoinPlan(schema: SchemaModel, primaryTable: string, o
       const direct = directRelationships(schema, anchor, target);
       const bridges = direct.length === 0 ? bridgeTablesBetween(schema, anchor, target, inScope) : [];
       const options: JoinPathOption[] = [
-        ...direct.map((rel) => ({ id: `direct:${rel.id}`, label: `Direct`, bridgeTable: null, relationships: [rel] })),
+        ...direct.map((rel) => ({ id: `direct:${rel.id}`, label: `Direct (${describeRel(rel)})`, bridgeTable: null, relationships: [rel] })),
         ...bridges.map((b) => ({ id: `bridge:${b.bridge}`, label: `Via ${b.bridge}`, bridgeTable: b.bridge, relationships: [b.relA, b.relB] }))
       ];
       if (options.length === 0) continue;

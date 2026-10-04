@@ -1,4 +1,4 @@
-/** V17.0 — "Accept & Learn": adjust the generated SQL, then confirm it. Validated before it is used or learned. */
+/** "Accept & Learn": adjust the generated SQL, then confirm it. Validated before it is used or learned. */
 import { icon } from '../../components/icons';
 import { openModal } from '../../components/modal';
 import type { SchemaModel } from '../../types';

@@ -1,21 +1,19 @@
 /**
- * Settings → Manual Schema Update: safe, single-record edit / delete (V17.0), aligned with the shared
- * V17.1 validator. Pure functions: they return a NEW schema or errors and never mutate the input.
+ * Settings → Manual Schema Update: safe, single-record (row-wise) edit / delete. Pure functions: they return
+ * a NEW schema or errors and never mutate the input.
  *  - Edit/delete touches exactly one record (plus explicitly reported relationship/FK updates on rename).
  *  - Deleting a referenced column is blocked unless cascade is explicitly requested.
- *  - V17.1: the result is checked with the SAME validator used for repository synchronisation, so a
- *    manually edited schema can always be published and pulled on another device. Only errors that the
- *    change itself INTRODUCES block it — legacy problems elsewhere in the schema no longer prevent
- *    unrelated edits (they are repaired explicitly from Schema Management).
- *  - V17.1: identifier/type format rules apply only to values the user actually changes, so legacy rows
- *    (e.g. names created by V16 with spaces) can still be edited.
+ *  - The result is checked with the SAME validator used for repository synchronisation; only errors the change
+ *    INTRODUCES block it, so legacy problems elsewhere never prevent unrelated edits.
+ *  - Identifier/type format rules apply only to values the user actually changes.
  */
-import type { SchemaModel, SchemaEditorRow, TableDef, ColumnDef, DecodeEntry, RelationshipDef } from '../../types';
+import type { SchemaModel, SchemaEditorRow, ColumnDef, DecodeEntry, RelationshipDef } from '../../types';
 import { validateSchemaModel, type SchemaIssue } from '../sync/schemaFormat';
 import { makeError, type AppError } from '../errors/appErrors';
 
 export interface RecordChangeResult { ok: boolean; schema?: SchemaModel; changes: string[]; errors: AppError[]; }
 export interface Dependency { kind: 'relationship' | 'foreign-key'; description: string; relationshipId?: string; table?: string; column?: string; }
+export interface FieldChange { field: string; label: string; from: string; to: string; scope: 'row' | 'table'; }
 const IDENT = /^[A-Za-z_][A-Za-z0-9_$#]{0,127}$/;
 const TYPE_RE = /^[A-Za-z][A-Za-z0-9_ ]{0,40}(\(\s*(\d+|\*)\s*(,\s*\d+\s*)?(\s+(BYTE|CHAR))?\))?(\s+WITH( LOCAL)? TIME ZONE)?$/i;
 function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)); }
@@ -24,10 +22,19 @@ export function parseRowId(rowId: string): { table: string; column: string } | n
 export function parseDecodeText(text: string): { entries: DecodeEntry[]; problems: string[] } {
   const problems: string[] = []; const seen = new Set<string>();
   const entries = (text || '').split(/[\n;]+/).map((l) => l.trim()).filter(Boolean).map((line) => { const i = line.indexOf('='); return i === -1 ? { rawValue: line, label: line } : { rawValue: line.slice(0, i).trim(), label: line.slice(i + 1).trim() }; });
-  entries.forEach((e) => { if (!e.rawValue) problems.push(`Decode line "${e.rawValue}=${e.label}" has an empty raw value.`); const k = U(e.rawValue); if (seen.has(k)) problems.push(`Decode raw value "${e.rawValue}" is listed more than once.`); seen.add(k); if (!e.label) problems.push(`Decode raw value "${e.rawValue}" has an empty label.`); });
+  entries.forEach((e) => { if (!e.rawValue) problems.push(`Decode line "${e.rawValue}=${e.label}" has an empty raw value.`); if (seen.has(e.rawValue)) problems.push(`Decode raw value "${e.rawValue}" is listed more than once.`); seen.add(e.rawValue); if (!e.label) problems.push(`Decode raw value "${e.rawValue}" has an empty label.`); });
   return { entries, problems };
 }
-/** Field-level validation of one record. `original` = the row being edited (null for a new row). */
+const FIELD_LABELS: [keyof SchemaEditorRow, string, 'row' | 'table'][] = [
+  ['module', 'Module', 'table'], ['tableName', 'Table Name', 'row'], ['tableDescription', 'Table Description', 'table'], ['columnName', 'Column Name', 'row'], ['columnDescription', 'Column Description', 'row'],
+  ['dataType', 'Data Type', 'row'], ['length', 'Length', 'row'], ['precision', 'Precision', 'row'], ['nullable', 'Nullable', 'row'], ['alias', 'Alias', 'row'], ['decodeText', 'Decode', 'row'],
+  ['isPrimaryKey', 'Primary Key', 'row'], ['isForeignKey', 'Foreign Key', 'row'], ['fkTable', 'References Table', 'row'], ['fkColumn', 'References Column', 'row']
+];
+const show = (v: unknown) => (v === null || v === undefined || v === '' ? '(empty)' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v).replace(/\n/g, '; '));
+/** V17.2 — field-by-field difference between the selected row and the edited values (shown before saving). */
+export function diffRows(original: SchemaEditorRow, edited: SchemaEditorRow): FieldChange[] {
+  return FIELD_LABELS.filter(([k]) => show(original[k]) !== show(edited[k]) && !(k === 'module' && !String(edited.module || '').trim())).map(([k, label, scope]) => ({ field: String(k), label, from: show(original[k]), to: show(edited[k]), scope }));
+}
 export function validateRecordFields(row: SchemaEditorRow, schema: SchemaModel, original: SchemaEditorRow | null = null): string[] {
   const p: string[] = [];
   const t = (row.tableName || '').trim(); const c = (row.columnName || '').trim(); const dt = String(row.dataType || '').trim();
@@ -61,7 +68,6 @@ function buildColumn(row: SchemaEditorRow, decode: DecodeEntry[], previous?: Col
   return col;
 }
 const issueKey = (i: SchemaIssue) => `${i.code}|${i.message}`;
-/** Errors present in `after` that were not already present in `before` (legacy problems never block unrelated edits). */
 function introducedErrors(before: SchemaModel, after: SchemaModel): AppError[] {
   const prev = new Set(validateSchemaModel(before).errors.map(issueKey));
   const fresh = validateSchemaModel(after).errors.filter((e) => !prev.has(issueKey(e)));
@@ -144,4 +150,3 @@ export function deleteSchemaRecord(schema: SchemaModel, rowId: string, opts: { c
   return { ok: true, schema: next, changes, errors: [], dependencies: allDeps };
 }
 export function dataTypeOptionValues(current: string, standard: string[]): string[] { const cur = String(current || '').trim(); return cur && !standard.some((s) => U(s) === U(cur)) ? [cur, ...standard] : [...standard]; }
-export type { TableDef };

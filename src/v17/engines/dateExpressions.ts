@@ -1,4 +1,4 @@
-/** V17.0 — Dialect-aware date expressions + the STRICT whitelist that lets filterEngine pass them through unquoted. */
+/** Dialect-aware date expressions + the STRICT whitelist that lets filterEngine pass them through unquoted. */
 import type { Dialect } from '../../types';
 export type DateUnit = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
 export function todayExpr(d: Dialect): string { switch (d) { case 'Oracle': return 'TRUNC(SYSDATE)'; case 'SQL Server': return 'CAST(GETDATE() AS DATE)'; case 'MySQL': return 'CURDATE()'; default: return 'CURRENT_DATE'; } }

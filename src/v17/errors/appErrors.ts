@@ -1,6 +1,6 @@
 /**
- * V17.0 — Typed, specific application errors. Messages pass through redactSecrets()
- * so a token / API key never reaches the UI, logs, console, SQL or error text.
+ * Typed, specific application errors. Messages pass through redactSecrets() so a token / API key
+ * never reaches the UI, logs, console, SQL or error text.
  */
 export type AppErrorCode =
   | 'ACTIVE_SCHEMA_UNAVAILABLE' | 'TABLE_NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_SCHEMA_RECORD'
@@ -17,15 +17,16 @@ export const ERROR_TITLES: Record<AppErrorCode, string> = {
   SQL_VALIDATION_FAILED: 'SQL validation failed', JOIN_PATH_NOT_FOUND: 'No join path between selected tables'
 };
 export interface AppError { code: AppErrorCode; message: string; details?: string[]; }
-const TOKEN_PATTERNS: RegExp[] = [
-  /\bghp_[A-Za-z0-9]{20,}\b/g, /\bgho_[A-Za-z0-9]{20,}\b/g, /\bghu_[A-Za-z0-9]{20,}\b/g, /\bghs_[A-Za-z0-9]{20,}\b/g,
-  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, /\bsk-[A-Za-z0-9_\-]{16,}\b/g, /\bsk-ant-[A-Za-z0-9_\-]{16,}\b/g,
-  /(Bearer|token)\s+[A-Za-z0-9._\-]{16,}/gi, /(api[-_]?key["'\s:=]+)[A-Za-z0-9._\-]{12,}/gi
+export const SECRET_PATTERNS: RegExp[] = [
+  /\bghp_[A-Za-z0-9]{20,}\b/g, /\bgho_[A-Za-z0-9]{20,}\b/g, /\bghu_[A-Za-z0-9]{20,}\b/g, /\bghs_[A-Za-z0-9]{20,}\b/g, /\bghr_[A-Za-z0-9]{20,}\b/g,
+  /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, /\bsk-[A-Za-z0-9_\-]{16,}\b/g, /\bsk-ant-[A-Za-z0-9_\-]{16,}\b/g, /\bAKIA[0-9A-Z]{16}\b/g, /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{5,}\b/g,
+  /(Bearer|token)\s+[A-Za-z0-9._\-]{16,}/gi, /(api[-_]?key["'\s:=]+)[A-Za-z0-9._\-]{12,}/gi, /(password["'\s:=]+)[^\s'"]{4,}/gi
 ];
+export function containsSecret(text: string): boolean { return SECRET_PATTERNS.some((re) => { re.lastIndex = 0; const hit = re.test(String(text ?? '')); re.lastIndex = 0; return hit; }); }
 export function redactSecrets(text: string, knownSecrets: (string | null | undefined)[] = []): string {
   let out = String(text ?? '');
   knownSecrets.filter((s): s is string => typeof s === 'string' && s.length >= 6).forEach((s) => { out = out.split(s).join('••••••'); });
-  TOKEN_PATTERNS.forEach((re) => { out = out.replace(re, (m, p1) => (typeof p1 === 'string' && /^(Bearer|token|api)/i.test(p1) ? `${p1} ••••••` : '••••••')); });
+  SECRET_PATTERNS.forEach((re) => { out = out.replace(re, (m, p1) => (typeof p1 === 'string' && /^(Bearer|token|api|password)/i.test(p1) ? `${p1} ••••••` : '••••••')); });
   return out;
 }
 export function makeError(code: AppErrorCode, message: string, details?: string[], knownSecrets: (string | null | undefined)[] = []): AppError {

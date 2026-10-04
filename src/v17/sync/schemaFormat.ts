@@ -1,21 +1,19 @@
 /**
- * V17.1 — The single schema format authority.
- *
- * EVERY path that reads or writes schema data uses this module: local load, import, Manual Schema
- * Update, push to the repository, public discovery, authenticated pull, conflict resolution and the
- * diagnostics CLI. Before V17.1 the push path never validated, the pull path validated the RAW file
- * before normalising it, and the validator ignored relationships — so data that one device happily
- * stored and published was rejected by every other device with a single generic message.
+ * The single schema format authority (V17.1+). EVERY path that reads or writes schema data uses this module:
+ * local load, import, Manual Schema Update, push, public discovery, authenticated pull, conflict resolution
+ * and the diagnostics CLI.
  *
  * Pipeline:  parseRegistryText → normalizeRegistry (lossless legacy conversions, each one reported)
  *            → validateSchemaModel (exact JSON paths + table/column names) → per-schema verdict.
- * Validation is never relaxed: errors still block. Repairs are only ever applied by an explicit user
- * action (repairSchema) and every change is listed.
+ * Validation is never relaxed: errors still block. Repairs are only applied by an explicit user action.
+ * V17.2: contentHash() (3-way sync merge), stageOf() (failing-stage labels), writer/device provenance,
+ *        decode raw values compared exactly (database codes are case-sensitive).
  */
 import type { SchemaModel, TableDef, ColumnDef, RelationshipDef, DecodeEntry, SchemaRegistry, SchemaStatus } from '../../types';
 
 export const REGISTRY_FORMAT_VERSION = 2;
-export const APP_VERSION = '17.1.0';
+export const APP_VERSION = '17.2.0';
+export const APP_NAME = 'SQL Assistant';
 
 export type IssueSeverity = 'error' | 'warning';
 export type IssueCode =
@@ -30,9 +28,20 @@ export type FileProblemCode = 'EMPTY' | 'HTML' | 'LFS_POINTER' | 'MERGE_CONFLICT
 export interface FileProblem { code: FileProblemCode; message: string; }
 export interface SchemaReport { index: number; id: string; name: string; valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[]; notes: string[]; schema: SchemaModel | null; allErrorsRepairable: boolean; }
 export interface RegistryReport {
-  fileProblem: FileProblem | null; detectedFormat: string; formatVersion: number | null; writtenBy: string | null;
+  fileProblem: FileProblem | null; detectedFormat: string; formatVersion: number | null; writtenBy: string | null; writtenByDevice: string | null;
   schemas: SchemaReport[]; registryNotes: string[]; activeSchemaId: string | null; activeSchemaUpdatedAt: string | null;
   validSchemas: SchemaModel[]; invalidSchemas: SchemaReport[];
+}
+/** V17.2 — the synchronisation stage at which a problem was detected (shown in every sync error). */
+export type SyncStage = 'Remote file retrieval failed' | 'Remote file could not be parsed' | 'Schema structure is invalid' | 'Required schema property is missing' | 'Invalid table definition' | 'Invalid column definition' | 'Invalid relationship definition' | 'Duplicate schema object' | 'Schema version is unsupported' | 'Schema normalization failed' | 'Schema persistence failed';
+export function fileProblemStage(code: FileProblemCode): SyncStage { return code === 'UNSUPPORTED_VERSION' ? 'Schema version is unsupported' : code === 'NOT_A_REGISTRY' ? 'Schema structure is invalid' : 'Remote file could not be parsed'; }
+export function stageOf(i: Pick<SchemaIssue, 'code'>): SyncStage {
+  const c = i.code;
+  if (c.startsWith('DUPLICATE_')) return 'Duplicate schema object';
+  if (c === 'TABLES_MISSING' || c === 'NOT_OBJECT' || c === 'SCHEMA_NAME_MISSING') return 'Required schema property is missing';
+  if (c.startsWith('RELATIONSHIP')) return 'Invalid relationship definition';
+  if (c.startsWith('TABLE_') || c === 'OBJECT_TYPE_INVALID' || c === 'COLUMNS_INVALID' || c === 'NO_COLUMNS' || c.startsWith('PK_')) return 'Invalid table definition';
+  return 'Invalid column definition';
 }
 
 // ---------------------------------------------------------------- parsing
@@ -58,7 +67,6 @@ export function locateJsonError(t: string): number {
 }
 function lineCol(text: string, pos: number): { line: number; col: number } { const before = text.slice(0, pos); const lines = before.split('\n'); return { line: lines.length, col: lines[lines.length - 1].length + 1 }; }
 export interface ParsedText { value?: unknown; problem?: FileProblem; notes: string[]; }
-/** Reads raw text from the repository / a file and turns it into a JS value, explaining any failure precisely. */
 export function parseRegistryText(textRaw: string): ParsedText {
   const notes: string[] = [];
   let text = String(textRaw ?? '');
@@ -75,8 +83,7 @@ export function parseRegistryText(textRaw: string): ParsedText {
     const posM = msg.match(/position (\d+)/i); const located = posM ? +posM[1] : locateJsonError(text);
     let where = ''; let hint = '';
     if (located >= 0 && located < text.length) {
-      const pos = located;
-      const { line, col } = lineCol(text, pos); const ch = text[pos];
+      const pos = located; const { line, col } = lineCol(text, pos); const ch = text[pos];
       const snippet = text.slice(Math.max(0, pos - 30), pos + 30).replace(/\n/g, '⏎').replace(/[\u0000-\u001f]/g, '·');
       where = ` at line ${line}, column ${col} (unexpected ${describeChar(ch)}; near "${snippet}")`;
       const prev = text.slice(0, pos).replace(/\s+$/, '').slice(-1);
@@ -84,7 +91,7 @@ export function parseRegistryText(textRaw: string): ParsedText {
       else if (ch === "'") hint = ' JSON strings must use double quotes, not single quotes.';
       else if (ch && ch.charCodeAt(0) < 32) hint = ' A line break or control character appears inside a string; it must be escaped (\\n, \\t).';
       else if (/[\u201c\u201d\u2018\u2019]/.test(ch || '')) hint = ' The file was probably edited in a word processor that replaced quotes.';
-    } else if (/unexpected end/i.test(msg) || located >= text.length) { where = ' (the file ends before the JSON is complete — it was probably truncated)'; }
+    } else if (/unexpected end/i.test(msg) || located >= text.length) { where = ' (the file ends before the JSON is complete — it was probably truncated or only partially written)'; }
     if (/\bNaN\b|\bInfinity\b|\bundefined\b/.test(text) && !hint) hint = ' NaN, Infinity and undefined are not valid JSON values.';
     return { notes, problem: { code: 'INVALID_JSON', message: `The schema file is not valid JSON${where}.${hint}` } };
   }
@@ -199,7 +206,6 @@ function normalizeRelationship(raw: unknown, path: string, index: number, issues
 function slug(s: string): string { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'schema'; }
 const KNOWN_SCHEMA_KEYS = new Set(['id', 'name', 'version', 'status', 'updatedAt', 'lastSyncedAt', 'tables', 'relationships', 'versionMeta', 'originalFileName']);
 export interface NormalizedSchema { schema: SchemaModel | null; issues: SchemaIssue[]; notes: string[]; }
-/** Lossless conversion of any supported historic schema shape into the current SchemaModel. */
 export function normalizeSchema(raw: unknown, index = 0, pathPrefix = ''): NormalizedSchema {
   const issues: SchemaIssue[] = []; const notes = new Notes(); const p = pathPrefix;
   if (!isObj(raw)) return { schema: null, notes: [], issues: [{ severity: 'error', code: 'NOT_OBJECT', path: p || '$', message: `The schema entry is not an object (found ${raw === null ? 'null' : Array.isArray(raw) ? 'a list' : typeof raw}).` }] };
@@ -235,7 +241,6 @@ const BAD_CHARS = /[\u0000-\u001f\u007f\u200b-\u200d\u2060\ufeff]/;
 const PLAIN_IDENT = /^[A-Za-z_][A-Za-z0-9_$#]*(\.[A-Za-z_][A-Za-z0-9_$#]*)?$/;
 const U = (s: string | undefined) => String(s ?? '').trim().toUpperCase();
 function loc(ti: number, t: string, ci?: number, c?: string): string { return `tables[${ti}] (${t || '?'})${ci !== undefined ? `.columns[${ci}] (${c || '?'})` : ''}`; }
-/** Validates a (normalised) schema. The same rules apply to local, imported, edited and remote data. */
 export function validateSchemaModel(schema: Pick<SchemaModel, 'tables' | 'relationships'>, pathPrefix = ''): { valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[] } {
   const issues: SchemaIssue[] = []; const P = (s: string) => (pathPrefix ? `${pathPrefix}.${s}` : s);
   const tables = Array.isArray(schema.tables) ? schema.tables : [];
@@ -276,8 +281,8 @@ export function validateSchemaModel(schema: Pick<SchemaModel, 'tables' | 'relati
         c.decode.forEach((d, di) => {
           const rv = String(d?.rawValue ?? '').trim(); const lb = String(d?.label ?? '').trim();
           if (!rv) issues.push({ severity: 'error', code: 'DECODE_EMPTY_RAW', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" has a decode entry (#${di + 1}) with an empty raw value.` });
-          else if (raws.has(U(rv))) issues.push({ severity: 'error', code: 'DECODE_DUPLICATE_RAW', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" has duplicate decode raw value "${rv}".`, repairable: raws.get(U(rv)) === lb });
-          else raws.set(U(rv), lb);
+          else if (raws.has(rv)) issues.push({ severity: 'error', code: 'DECODE_DUPLICATE_RAW', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" has duplicate decode raw value "${rv}".`, repairable: raws.get(rv) === lb });
+          else raws.set(rv, lb);
           if (rv && !lb) issues.push({ severity: 'warning', code: 'DECODE_EMPTY_LABEL', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" decode value "${rv}" has no label.` });
         });
       }
@@ -298,18 +303,24 @@ export function validateSchemaModel(schema: Pick<SchemaModel, 'tables' | 'relati
   return { valid: errors.length === 0, errors, warnings };
 }
 
+// ---------------------------------------------------------------- content identity (V17.2, 3-way merge)
+function fnv(str: string): string { let h1 = 0x811c9dc5, h2 = 0x01000193; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0; h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0; } return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0'); }
+function canon(v: unknown): unknown { if (Array.isArray(v)) return v.map(canon); if (isObj(v)) return Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, canon(v[k])])); return v; }
+/** Hash of the schema CONTENT only (tables + relationships, key-order independent). Metadata and timestamps are ignored. */
+export function contentHash(schema: Pick<SchemaModel, 'tables' | 'relationships'>): string { return fnv(JSON.stringify(canon({ t: schema.tables, r: schema.relationships }))); }
+
 // ---------------------------------------------------------------- registry
-/** Full pipeline for a registry file (repository, local storage or import). */
 export function checkRegistry(input: { text?: string; value?: unknown }): RegistryReport {
-  const report: RegistryReport = { fileProblem: null, detectedFormat: 'unknown', formatVersion: null, writtenBy: null, schemas: [], registryNotes: [], activeSchemaId: null, activeSchemaUpdatedAt: null, validSchemas: [], invalidSchemas: [] };
+  const report: RegistryReport = { fileProblem: null, detectedFormat: 'unknown', formatVersion: null, writtenBy: null, writtenByDevice: null, schemas: [], registryNotes: [], activeSchemaId: null, activeSchemaUpdatedAt: null, validSchemas: [], invalidSchemas: [] };
   let value = input.value;
   if (input.text !== undefined) { const p = parseRegistryText(input.text); report.registryNotes.push(...p.notes); if (p.problem) { report.fileProblem = p.problem; return report; } value = p.value; }
   let rawSchemas: unknown[] | null = null;
   if (Array.isArray(value)) { rawSchemas = value; report.detectedFormat = 'bare schema list (pre-V15)'; report.registryNotes.push('The file is a bare list of schemas (pre-V15 format); it was read as a registry.'); }
   else if (isObj(value)) {
     const fv = value.formatVersion;
-    if (fv !== undefined) { report.formatVersion = typeof fv === 'number' ? fv : Number(fv); if (!Number.isFinite(report.formatVersion) || report.formatVersion! > REGISTRY_FORMAT_VERSION) { report.fileProblem = { code: 'UNSUPPORTED_VERSION', message: `The schema file was written by a newer SQL Assistant (format ${JSON.stringify(fv)}${typeof value.writtenBy === 'string' ? `, ${value.writtenBy}` : ''}); this version understands format ${REGISTRY_FORMAT_VERSION}. Update this device to the latest version before synchronizing.` }; return report; } }
+    if (fv !== undefined) { report.formatVersion = typeof fv === 'number' ? fv : Number(fv); if (!Number.isFinite(report.formatVersion) || report.formatVersion! > REGISTRY_FORMAT_VERSION) { report.fileProblem = { code: 'UNSUPPORTED_VERSION', message: `The schema file was written by a newer ${APP_NAME} (format ${JSON.stringify(fv)}${typeof value.writtenBy === 'string' ? `, ${value.writtenBy}` : ''}); this version understands format ${REGISTRY_FORMAT_VERSION}. Update this device to the latest version before synchronizing.` }; return report; } }
     report.writtenBy = typeof value.writtenBy === 'string' ? value.writtenBy : null;
+    report.writtenByDevice = typeof value.writtenByDevice === 'string' ? value.writtenByDevice : null;
     if (Array.isArray(value.schemas)) { rawSchemas = value.schemas; report.detectedFormat = report.formatVersion ? `registry format ${report.formatVersion}` : 'registry (V15–V17.0)'; }
     else if (isObj(value.schemas)) { rawSchemas = Object.values(value.schemas); report.detectedFormat = 'registry with schema map'; report.registryNotes.push('"schemas" was a map keyed by id; it was read as a list.'); }
     else if (isObj(value.registry) && Array.isArray(value.registry.schemas)) { rawSchemas = value.registry.schemas; value = value.registry; report.detectedFormat = 'wrapped registry'; report.registryNotes.push('The registry was wrapped in a "registry" property; it was unwrapped.'); }
@@ -335,25 +346,22 @@ export function checkRegistry(input: { text?: string; value?: unknown }): Regist
   if (report.activeSchemaId && !report.schemas.some((s) => s.id === report.activeSchemaId)) report.registryNotes.push(`The file's active schema "${report.activeSchemaId}" is not one of its schemas; the active selection was not changed.`);
   return report;
 }
-/** Serialises a registry for the repository with the format marker V17.1+ uses (V17.0 devices ignore the extra fields). */
-export function serializeRegistry(registry: SchemaRegistry): string {
-  const out: SchemaRegistry = { formatVersion: REGISTRY_FORMAT_VERSION, writtenBy: `AP-SQL Assistant ${APP_VERSION}`, activeSchemaId: registry.activeSchemaId, activeSchemaUpdatedAt: registry.activeSchemaUpdatedAt ?? null, schemas: registry.schemas };
+/** Version number written in a registry's writtenBy (e.g. "SQL Assistant 17.2.0" → [17,2,0]); null for files from V17.0 or older. */
+export function writerVersion(writtenBy: string | null): number[] | null { const m = String(writtenBy || '').match(/(\d+)\.(\d+)\.(\d+)/); return m ? [+m[1], +m[2], +m[3]] : null; }
+export function compareVersions(a: number[], b: number[]): number { for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0); return 0; }
+export function serializeRegistry(registry: SchemaRegistry, deviceTag?: string): string {
+  const out: SchemaRegistry = { formatVersion: REGISTRY_FORMAT_VERSION, writtenBy: `${APP_NAME} ${APP_VERSION}`, ...(deviceTag ? { writtenByDevice: deviceTag } : {}), activeSchemaId: registry.activeSchemaId, activeSchemaUpdatedAt: registry.activeSchemaUpdatedAt ?? null, schemas: registry.schemas };
   return JSON.stringify(out, null, 2);
 }
 
 // ---------------------------------------------------------------- explicit repair
 export interface RepairResult { schema: SchemaModel; changes: string[]; remainingErrors: SchemaIssue[]; }
-/** Explicit, user-confirmed repair of referential leftovers. Never removes a table or a non-duplicate column. */
 export function repairSchema(input: SchemaModel): RepairResult {
   const s: SchemaModel = JSON.parse(JSON.stringify(input)); const changes: string[] = [];
   const byName = new Map(s.tables.map((t) => [U(t.name), t] as const));
   s.tables.forEach((t) => {
     const kept: ColumnDef[] = [];
-    t.columns.forEach((c) => {
-      const dup = kept.find((k) => U(k.name) === U(c.name));
-      if (dup && JSON.stringify(dup) === JSON.stringify(c)) { changes.push(`Removed an exact duplicate copy of column ${t.name}.${c.name}.`); return; }
-      kept.push(c);
-    });
+    t.columns.forEach((c) => { const dup = kept.find((k) => U(k.name) === U(c.name)); if (dup && JSON.stringify(dup) === JSON.stringify(c)) { changes.push(`Removed an exact duplicate copy of column ${t.name}.${c.name}.`); return; } kept.push(c); });
     t.columns = kept;
   });
   s.tables.forEach((t) => t.columns.forEach((c) => {
@@ -362,7 +370,7 @@ export function repairSchema(input: SchemaModel): RepairResult {
       const target = byName.get(U(rt));
       if (!rt || !rc || !target || !target.columns.some((x) => U(x.name) === U(rc))) { c.isForeignKey = false; delete c.references; changes.push(`Unlinked foreign key ${t.name}.${c.name}${rt ? ` → ${rt}.${rc}` : ''} (target does not exist); the column itself was kept.`); }
     }
-    if (Array.isArray(c.decode)) { const seen = new Map<string, string>(); const out: DecodeEntry[] = []; c.decode.forEach((d) => { const k = U(d.rawValue); if (seen.has(k) && seen.get(k) === d.label.trim()) { changes.push(`Removed a repeated decode entry "${d.rawValue}=${d.label}" from ${t.name}.${c.name}.`); return; } seen.set(k, d.label.trim()); out.push(d); }); c.decode = out; }
+    if (Array.isArray(c.decode)) { const seen = new Map<string, string>(); const out: DecodeEntry[] = []; c.decode.forEach((d) => { const k = String(d.rawValue).trim(); if (seen.has(k) && seen.get(k) === d.label.trim()) { changes.push(`Removed a repeated decode entry "${d.rawValue}=${d.label}" from ${t.name}.${c.name}.`); return; } seen.set(k, d.label.trim()); out.push(d); }); c.decode = out; }
   }));
   const has = (tb: string, col: string) => byName.get(U(tb))?.columns.some((x) => U(x.name) === U(col));
   s.relationships = s.relationships.filter((r) => { if (r.fromTable && r.fromColumn && r.toTable && r.toColumn && has(r.fromTable, r.fromColumn) && has(r.toTable, r.toColumn)) return true; changes.push(`Removed relationship ${r.fromTable}.${r.fromColumn} → ${r.toTable}.${r.toColumn} (it points to a column that does not exist).`); return false; });
@@ -371,11 +379,12 @@ export function repairSchema(input: SchemaModel): RepairResult {
 
 // ---------------------------------------------------------------- presentation helpers
 export function describeIssue(i: SchemaIssue): string { return `${i.message} [${i.path}]`; }
+export function describeIssueWithStage(i: SchemaIssue): string { return `${stageOf(i)}: ${describeIssue(i)}`; }
 export function summarizeSchemaReport(r: SchemaReport, max = 5): string { const shown = r.errors.slice(0, max).map(describeIssue); return `"${r.name}": ${r.errors.length} error(s) — ${shown.join(' ')}${r.errors.length > max ? ` …and ${r.errors.length - max} more.` : ''}`; }
 export function formatRegistryReport(r: RegistryReport): string[] {
-  if (r.fileProblem) return [`File problem (${r.fileProblem.code}): ${r.fileProblem.message}`];
-  const out = [`Format detected: ${r.detectedFormat}${r.writtenBy ? ` — written by ${r.writtenBy}` : ''}. ${r.schemas.length} schema(s): ${r.validSchemas.length} valid, ${r.invalidSchemas.length} invalid.`];
+  if (r.fileProblem) return [`${fileProblemStage(r.fileProblem.code)} (${r.fileProblem.code}): ${r.fileProblem.message}`];
+  const out = [`Format detected: ${r.detectedFormat}${r.writtenBy ? ` — written by ${r.writtenBy}` : ' — written by V17.0 or older (no writer stamp)'}${r.writtenByDevice ? ` on ${r.writtenByDevice}` : ''}. ${r.schemas.length} schema(s): ${r.validSchemas.length} valid, ${r.invalidSchemas.length} invalid.`];
   r.registryNotes.forEach((n) => out.push(`Note: ${n}`));
-  r.schemas.forEach((s) => { out.push(`${s.valid ? '✔' : '✖'} "${s.name}" (${s.id}) — ${s.errors.length} error(s), ${s.warnings.length} warning(s)${s.notes.length ? `, ${s.notes.length} legacy conversion(s)` : ''}`); s.errors.forEach((e) => out.push(`    ERROR ${describeIssue(e)}${e.repairable ? ' (repairable)' : ''}`)); s.warnings.slice(0, 10).forEach((w) => out.push(`    warning ${describeIssue(w)}`)); s.notes.forEach((n) => out.push(`    converted: ${n}`)); });
+  r.schemas.forEach((s) => { out.push(`${s.valid ? '✔' : '✖'} "${s.name}" (${s.id}) — ${s.errors.length} error(s), ${s.warnings.length} warning(s)${s.notes.length ? `, ${s.notes.length} legacy conversion(s)` : ''}`); s.errors.forEach((e) => out.push(`    ERROR ${describeIssueWithStage(e)}${e.repairable ? ' (repairable)' : ''}`)); s.warnings.slice(0, 10).forEach((w) => out.push(`    warning ${describeIssue(w)}`)); s.notes.forEach((n) => out.push(`    converted: ${n}`)); });
   return out;
 }

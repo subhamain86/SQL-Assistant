@@ -1,11 +1,11 @@
 /**
- * V17.0 — Automatic vs manual Advanced Options. Any Advanced Option the user set by hand is
- * authoritative and never overwritten by the description engine (manual always wins).
+ * Automatic vs manual Advanced Options. Any Advanced Option the user set by hand is authoritative and never
+ * overwritten by the description engine (manual always wins).
  */
 import type { ReadOnlyQueryState, SelectedColumnSpec, FilterCondition, SortSpec, ValidationIssue } from '../../types';
 import type { V17Requirement } from './nluEngine';
-export type ManualOptionKey = 'distinct' | 'groupBy' | 'having' | 'limit' | 'sorts' | 'recursive' | 'ctes' | 'columns';
-const MANUAL_KEYS: ManualOptionKey[] = ['distinct', 'groupBy', 'having', 'limit', 'sorts', 'recursive', 'ctes', 'columns'];
+export type ManualOptionKey = 'distinct' | 'groupBy' | 'having' | 'limit' | 'sorts' | 'recursive' | 'ctes' | 'columns' | 'tableAliases' | 'joinType';
+const MANUAL_KEYS: ManualOptionKey[] = ['distinct', 'groupBy', 'having', 'limit', 'sorts', 'recursive', 'ctes', 'columns', 'tableAliases', 'joinType'];
 class AdvancedOverrides {
   private keys = new Set<ManualOptionKey>(); private listeners = new Set<() => void>();
   mark(k: ManualOptionKey): void { if (!this.keys.has(k)) { this.keys.add(k); this.listeners.forEach((l) => l()); } }
@@ -16,7 +16,7 @@ class AdvancedOverrides {
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
 }
 export const advancedOverrides = new AdvancedOverrides();
-export const ADVANCED_INPUT_KEYS: Record<string, ManualOptionKey> = { advDistinct: 'distinct', advGroupBy: 'groupBy', advHaving: 'having', advLimit: 'limit', advRecursive: 'recursive', addCteBtn: 'ctes' };
+export const ADVANCED_INPUT_KEYS: Record<string, ManualOptionKey> = { advDistinct: 'distinct', advGroupBy: 'groupBy', advHaving: 'having', advLimit: 'limit', advRecursive: 'recursive', addCteBtn: 'ctes', advTableAliases: 'tableAliases', advJoinType: 'joinType' };
 export interface ApplyResult { state: ReadOnlyQueryState; applied: string[]; keptManual: string[]; }
 function clone<T>(v: T): T { return JSON.parse(JSON.stringify(v)); }
 const colKey = (c: SelectedColumnSpec) => (c.manualExpr ? `manual:${c.alias || c.id}` : `${c.table}::${c.column}::${c.aggregate || ''}`);
@@ -40,6 +40,8 @@ export function applyV17ToState(current: ReadOnlyQueryState, req: V17Requirement
   if (overrides.isManual('having') && s.advanced.havingClause.trim()) keptManual.push('HAVING'); else if (req.having) { s.advanced.havingClause = req.having; applied.push('HAVING'); }
   if (overrides.isManual('limit')) keptManual.push('LIMIT'); else if (req.limit && !s.advanced.limit) { s.advanced.limit = req.limit; applied.push('LIMIT'); }
   if (overrides.isManual('distinct')) keptManual.push('DISTINCT'); else if (req.distinct && !s.advanced.distinct) { s.advanced.distinct = true; applied.push('DISTINCT'); }
+  if (overrides.isManual('tableAliases')) keptManual.push('Table aliases'); else if (req.tableAliases && !s.advanced.tableAliases) { s.advanced.tableAliases = true; applied.push('Table aliases'); }
+  if (overrides.isManual('joinType')) keptManual.push('Join type'); else if (req.joinType && s.advanced.joinType !== req.joinType) { s.advanced.joinType = req.joinType; applied.push(req.joinType); }
   const fixed = completeGroupBy(s); if (fixed.length) applied.push(`GROUP BY completed with ${fixed.join(', ')}`);
   return { state: s, applied, keptManual };
 }
@@ -62,5 +64,7 @@ export function validateAdvancedConsistency(state: ReadOnlyQueryState): Validati
   if (state.advanced.distinct && state.sorts.some((s) => !s.expression && !state.selectedColumns.some((c) => c.table === s.table && c.column === s.column)) && state.selectedColumns.length) issues.push({ severity: 'warning', message: 'With DISTINCT, ORDER BY columns should also be selected (some databases reject it otherwise).' });
   const known = new Set(state.selectedTables);
   state.advanced.groupByColumns.forEach((g) => { const m = g.match(/^([A-Za-z_][A-Za-z0-9_]*)\.[A-Za-z_][A-Za-z0-9_]*$/); if (m && !known.has(m[1])) issues.push({ severity: 'error', message: `GROUP BY column ${g} belongs to table ${m[1]}, which is not selected.` }); });
+  state.sorts.forEach((s) => { if (!s.expression && s.table && !known.has(s.table)) issues.push({ severity: 'error', message: `ORDER BY column ${s.table}.${s.column} belongs to a table that is not selected.` }); });
+  if (state.advanced.joinType === 'LEFT JOIN' && state.selectedTables.length < 2) issues.push({ severity: 'warning', message: 'LEFT JOIN is selected but only one table is in the query.' });
   return issues;
 }

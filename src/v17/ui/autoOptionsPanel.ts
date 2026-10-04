@@ -1,9 +1,9 @@
-/** V17.0 — Manual Selectors → Advanced Options: automatic vs manual indicator above the unchanged controls. */
+/** Manual Selectors → Advanced Options: automatic vs manual indicator above the unchanged controls. */
 import { icon } from '../../components/icons';
 import { advancedOverrides, ADVANCED_INPUT_KEYS, type ManualOptionKey } from '../engines/advancedOptionsResolver';
 import type { AutoOption } from '../engines/nluEngine';
 import { escapeHtmlV17 as esc } from '../errors/appErrors';
-const LABELS: Record<ManualOptionKey, string> = { distinct: 'DISTINCT', groupBy: 'GROUP BY', having: 'HAVING', limit: 'LIMIT', sorts: 'ORDER BY', recursive: 'WITH RECURSIVE', ctes: 'CTEs', columns: 'Column list' };
+const LABELS: Record<ManualOptionKey, string> = { distinct: 'DISTINCT', groupBy: 'GROUP BY', having: 'HAVING', limit: 'LIMIT', sorts: 'ORDER BY', recursive: 'WITH RECURSIVE', ctes: 'CTEs', columns: 'Column list', tableAliases: 'Table aliases', joinType: 'Join type' };
 export function mountAutoOptionsPanel(panel: HTMLElement, getAutoOptions: () => AutoOption[] | null): void {
   panel.querySelector('[data-v17-auto-options]')?.remove();
   const box = document.createElement('div'); box.setAttribute('data-v17-auto-options', ''); panel.prepend(box);
@@ -11,7 +11,7 @@ export function mountAutoOptionsPanel(panel: HTMLElement, getAutoOptions: () => 
     if (!box.isConnected) { unsub(); return; }
     const autos = (getAutoOptions() || []).filter((a) => a.kind !== 'table'); const manual = advancedOverrides.list();
     const applied = autos.filter((a) => a.applied); const suggested = autos.filter((a) => !a.applied);
-    box.innerHTML = `<div class="notes-box"><div style="width:100%"><div class="hint">${icon('sparkles', 13)} Filtering, conditions, date filtering, joins, aggregation, grouping, sorting, DISTINCT and result limits are detected automatically from <strong>Describe What You Need</strong>. Changing any option below takes manual control of it — manual settings are never overwritten.</div>
+    box.innerHTML = `<div class="notes-box"><div style="width:100%"><div class="hint">${icon('sparkles', 13)} Filtering, conditions, date filtering, joins, aggregation, grouping, sorting, DISTINCT, aliases and result limits are detected automatically from <strong>Describe What You Need</strong>. Changing any option below takes manual control of it — manual settings are never overwritten.</div>
       ${applied.length ? `<div class="tiny-label mt"><strong>Applied automatically</strong></div><div class="chip-row">${applied.map((a) => `<span class="chip" title="Confidence ${Math.round(a.confidence * 100)}%">${icon('zap', 11)} ${esc(a.description)}</span>`).join('')}</div>` : ''}
       ${suggested.length ? `<div class="tiny-label mt"><strong>Not applied (low confidence — set manually if needed)</strong></div><div class="chip-row">${suggested.map((a) => `<span class="chip chip-inactive">${esc(a.description)}</span>`).join('')}</div>` : ''}
       ${manual.length ? `<div class="tiny-label mt"><strong>Under manual control</strong></div><div class="chip-row">${manual.map((k) => `<span class="chip">${icon('sliders', 11)} ${LABELS[k]} <button type="button" class="btn-link" data-v17-release="${k}">use automatic</button></span>`).join('')}</div>` : ''}</div></div>`;

@@ -1,6 +1,6 @@
 /**
- * V17.0 — Active-schema context for the offline NLU. Derived ONLY from the schema object passed in
- * and cached by a content fingerprint, so any edit, deletion, import or sync rebuilds it automatically.
+ * Active-schema context for the offline NLU. Derived ONLY from the schema object passed in and cached by
+ * a content fingerprint, so any edit, deletion, import or sync rebuilds it automatically.
  */
 import type { SchemaModel, TableDef, ColumnDef } from '../../types';
 import { deriveFkRelationships, isResolvableRelationship } from './joinGraph';

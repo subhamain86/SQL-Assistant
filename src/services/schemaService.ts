@@ -1,10 +1,9 @@
 /**
- * Centralized schema registry (localStorage key sqla.registry.v15 — unchanged since V15).
- * V17.1:
- *  - Load normalises legacy shapes with the shared format module but NEVER drops a schema because it is
- *    invalid; invalid schemas stay visible and are reported by getLocalHealth() with exact reasons.
- *  - A corrupted (unparseable) local registry is backed up before defaults are used (V17.0 silently
- *    replaced it and the next save destroyed it).
+ * Centralized saved schema registry (localStorage key sqla.registry.v15 — unchanged since V15). This is the ONLY
+ * schema state: Saved Schema → Active Schema → NLU → SQL Generator all read from here, and every subscriber
+ * (store, NLU context cache, pages) is notified on each change.
+ *  - Load normalises legacy shapes but NEVER drops a schema because it is invalid; invalid schemas stay visible and
+ *    are reported by getLocalHealth() with exact reasons. A corrupted registry is backed up before defaults are used.
  *  - Import, Manual Schema Update and repair use the same validator as repository synchronisation.
  */
 import type { SchemaModel, SchemaRegistry, DecodeEntry, TableDef, SchemaEditorRow } from '../types';
@@ -49,10 +48,11 @@ export class SchemaService {
     return { schemas: unique, activeSchemaId, activeSchemaUpdatedAt: report.activeSchemaUpdatedAt };
   }
   private static readonly PRUNE_ESCALATION_CAPS = [12, 6, 3, 1];
-  private persist(): void {
+  private persist(): boolean {
     const result = safeLocalStorageSet(STORAGE_KEY, () => { const s = JSON.stringify(this.registry); this.storageHealth.bytesUsed = estimateStringBytes(s); return s; }, (attempt) => { this.pruneForSpace(SchemaService.PRUNE_ESCALATION_CAPS[Math.min(attempt, SchemaService.PRUNE_ESCALATION_CAPS.length - 1)]); }, SchemaService.PRUNE_ESCALATION_CAPS.length);
     this.storageHealth.lastPersistOk = result.ok; this.storageHealth.lastRecovered = result.recovered; this.storageHealth.lastError = result.error || null;
     this.listeners.forEach((l) => l());
+    return result.ok;
   }
   pruneForSpace(maxInactive = 12): { removedCount: number; freedApproxBytes: number } {
     const cap = Math.max(1, maxInactive); const before = estimateStringBytes(JSON.stringify(this.registry));
@@ -76,9 +76,7 @@ export class SchemaService {
   getTablesForModule(schemaId: string, module: string | null): TableDef[] { const s = this.getSchemaById(schemaId); if (!s) return []; return module ? s.tables.filter((t) => t.module === module) : s.tables; }
   getAllSchemaNames(excludeId?: string): string[] { return this.registry.schemas.filter((s) => s.id !== excludeId).map((s) => s.name); }
   getActiveSchemaUpdatedAt(): string | null { return this.registry.activeSchemaUpdatedAt ?? null; }
-  /** V17.1 — validation status of every local schema with the same rules used for synchronisation. */
   getLocalHealth(): LocalSchemaHealth[] { return this.registry.schemas.map((s) => { const v = validateSchemaModel(s); return { id: s.id, name: s.name, valid: v.valid, errors: v.errors, warnings: v.warnings, allErrorsRepairable: v.errors.length > 0 && v.errors.every((e) => e.repairable) }; }); }
-  /** V17.1 — explicit, user-confirmed repair of referential leftovers in one local schema. */
   async repairLocalSchema(schemaId: string): Promise<{ ok: boolean; changes: string[]; remaining: string[]; error?: string }> {
     const s = this.getSchemaById(schemaId); if (!s) return { ok: false, changes: [], remaining: [], error: 'Schema not found.' };
     const r = repairSchema(s);
@@ -94,7 +92,7 @@ export class SchemaService {
   applyRemoteActivePointer(schemaId: string, at: string): boolean {
     if (!this.registry.schemas.some((s) => s.id === schemaId)) return false;
     this.registry.schemas.forEach((s) => { s.status = s.id === schemaId ? 'active' : (s.status === 'active' ? 'inactive' : s.status); });
-    this.registry.activeSchemaId = schemaId; this.registry.activeSchemaUpdatedAt = at; this.persist(); return true;
+    this.registry.activeSchemaId = schemaId; this.registry.activeSchemaUpdatedAt = at; return this.persist();
   }
   resetToDefaultSchema(): void { this.switchActiveSchema(DEFAULT_ACTIVE_SCHEMA_ID); }
   validateNewSchemaName(name: unknown, excludeId?: string): string | null { const r = validateSchemaName(name, this.getAllSchemaNames(excludeId)); return r.valid ? null : (r.message || 'Invalid schema name.'); }
@@ -131,7 +129,6 @@ export class SchemaService {
     const s = this.getSchemaById(schemaId); if (!s) return [];
     return s.tables.filter((t) => (!moduleFilter || t.module === moduleFilter) && (!tableFilter || t.name === tableFilter)).flatMap((t) => t.columns.map((c) => ({ rowId: `${t.name}::${c.name}`, module: t.module, tableName: t.name, tableDescription: t.description, columnName: c.name, columnDescription: c.description, dataType: c.type as any, length: c.length ?? null, precision: c.precision ?? null, nullable: c.nullable, alias: c.alias ?? '', decodeText: c.decode ? c.decode.map((d) => `${d.rawValue}=${d.label}`).join('\n') : '', isPrimaryKey: !!c.isPrimaryKey, isForeignKey: !!c.isForeignKey, fkTable: c.references?.table ?? '', fkColumn: c.references?.column ?? '' })));
   }
-  /* Single-record edit/delete with dependency checks; persists to the centralized registry. */
   async upsertRow(schemaId: string, row: SchemaEditorRow, originalRowId: string | null, originalRow: SchemaEditorRow | null = null): Promise<string[]> {
     const schema = this.getSchemaById(schemaId);
     if (!schema) return ['Schema update failed: the selected schema no longer exists (it may have been removed on another device). Reload the editor.'];
@@ -153,23 +150,24 @@ export class SchemaService {
     const before = JSON.stringify({ tables: target.tables, relationships: target.relationships, updatedAt: target.updatedAt, versionMeta: target.versionMeta ?? null });
     target.tables = next.tables; target.relationships = next.relationships; target.updatedAt = new Date().toISOString();
     target.versionMeta = await stampNewVersion(target, 'local');
-    this.persist();
-    if (!this.storageHealth.lastPersistOk) {
+    if (!this.persist()) {
       const prev = JSON.parse(before); target.tables = prev.tables; target.relationships = prev.relationships; target.updatedAt = prev.updatedAt; target.versionMeta = prev.versionMeta ?? undefined; this.persist();
-      return [`Schema update failed: the change could not be saved to browser storage (${this.storageHealth.lastError || 'storage write rejected'}). No change was applied.`];
+      return [`Schema persistence failed: the change could not be saved to browser storage (${this.storageHealth.lastError || 'storage write rejected'}). No change was applied.`];
     }
     return [];
   }
   deleteAllSchemaContents(schemaId: string): string { const s = this.getSchemaById(schemaId); if (!s) return ''; const backup = JSON.stringify(s, null, 2); s.tables = []; s.relationships = []; s.updatedAt = new Date().toISOString(); this.persist(); return backup; }
-  /** Replaces one schema's content with an already-validated copy (conflict resolution "Use Remote"). */
-  replaceSchemaContent(schemaId: string, incoming: SchemaModel): void { const idx = this.registry.schemas.findIndex((s) => s.id === schemaId); if (idx === -1) return; const wasActive = this.registry.schemas[idx].status === 'active'; this.registry.schemas[idx] = { ...clone(incoming), id: schemaId, status: wasActive ? 'active' : (incoming.status === 'active' ? 'inactive' : incoming.status), lastSyncedAt: new Date().toISOString() }; this.persist(); }
-  /** Adds an already-validated remote schema that is not present locally. */
-  addSchemaFromRemote(incoming: SchemaModel): 'added' | 'updated' | 'skipped' {
+  /** Replaces one schema's content with an already-validated copy (fast-forward / "Use Remote"). Returns false if it could not be saved. */
+  replaceSchemaContent(schemaId: string, incoming: SchemaModel): boolean { const idx = this.registry.schemas.findIndex((s) => s.id === schemaId); if (idx === -1) return false; const prevCopy = this.registry.schemas[idx]; const wasActive = prevCopy.status === 'active'; this.registry.schemas[idx] = { ...clone(incoming), id: schemaId, status: wasActive ? 'active' : (incoming.status === 'active' ? 'inactive' : incoming.status), lastSyncedAt: new Date().toISOString() }; if (!this.persist()) { this.registry.schemas[idx] = prevCopy; this.persist(); return false; } return true; }
+  addSchemaFromRemote(incoming: SchemaModel): 'added' | 'updated' | 'skipped' | 'failed' {
     const s = clone(incoming);
     if (this.registry.schemas.some((x) => x.id === s.id)) return 'skipped';
     const ex = this.registry.schemas.find((x) => x.status !== 'active' && sameLogicalSchema(x, s));
-    if (ex) { ex.tables = s.tables; ex.relationships = s.relationships; ex.lastSyncedAt = new Date().toISOString(); ex.versionMeta = s.versionMeta || ex.versionMeta; this.persist(); return 'updated'; }
-    this.registry.schemas.push({ ...s, status: 'inactive', lastSyncedAt: new Date().toISOString() }); this.persist(); return 'added';
+    if (ex && JSON.stringify({ t: ex.tables, r: ex.relationships }) === JSON.stringify({ t: s.tables, r: s.relationships })) return 'skipped';
+    if (ex) { ex.tables = s.tables; ex.relationships = s.relationships; ex.lastSyncedAt = new Date().toISOString(); ex.versionMeta = s.versionMeta || ex.versionMeta; return this.persist() ? 'updated' : 'failed'; }
+    this.registry.schemas.push({ ...s, status: 'inactive', lastSyncedAt: new Date().toISOString() });
+    if (!this.persist()) { this.registry.schemas = this.registry.schemas.filter((x) => x.id !== s.id); this.persist(); return 'failed'; }
+    return 'added';
   }
   markAllSynced(): void { const now = new Date().toISOString(); this.registry.schemas.forEach((s) => { s.lastSyncedAt = now; }); this.persist(); }
 }

@@ -1,19 +1,20 @@
 /**
- * Local Secret Vault (V16 behaviour: AES-GCM, key derived from the Admin Password, stored in localStorage).
- * V17: optional llmApiKey / vaultSyncPassphrase; repository synchronisation is an explicit, passphrase-
- * encrypted action (src/v17/services/vaultSyncService.ts) — the implicit V16 auto-push is removed.
+ * Local Secret Vault: AES-GCM ciphertext in localStorage, key derived (PBKDF2) from the Admin Password.
+ * Repository synchronisation is a separate, explicit, passphrase-encrypted action (src/v17/services/vaultSyncService.ts).
+ * See docs/SECURITY.md for the security model.
  */
 import { encryptWithSecret, decryptWithSecret, type EncryptedBlob } from './cryptoService';
 import { getFile } from './githubApiService';
 import { safeString, safeLocalStorageSet } from '../utils/validation';
 import { getDeviceTag } from '../engines/schemaVersionEngine';
+import { DEFAULT_SYNC_LOCATION, rememberSyncLocation } from './syncLocation';
 const SECRET_VAULT_STORAGE_KEY = 'sqla.secretvault.v15';
 export interface M365CopilotConfig { enabled: boolean; tenantId: string; clientId: string; agentEndpoint: string; scope: string; }
 export function defaultM365CopilotConfig(): M365CopilotConfig { return { enabled: false, tenantId: '', clientId: '', agentEndpoint: '', scope: '' }; }
 export interface SecretVaultConfig { githubRepo: string; githubBranch: string; githubSchemaPath: string; githubToken: string; sharedLocationLabel: string; m365Copilot: M365CopilotConfig; llmApiKey?: string; vaultSyncPassphrase?: string; }
 export interface VaultVersionMeta { updatedAt: string; updatedByDevice: string; checksum: string; }
 interface StoredVaultFile { blob: EncryptedBlob; meta: VaultVersionMeta; }
-export const DEFAULT_BOOTSTRAP_CONFIG = { githubRepo: 'subhamain86/Basware-AP-SQL-Assistant', githubBranch: 'main', githubSchemaPath: 'sql-assistant-data/schemas/registry.json' };
+export const DEFAULT_BOOTSTRAP_CONFIG = { githubRepo: DEFAULT_SYNC_LOCATION.repo, githubBranch: DEFAULT_SYNC_LOCATION.branch, githubSchemaPath: DEFAULT_SYNC_LOCATION.path };
 const LEGACY_VAULT_BLOB_PATH = 'sql-assistant-data/vault/secret-vault.enc.json';
 function bootstrapConfig(): SecretVaultConfig { return { ...DEFAULT_BOOTSTRAP_CONFIG, githubToken: '', sharedLocationLabel: '', m365Copilot: defaultM365CopilotConfig(), llmApiKey: '', vaultSyncPassphrase: '' }; }
 function normalizeM365Config(raw: unknown): M365CopilotConfig { const r = (raw && typeof raw === 'object') ? (raw as Partial<M365CopilotConfig>) : {}; return { enabled: !!r.enabled, tenantId: safeString(r.tenantId, ''), clientId: safeString(r.clientId, ''), agentEndpoint: safeString(r.agentEndpoint, ''), scope: safeString(r.scope, '') }; }
@@ -27,7 +28,7 @@ export interface VaultBootstrapOutcome { ok: boolean; source: 'local' | 'reposit
 class SecretVaultService {
   private unlockedConfig: SecretVaultConfig | null = null; private unlockedPassword: string | null = null; private listeners = new Set<() => void>();
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
-  private notify(): void { this.listeners.forEach((l) => l()); }
+  private notify(): void { if (this.unlockedConfig) rememberSyncLocation({ repo: this.unlockedConfig.githubRepo, branch: this.unlockedConfig.githubBranch, path: this.unlockedConfig.githubSchemaPath }); this.listeners.forEach((l) => l()); }
   exists(): boolean { return localStorage.getItem(SECRET_VAULT_STORAGE_KEY) !== null; }
   isUnlocked(): boolean { return this.unlockedConfig !== null; }
   getConfig(): SecretVaultConfig | null { return this.unlockedConfig; }

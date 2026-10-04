@@ -4,7 +4,7 @@ import { buildSelectSQL } from '../engines/sqlEngine';
 import { buildCrSQL } from '../engines/crEngine';
 import { makeId } from '../utils/id';
 import { safeLocalStorageSet } from '../utils/validation';
-function emptyReadOnlyState(dialect: Dialect = 'Oracle'): ReadOnlyQueryState { return { dialect, naturalLanguageText: '', selectedTables: [], selectedColumns: [], joins: [], filters: [], sorts: [], advanced: { distinct: false, groupByColumns: [], havingClause: '', limit: null, recursive: false, saveAsView: null, caseExpressions: [], decodeExpressions: [], ctes: [] }, generatedSql: '-- Select at least one table (or describe your requirement above) to generate SQL.', lastGeneratedAt: null, joinPathChoices: {} }; }
+function emptyReadOnlyState(dialect: Dialect = 'Oracle'): ReadOnlyQueryState { return { dialect, naturalLanguageText: '', selectedTables: [], selectedColumns: [], joins: [], filters: [], sorts: [], advanced: { distinct: false, groupByColumns: [], havingClause: '', limit: null, recursive: false, saveAsView: null, caseExpressions: [], decodeExpressions: [], ctes: [], tableAliases: false, joinType: 'INNER JOIN' }, generatedSql: '-- Select at least one table (or describe your requirement above) to generate SQL.', lastGeneratedAt: null, joinPathChoices: {} }; }
 function emptyCrState(dialect: Dialect = 'Oracle'): CrQueryState { return { dialect, naturalLanguageText: '', queryType: 'UPDATE', table: null, values: [], filters: [], confirmNoWhere: false, generatedSql: '-- Choose a table for this Change Request.', lastGeneratedAt: null }; }
 const SETTINGS_INACTIVITY_MS = 5 * 60 * 1000;
 class AppStore {
@@ -15,7 +15,7 @@ class AppStore {
   private inactivityTimer: ReturnType<typeof setTimeout> | null = null;
   constructor() {
     try { const t = localStorage.getItem('sqla.theme.v15'); if (t === 'light' || t === 'dark' || t === 'system') this.theme = t; this.hasSeenWalkthrough = localStorage.getItem('sqla.tourseen.v15') === '1'; } catch { /* ignore */ }
-    schemaService.subscribe(() => this.regenerateReadOnlySql());
+    schemaService.subscribe(() => { this.regenerateReadOnlySql(); this.regenerateCrSql(); });
     if (typeof document !== 'undefined') ['click', 'keydown', 'mousemove'].forEach((evt) => document.addEventListener(evt, () => this.bumpActivity(), { passive: true }));
   }
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }

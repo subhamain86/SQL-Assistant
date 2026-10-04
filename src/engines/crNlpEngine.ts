@@ -11,7 +11,7 @@ function extractValueAssignment(text: string, table: TableDef): CrValuePair[] {
   const values: CrValuePair[] = []; const lower = text.toLowerCase();
   for (const col of table.columns) {
     if (col.decode) for (const d of col.decode) if (new RegExp(`\\b${d.label.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`).test(lower)) { values.push({ id: makeId('crv'), column: col.name, value: d.rawValue }); return values; }
-    const cp = col.name.toLowerCase().replace(/_/g, ' '); const lp = col.label.toLowerCase();
+    const cp = col.name.toLowerCase().replace(/_/g, ' '); const lp = (col.label || col.name).toLowerCase();
     const idx = lower.indexOf(cp) !== -1 ? lower.indexOf(cp) : lower.indexOf(lp);
     if (idx !== -1) { const m = text.slice(idx).match(/\bto\s+([A-Za-z0-9_.\-]+)/i); if (m) values.push({ id: makeId('crv'), column: col.name, value: m[1] }); }
   }

@@ -1,8 +1,7 @@
 /**
  * Relationship awareness for join planning. Foreign keys declared on columns are derived as
- * relationships ON THE FLY (the stored schema is never modified). V17.1: relationships whose
- * endpoints do not exist in the schema (legacy V16 delete leftovers) are excluded from join
- * planning so SQL never joins on a missing column; the schema validator reports them.
+ * relationships ON THE FLY (the stored schema is never modified). Relationships whose endpoints do not
+ * exist in the schema are excluded from join planning so SQL never joins on a missing column.
  */
 import type { SchemaModel, RelationshipDef } from '../../types';
 function hasColumn(schema: SchemaModel, table: string, column: string): boolean { const t = schema.tables.find((x) => x.name.toUpperCase() === String(table || '').toUpperCase()); return !!t && t.columns.some((c) => c.name.toUpperCase() === String(column || '').toUpperCase()); }
@@ -23,7 +22,6 @@ export function deriveFkRelationships(schema: SchemaModel): RelationshipDef[] {
   return out;
 }
 const memo = new WeakMap<SchemaModel, { sig: string; result: SchemaModel }>();
-/** Same schema with only resolvable relationships, plus FK-derived ones (cached per instance + content signature). */
 export function withFkRelationships(schema: SchemaModel): SchemaModel {
   const sig = `${schema.relationships.length}|${schema.tables.length}|${schema.tables.reduce((n, t) => n + t.columns.length, 0)}|${schema.updatedAt}|${schema.versionMeta?.checksum ?? ''}`;
   const hit = memo.get(schema); if (hit && hit.sig === sig) return hit.result;

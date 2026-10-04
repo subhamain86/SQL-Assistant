@@ -89,7 +89,7 @@ code { background: var(--hover); padding: .1rem .4rem; border-radius: 4px; }
 .schema-audit-line { display: flex; align-items: center; gap: .35rem; font-size: 11.5px; color: var(--text-muted); margin-bottom: .5rem; }
 .note-box, .issue-box, .tips-box, .explanation-box, .notes-box { display: flex; gap: .6rem; background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: .85rem 1rem; margin-top: 1rem; font-size: 13.5px; align-items: flex-start; }
 .issue-box { border-color: rgba(214,69,80,.35); color: #d64550; } .issue-box.warn { border-color: rgba(230,170,50,.4); color: #b3820f; } .issue-box.ok { border-color: rgba(70,180,120,.4); color: #2f9e5b; }
-.issue-box ul, .tips-box ul, .notes-box ul, .conflict-card ul { margin: 0; padding-left: 1.1rem; }
+.issue-box ul, .tips-box ul, .notes-box ul, .conflict-card ul, .note-box ul { margin: 0; padding-left: 1.1rem; }
 .conflict-card ul { font-size: 12.5px; color: var(--text); word-break: break-word; }
 .issue-box.mini, .tips-box.mini, .note-box.mini { padding: .5rem .7rem; font-size: 12.5px; flex-direction: column; margin-top: .6rem; }
 .explanation-box { display: block; color: var(--text); } .plan-list { padding-left: 1.2rem; }

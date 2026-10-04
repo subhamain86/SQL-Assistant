@@ -1,8 +1,9 @@
 /**
- * V17.0 — Push Secret Vault to Repository without the GitHub Vault feature. The GitHub token and
- * configuration are written to the repository ONLY as AES-256-GCM ciphertext; the key is derived with
- * PBKDF2-SHA-256 (600,000 iterations, random salt) from a separate Vault Sync Passphrase that is
- * NEVER written to the repository.
+ * Push Secret Vault to Repository (no GitHub Vault feature needed). See docs/SECURITY.md.
+ * The GitHub token and configuration are written to the repository ONLY as AES-256-GCM ciphertext
+ * (authenticated encryption: confidentiality + integrity). The key is derived with PBKDF2-SHA-256
+ * (600,000 iterations, random 128-bit salt) from a separate Vault Sync Passphrase that is NEVER written
+ * to the repository, so the key material is never stored next to the encrypted secret.
  */
 import { makeError, redactSecrets, type AppError } from '../errors/appErrors';
 export const VAULT_SYNC_PATH = 'sql-assistant-data/vault/secret-vault.v17.enc.json';
@@ -66,6 +67,7 @@ export async function decryptEnvelope(envelope: VaultSyncEnvelope, passphrase: s
     catch { return { error: makeError('DECRYPTION_FAILED', 'The Vault Sync Passphrase is incorrect, or the encrypted file was modified. Nothing was changed on this device.') }; }
     const payload = JSON.parse(new TextDecoder().decode(plain)) as SyncedSecretPayload;
     if (typeof payload?.githubToken !== 'string' || typeof payload.githubRepo !== 'string') return { error: makeError('DECRYPTION_FAILED', 'The decrypted Secret Vault content is incomplete (missing GitHub configuration).') };
+    if (!/^[^/\s]+\/[^/\s]+$/.test(payload.githubRepo)) return { error: makeError('DECRYPTION_FAILED', 'The decrypted Secret Vault content is invalid (repository is not in owner/repo form).') };
     return { payload };
   } catch (e) { return { error: makeError('DECRYPTION_FAILED', `The encrypted Secret Vault could not be read (${(e as Error)?.name || 'format error'}).`, undefined, [passphrase]) }; }
 }

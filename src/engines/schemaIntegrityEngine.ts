@@ -5,8 +5,8 @@
  */
 import type { SchemaModel, TableDef, SchemaIntegrityResult, SchemaIntegrityIssue } from '../types';
 import { safeTrim, safeUpperTrim } from '../utils/validation';
-import { validateSchemaModel, normalizeSchema, checkRegistry, describeIssue } from '../v17/sync/schemaFormat';
-const toIssues = (list: { severity: 'error' | 'warning'; message: string; path: string }[], withPath = false): SchemaIntegrityIssue[] => list.map((i) => ({ severity: i.severity, message: withPath ? describeIssue(i as any) : i.message }));
+import { validateSchemaModel, normalizeSchema, checkRegistry, describeIssue, type SchemaIssue } from '../v17/sync/schemaFormat';
+const toIssues = (list: SchemaIssue[], withPath = false): SchemaIntegrityIssue[] => list.map((i) => ({ severity: i.severity, message: withPath ? describeIssue(i) : i.message }));
 export function validateSchemaIntegrity(tables: TableDef[], relationships: SchemaModel['relationships'] = []): SchemaIntegrityResult {
   const r = validateSchemaModel({ tables, relationships });
   return { valid: r.valid, issues: [...toIssues(r.errors), ...toIssues(r.warnings)] };

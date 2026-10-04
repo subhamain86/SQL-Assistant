@@ -2,13 +2,13 @@ import { icon } from './icons';
 import { escapeHtml as e } from '../utils/dom';
 export interface DataTableColumn<T> { key: string; label: string; render?: (row: T) => string; sortValue?: (row: T) => string | number; width?: string; }
 export interface DataTableOptions<T> { columns: DataTableColumn<T>[]; rows: T[]; getRowId: (row: T) => string; pageSize?: number; searchPredicate?: (row: T, term: string) => boolean; onRowClick?: (row: T) => void; selectedRowId?: string | null; emptyMessage?: string; }
-export function renderDataTable<T>(container: HTMLElement, opts: DataTableOptions<T>): { refresh: (rows: T[]) => void; getSelectedId: () => string | null } {
+export function renderDataTable<T>(container: HTMLElement, opts: DataTableOptions<T>): { refresh: (rows: T[], keepSelectedId?: string | null) => void; getSelectedId: () => string | null } {
   const pageSize = opts.pageSize ?? 50; let all = opts.rows; let term = ''; let sortKey: string | null = null; let dir: 'asc' | 'desc' = 'asc'; let page = 0; let selected: string | null = opts.selectedRowId ?? null;
   const rowsNow = () => { let r = all; if (term) r = r.filter((x) => opts.searchPredicate?.(x, term.toLowerCase())); if (sortKey) { const c = opts.columns.find((x) => x.key === sortKey); if (c?.sortValue) r = [...r].sort((a, b) => { const av = c.sortValue!(a); const bv = c.sortValue!(b); const cmp = av < bv ? -1 : av > bv ? 1 : 0; return dir === 'asc' ? cmp : -cmp; }); } return r; };
   function body(): void {
     const tbody = container.querySelector('tbody'); if (!tbody) return; const f = rowsNow(); const pages = Math.max(1, Math.ceil(f.length / pageSize)); page = Math.min(page, pages - 1);
     const slice = f.slice(page * pageSize, page * pageSize + pageSize);
-    tbody.innerHTML = slice.length ? slice.map((r) => { const id = opts.getRowId(r); return `<tr data-row-id="${e(id)}" class="${id === selected ? 'is-selected' : ''}" tabindex="0">${opts.columns.map((c) => `<td>${c.render ? c.render(r) : e(String((r as any)[c.key] ?? ''))}</td>`).join('')}</tr>`; }).join('') : `<tr><td class="data-table-empty" colspan="${opts.columns.length}">${e(opts.emptyMessage || 'No rows found.')}</td></tr>`;
+    tbody.innerHTML = slice.length ? slice.map((r) => { const id = opts.getRowId(r); return `<tr data-row-id="${e(id)}" class="${id === selected ? 'is-selected' : ''}" aria-selected="${id === selected}" tabindex="0">${opts.columns.map((c) => `<td>${c.render ? c.render(r) : e(String((r as any)[c.key] ?? ''))}</td>`).join('')}</tr>`; }).join('') : `<tr><td class="data-table-empty" colspan="${opts.columns.length}">${e(opts.emptyMessage || 'No rows found.')}</td></tr>`;
     container.querySelector('.data-table-count')!.textContent = `${f.length} row(s)${term ? ` matching "${term}"` : ''}`;
     container.querySelector('.dt-page-label')!.textContent = `Page ${page + 1} of ${pages}`;
     (container.querySelector('#dtPrevBtn') as HTMLButtonElement).disabled = page === 0; (container.querySelector('#dtNextBtn') as HTMLButtonElement).disabled = page >= pages - 1;
@@ -20,5 +20,5 @@ export function renderDataTable<T>(container: HTMLElement, opts: DataTableOption
   container.querySelector('#dtPrevBtn')!.addEventListener('click', () => { page = Math.max(0, page - 1); body(); });
   container.querySelector('#dtNextBtn')!.addEventListener('click', () => { page += 1; body(); });
   body();
-  return { refresh: (rows) => { all = rows; selected = null; body(); }, getSelectedId: () => selected };
+  return { refresh: (rows, keepSelectedId = null) => { all = rows; selected = keepSelectedId && rows.some((r) => opts.getRowId(r) === keepSelectedId) ? keepSelectedId : null; body(); }, getSelectedId: () => selected };
 }
