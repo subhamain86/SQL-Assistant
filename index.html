@@ -1,18 +1,37 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="application-name" content="SQL Assistant" />
-  <meta name="description" content="SQL Assistant — offline natural-language SQL builder with schema management and repository synchronization." />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; object-src 'none'; base-uri 'none'" />
-  <title>SQL Assistant</title>
-  <link rel="stylesheet" href="styles.css" />
-  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AP-SQL Assistant</title>
+  <!--
+    Source-folder entry page (V17.2.1 deploy kit).
+    The application is built into ONE self-contained file: dist/index.html (npm run build).
+    This page only forwards to it, so opening the project root never shows a blank or black screen.
+  -->
+  <style>
+    html,body{margin:0;min-height:100%;font-family:'Segoe UI',system-ui,-apple-system,Arial,sans-serif;background:#f4f6fb;color:#1a2436}
+    @media (prefers-color-scheme:dark){html,body{background:#0e1526;color:#eef2fb}}
+    main{max-width:640px;margin:12vh auto;padding:24px;text-align:center;line-height:1.55}
+    a{color:#2f6fed}
+    code{background:rgba(47,111,237,.12);padding:2px 6px;border-radius:6px}
+  </style>
+  <script>
+    (function () {
+      var target = './dist/index.html' + (location.hash || '');
+      if (location.protocol === 'file:') { location.replace(target); return; }
+      fetch('./dist/index.html', { method: 'HEAD', cache: 'no-store' })
+        .then(function (r) { if (r.ok) location.replace(target); else document.documentElement.classList.add('no-build'); })
+        .catch(function () { location.replace(target); });
+    })();
+  </script>
 </head>
 <body>
-  <div id="app"><noscript>SQL Assistant requires JavaScript.</noscript></div>
-  <div id="toasts" aria-live="polite"></div>
-  <script type="module" src="js/main.js"></script>
+  <main>
+    <h2>AP-SQL Assistant</h2>
+    <p>Opening the application…</p>
+    <p>If nothing happens, open <a href="./dist/index.html">dist/index.html</a>.</p>
+    <p style="opacity:.75;font-size:14px">No build found? Run <code>npm install</code> and <code>npm run build</code>, then reload.</p>
+  </main>
 </body>
 </html>
