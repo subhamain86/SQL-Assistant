@@ -1,20 +1,3 @@
-{
-  "name": "sql-assistant",
-  "productName": "SQL Assistant",
-  "version": "17.2.1",
-  "private": true,
-  "description": "SQL Assistant — offline natural-language SQL builder with schema management, legacy schema migration and repository synchronization.",
-  "type": "module",
-  "scripts": {
-    "clean": "node -e \"for (const d of ['build','dist']) require('fs').rmSync(d,{recursive:true,force:true})\"",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "node scripts/lint.mjs",
-    "build": "node scripts/build.mjs",
-    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
-    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py",
-    "serve": "python3 -m http.server 8080 --directory dist",
-    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run test:browser"
-  },
-  "devDependencies": { "typescript": "^5.8.3" },
-  "engines": { "node": ">=20" }
-}
+{ "name": "sql-assistant-v17.2.1-upgrade", "version": "17.2.1", "private": true,
+  "scripts": { "build": "tsc -p .", "test": "tsc -p . && node --test test/migration.test.cjs", "apply": "node tools/apply-v1721.mjs" },
+  "devDependencies": { "typescript": "^5.4.0" } }

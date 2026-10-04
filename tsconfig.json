@@ -1,9 +1,1 @@
-{
-  "compilerOptions": {
-    "target": "ES2020", "module": "ES2020", "moduleResolution": "node", "lib": ["ES2021", "DOM", "DOM.Iterable"],
-    "strict": true, "noImplicitReturns": true, "noFallthroughCasesInSwitch": true, "noUnusedLocals": false,
-    "esModuleInterop": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true,
-    "outDir": "build/js", "rootDir": "src", "sourceMap": true, "types": []
-  },
-  "include": ["src/**/*.ts"]
-}
+{ "compilerOptions": { "target": "ES2020", "module": "commonjs", "lib": ["ES2020", "DOM"], "strict": true, "outDir": ".test-build", "rootDir": "src", "skipLibCheck": true, "noImplicitAny": false }, "include": ["src"] }

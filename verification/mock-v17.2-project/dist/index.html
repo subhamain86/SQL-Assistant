@@ -1,0 +1,606 @@
+<!doctype html><html><head><meta charset="UTF-8"><title>SQL Assistant</title></head><body><div id="app"></div><script>(function(){var d={},c={};window.define=function(id,deps,f){d[id]={deps:deps,f:f};};function r(id){if(c[id])return c[id].exports;var m=d[id];if(!m)throw new Error('Module not found: '+id);var mod={exports:{}};c[id]=mod;var a=m.deps.map(function(x){return x==='require'?r:x==='exports'?mod.exports:r(x);});var v=m.f.apply(null,a);if(v!==undefined)mod.exports=v;return mod.exports;}window.__sqlaRequire=r;})();
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __exportStar = (this && this.__exportStar) || function(m, exports) {
+    for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
+};
+define("v1721/schemaValidator", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.errorsOnly = void 0;
+    exports.validateSchemaDeep = validateSchemaDeep;
+    const IDENT = /^[A-Za-z_][A-Za-z0-9_$#]*$/;
+    const isStr = (v) => typeof v === 'string';
+    const nonEmpty = (v) => isStr(v) && v.trim().length > 0;
+    function validateSchemaDeep(schema, schemaPath = 'schema') {
+        const out = [];
+        const add = (severity, path, location, property, reason) => out.push({ severity, path, location, property, reason });
+        if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+            add('error', schemaPath, '(schema)', '', 'Schema must be an object.');
+            return out;
+        }
+        if (!nonEmpty(schema.name))
+            add('error', schemaPath, '(schema)', 'name', 'Schema name is missing.');
+        if (!Array.isArray(schema.tables)) {
+            add('error', schemaPath, '(schema)', 'tables', '"tables" must be an array.');
+            return out;
+        }
+        if (schema.relationships !== undefined && !Array.isArray(schema.relationships))
+            add('error', schemaPath, '(schema)', 'relationships', '"relationships" must be an array.');
+        const tableCols = new Map();
+        const seenTables = new Set();
+        schema.tables.forEach((t, ti) => {
+            const tp = `${schemaPath} › tables[${ti}]${t && isStr(t.name) ? ` (${t.name})` : ''}`;
+            if (!t || typeof t !== 'object') {
+                add('error', tp, `tables[${ti}]`, '', 'Table must be an object.');
+                return;
+            }
+            if (!nonEmpty(t.name) || !IDENT.test(t.name)) {
+                add('error', tp, `tables[${ti}]`, 'name', `Table name ${JSON.stringify(t.name)} is not a valid identifier.`);
+                return;
+            }
+            const tu = t.name.toUpperCase();
+            if (seenTables.has(tu))
+                add('error', tp, t.name, 'name', `Duplicate table "${t.name}".`);
+            seenTables.add(tu);
+            if (t.module !== undefined && !isStr(t.module))
+                add('error', tp, t.name, 'module', 'Module must be a string.');
+            if (t.description !== undefined && !isStr(t.description))
+                add('error', tp, t.name, 'description', 'Description must be a string.');
+            if (!Array.isArray(t.columns)) {
+                add('error', tp, t.name, 'columns', '"columns" must be an array.');
+                return;
+            }
+            const cols = new Set();
+            tableCols.set(tu, cols);
+            t.columns.forEach((c, ci) => {
+                const cp = `${tp} › columns[${ci}]${c && isStr(c.name) ? ` (${c.name})` : ''}`;
+                const loc = `${t.name}.${c && isStr(c.name) ? c.name : `columns[${ci}]`}`;
+                if (!c || typeof c !== 'object') {
+                    add('error', cp, loc, '', 'Column must be an object.');
+                    return;
+                }
+                if (!nonEmpty(c.name) || !IDENT.test(c.name)) {
+                    add('error', cp, loc, 'name', `Column name ${JSON.stringify(c.name)} is not a valid identifier.`);
+                    return;
+                }
+                const cu = c.name.toUpperCase();
+                if (cols.has(cu))
+                    add('error', cp, loc, 'name', `Duplicate column "${c.name}" in table "${t.name}".`);
+                cols.add(cu);
+                if (!nonEmpty(c.type))
+                    add('error', cp, loc, 'type', 'Data type is missing.');
+                else if (/^not specified$/i.test(c.type.trim()))
+                    add('warning', cp, loc, 'type', 'Data type is "Not specified" in the source document.');
+                if (typeof c.nullable !== 'boolean')
+                    add('error', cp, loc, 'nullable', '"nullable" must be true or false.');
+                if (c.label !== undefined && !isStr(c.label))
+                    add('error', cp, loc, 'label', 'Label must be a string.');
+                if (c.isPrimaryKey !== undefined && typeof c.isPrimaryKey !== 'boolean')
+                    add('error', cp, loc, 'isPrimaryKey', 'Must be true or false.');
+                if (c.isForeignKey !== undefined && typeof c.isForeignKey !== 'boolean')
+                    add('error', cp, loc, 'isForeignKey', 'Must be true or false.');
+                if (c.references !== undefined && c.references !== null) {
+                    if (typeof c.references !== 'object' || !nonEmpty(c.references.table) || !nonEmpty(c.references.column))
+                        add('error', cp, loc, 'references', 'Foreign key reference needs "table" and "column".');
+                }
+                if (c.decode !== undefined && c.decode !== null) {
+                    if (!Array.isArray(c.decode)) {
+                        add('error', cp, loc, 'decode', '"decode" must be an array.');
+                        return;
+                    }
+                    const seen = new Set();
+                    c.decode.forEach((d, di) => {
+                        const dp = `${cp} › decode[${di}]`;
+                        if (!d || typeof d !== 'object') {
+                            add('error', dp, loc, `decode[${di}]`, 'Decode entry must be an object.');
+                            return;
+                        }
+                        if (!nonEmpty(d.rawValue)) {
+                            add('error', dp, loc, `decode[${di}].rawValue`, `Column "${loc}" has a decode entry (#${di + 1}) with an empty raw value.`);
+                            return;
+                        }
+                        if (d.label !== undefined && !isStr(d.label))
+                            add('error', dp, loc, `decode[${di}].label`, 'Decode label must be a string.');
+                        const k = d.rawValue.trim().toUpperCase();
+                        if (seen.has(k))
+                            add('error', dp, loc, `decode[${di}].rawValue`, `Duplicate decode raw value "${d.rawValue}".`);
+                        seen.add(k);
+                    });
+                }
+            });
+        });
+        (Array.isArray(schema.relationships) ? schema.relationships : []).forEach((r, ri) => {
+            const rp = `${schemaPath} › relationships[${ri}]`;
+            if (!r || typeof r !== 'object') {
+                add('error', rp, `relationships[${ri}]`, '', 'Relationship must be an object.');
+                return;
+            }
+            for (const k of ['fromTable', 'fromColumn', 'toTable', 'toColumn'])
+                if (!nonEmpty(r[k]))
+                    add('error', rp, `relationships[${ri}]`, k, `"${k}" is missing.`);
+            const ft = tableCols.get(String(r.fromTable || '').toUpperCase());
+            const tt = tableCols.get(String(r.toTable || '').toUpperCase());
+            if (r.fromTable && !ft)
+                add('error', rp, `${r.fromTable}.${r.fromColumn}`, 'fromTable', `Table "${r.fromTable}" does not exist.`);
+            else if (ft && r.fromColumn && !ft.has(String(r.fromColumn).toUpperCase()))
+                add('error', rp, `${r.fromTable}.${r.fromColumn}`, 'fromColumn', `Column "${r.fromTable}.${r.fromColumn}" does not exist.`);
+            if (r.toTable && !tt)
+                add('error', rp, `${r.toTable}.${r.toColumn}`, 'toTable', `Table "${r.toTable}" does not exist.`);
+            else if (tt && r.toColumn && !tt.has(String(r.toColumn).toUpperCase()))
+                add('error', rp, `${r.toTable}.${r.toColumn}`, 'toColumn', `Column "${r.toTable}.${r.toColumn}" does not exist.`);
+        });
+        return out;
+    }
+    const errorsOnly = (issues) => issues.filter((i) => i.severity === 'error');
+    exports.errorsOnly = errorsOnly;
+});
+define("v1721/schemaFormat", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.SCHEMA_FORMAT_VERSION = exports.APP_VERSION = exports.APP_NAME = void 0;
+    exports.makeStamp = makeStamp;
+    exports.readStamp = readStamp;
+    /**
+     * SQL Assistant V17.2.1 — schema format / writer stamp.
+     * Every schema written by V17.2.1 carries `schemaFormat`. A schema WITHOUT it is treated as
+     * legacy (written by V17.0 or older) and goes through migration — it is never rejected for
+     * the missing stamp alone.
+     */
+    exports.APP_NAME = 'SQL Assistant';
+    exports.APP_VERSION = '17.2.1';
+    exports.SCHEMA_FORMAT_VERSION = 3;
+    function makeStamp(extra = {}) {
+        return { app: exports.APP_NAME, appVersion: exports.APP_VERSION, formatVersion: exports.SCHEMA_FORMAT_VERSION, writer: exports.APP_VERSION, generatedAt: new Date().toISOString(), ...extra };
+    }
+    /** Reads any known writer stamp (V17.2.1 `schemaFormat`, or V17.1/V17.2 style keys). */
+    function readStamp(schema) {
+        if (!schema || typeof schema !== 'object')
+            return { present: false, formatVersion: 0, writer: null };
+        const sf = schema.schemaFormat;
+        if (sf && typeof sf === 'object')
+            return { present: true, formatVersion: Number(sf.formatVersion) || 0, writer: String(sf.writer ?? sf.appVersion ?? '') || null };
+        for (const k of ['writerStamp', 'writer', 'writtenBy', '_writer']) {
+            const v = schema[k];
+            if (v)
+                return { present: true, formatVersion: Number(v.formatVersion) || 2, writer: typeof v === 'string' ? v : String(v.version ?? v.appVersion ?? '') || null };
+        }
+        return { present: false, formatVersion: 0, writer: null };
+    }
+});
+define("v1721/legacySchemaMigration", ["require", "exports", "v1721/schemaValidator", "v1721/schemaFormat"], function (require, exports, schemaValidator_1, schemaFormat_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.isStampOnly = void 0;
+    exports.detectFormat = detectFormat;
+    exports.migrateSchema = migrateSchema;
+    exports.migrateRegistryFileInPlace = migrateRegistryFileInPlace;
+    exports.prepareForPublish = prepareForPublish;
+    const RAW_ALIASES = ['code', 'raw', 'value', 'raw_value', 'rawvalue', 'key'];
+    const LABEL_ALIASES = ['description', 'name', 'text', 'meaning'];
+    const clone = (v) => JSON.parse(JSON.stringify(v));
+    const nonEmpty = (v) => typeof v === 'string' && v.trim().length > 0;
+    const scalarToString = (v) => (typeof v === 'string' ? v : typeof v === 'number' && Number.isFinite(v) ? String(v) : typeof v === 'boolean' ? (v ? '1' : '0') : null);
+    function detectFormat(schema) {
+        if (!schema || typeof schema !== 'object' || !Array.isArray(schema.tables))
+            return 'unknown';
+        const st = (0, schemaFormat_1.readStamp)(schema);
+        const cols = schema.tables.flatMap((t) => (Array.isArray(t?.columns) ? t.columns : []));
+        const docMarkers = 'schema_name' in schema || cols.some((c) => c && ('primary_key' in c || 'foreign_key' in c));
+        if (docMarkers)
+            return 'legacy-document';
+        if (st.present)
+            return st.formatVersion >= schemaFormat_1.SCHEMA_FORMAT_VERSION ? 'current' : 'stamped-older';
+        return 'legacy-unstamped';
+    }
+    function toBool(v) {
+        if (typeof v === 'boolean')
+            return v;
+        if (typeof v === 'string') {
+            const s = v.trim().toLowerCase();
+            if (['true', 'y', 'yes', '1'].includes(s))
+                return true;
+            if (['false', 'n', 'no', '0'].includes(s))
+                return false;
+        }
+        if (v === 1)
+            return true;
+        if (v === 0)
+            return false;
+        return undefined;
+    }
+    function migrateSchema(input, schemaPath = 'schema') {
+        const detectedFormat = detectFormat(input);
+        const name = String(input?.name ?? input?.schema_name ?? '(unnamed schema)');
+        const changes = [];
+        const fail = [];
+        const rec = (rule, path, detail) => changes.push({ rule, path, detail });
+        if (detectedFormat === 'unknown') {
+            return { status: 'rejected', detectedFormat, schemaName: name, schema: null, changes, ruleCounts: {}, errors: [{ severity: 'error', path: schemaPath, location: '(schema)', property: 'tables', reason: 'Not a recognisable schema: "tables" array is missing.' }], warnings: [] };
+        }
+        const s = clone(input);
+        // R7 schema level
+        if (!nonEmpty(s.name) && nonEmpty(s.schema_name)) {
+            s.name = s.schema_name;
+            rec('R7', schemaPath, 'schema_name → name');
+        }
+        if (s.version === undefined && s.schema_version !== undefined) {
+            s.version = String(s.schema_version);
+            rec('R7', schemaPath, 'schema_version → version');
+        }
+        if (s.relationships === undefined) {
+            s.relationships = [];
+            rec('R7', schemaPath, 'relationships added (empty)');
+        }
+        s.tables.forEach((t, ti) => {
+            if (!t || typeof t !== 'object')
+                return;
+            const tp = `${schemaPath} › tables[${ti}]${nonEmpty(t.name) ? ` (${t.name})` : ''}`;
+            if (t.description === undefined && typeof t.notes === 'string') {
+                t.description = t.notes;
+                rec('R7', tp, 'notes → description');
+            }
+            if (!Array.isArray(t.columns))
+                return;
+            t.columns.forEach((c, ci) => {
+                if (!c || typeof c !== 'object')
+                    return;
+                const cp = `${tp} › columns[${ci}]${nonEmpty(c.name) ? ` (${c.name})` : ''}`;
+                const loc = `${t.name}.${c.name}`;
+                // R6 document-format keys
+                if ('primary_key' in c) {
+                    const b = toBool(c.primary_key);
+                    if (b !== undefined) {
+                        if (c.isPrimaryKey === undefined)
+                            c.isPrimaryKey = b;
+                        delete c.primary_key;
+                        rec('R6', cp, 'primary_key → isPrimaryKey');
+                    }
+                }
+                if ('foreign_key' in c) {
+                    const fk = c.foreign_key;
+                    if (fk === null || fk === false) {
+                        delete c.foreign_key;
+                        rec('R6', cp, 'foreign_key: null removed');
+                    }
+                    else if (fk && typeof fk === 'object' && nonEmpty(fk.table) && nonEmpty(fk.column)) {
+                        if (!c.references) {
+                            c.isForeignKey = true;
+                            c.references = { table: fk.table, column: fk.column };
+                        }
+                        delete c.foreign_key;
+                        rec('R6', cp, `foreign_key → references ${fk.table}.${fk.column}`);
+                    }
+                    else
+                        fail.push({ severity: 'error', path: cp, location: loc, property: 'foreign_key', reason: 'Legacy foreign_key is neither null nor { table, column } — cannot be migrated safely.' });
+                }
+                if (!nonEmpty(c.label) && nonEmpty(c.name) && (detectedFormat === 'legacy-document' || c.label === undefined)) {
+                    c.label = c.name;
+                    rec('R6', cp, 'label ← column name');
+                }
+                // R8
+                for (const k of ['nullable', 'isPrimaryKey', 'isForeignKey'])
+                    if (c[k] !== undefined && typeof c[k] !== 'boolean') {
+                        const b = toBool(c[k]);
+                        if (b !== undefined) {
+                            c[k] = b;
+                            rec('R8', cp, `${k} → ${b}`);
+                        }
+                    }
+                // R5
+                if (c.alias === null) {
+                    delete c.alias;
+                    rec('R5', cp, 'alias: null removed');
+                }
+                if (c.decode === null) {
+                    delete c.decode;
+                    rec('R5', cp, 'decode: null removed');
+                    return;
+                }
+                if (c.decode === undefined)
+                    return;
+                // R3 container forms
+                if (!Array.isArray(c.decode)) {
+                    if (typeof c.decode === 'object') {
+                        c.decode = Object.entries(c.decode).map(([k, v]) => ({ rawValue: k, label: String(v) }));
+                        rec('R3', cp, 'decode map → entries');
+                    }
+                    else {
+                        fail.push({ severity: 'error', path: cp, location: loc, property: 'decode', reason: '"decode" is neither an array nor a map — cannot be migrated safely.' });
+                        return;
+                    }
+                }
+                c.decode = c.decode.map((d, di) => {
+                    const dp = `${cp} › decode[${di}]`;
+                    if (typeof d === 'string') {
+                        const m = d.match(/^\s*([^=]+?)\s*=\s*(.*)$/);
+                        if (m) {
+                            rec('R3', dp, `"${d}" → entry`);
+                            return { rawValue: m[1], label: m[2] };
+                        }
+                        fail.push({ severity: 'error', path: dp, location: loc, property: `decode[${di}]`, reason: `Decode entry #${di + 1} "${d}" is not in RAW=Label form.` });
+                        return d;
+                    }
+                    if (!d || typeof d !== 'object') {
+                        fail.push({ severity: 'error', path: dp, location: loc, property: `decode[${di}]`, reason: `Decode entry #${di + 1} is not an object.` });
+                        return d;
+                    }
+                    const e = { ...d };
+                    // R2
+                    if (e.rawValue !== undefined && typeof e.rawValue !== 'string') {
+                        const sv = scalarToString(e.rawValue);
+                        if (sv !== null) {
+                            e.rawValue = sv;
+                            rec('R2', dp, `rawValue → "${sv}"`);
+                        }
+                    }
+                    // R1
+                    if (!nonEmpty(e.rawValue)) {
+                        const found = RAW_ALIASES.filter((k) => k in e).map((k) => ({ k, v: scalarToString(e[k]) })).filter((x) => x.v !== null && x.v.trim() !== '');
+                        const distinct = Array.from(new Set(found.map((x) => x.v)));
+                        if (distinct.length === 1) {
+                            e.rawValue = distinct[0];
+                            found.forEach((x) => delete e[x.k]);
+                            rec('R1', dp, `rawValue ← ${found.map((x) => x.k).join('/')} "${distinct[0]}"`);
+                        }
+                        else if (distinct.length > 1) {
+                            fail.push({ severity: 'error', path: dp, location: loc, property: `decode[${di}].rawValue`, reason: `Decode entry #${di + 1} has conflicting legacy raw values (${found.map((x) => `${x.k}="${x.v}"`).join(', ')}).` });
+                        }
+                        else {
+                            fail.push({ severity: 'error', path: dp, location: loc, property: `decode[${di}].rawValue`, reason: `Decode entry #${di + 1} has an empty raw value and no legacy code to recover it from — the file does not say whether NULL or an empty string was intended.` });
+                        }
+                    }
+                    else {
+                        // rawValue present: a disagreeing alias is ambiguous, an identical one is redundant
+                        for (const k of RAW_ALIASES)
+                            if (k in e) {
+                                const v = scalarToString(e[k]);
+                                if (v !== null && v !== '' && v !== e.rawValue)
+                                    fail.push({ severity: 'error', path: dp, location: loc, property: `decode[${di}].${k}`, reason: `Decode entry #${di + 1}: rawValue "${e.rawValue}" conflicts with legacy ${k} "${v}".` });
+                                else {
+                                    delete e[k];
+                                    rec('R1', dp, `redundant ${k} removed`);
+                                }
+                            }
+                    }
+                    // R4
+                    if (e.label === undefined) {
+                        const k = LABEL_ALIASES.find((x) => typeof e[x] === 'string');
+                        if (k) {
+                            e.label = e[k];
+                            delete e[k];
+                            rec('R4', dp, `label ← ${k}`);
+                        }
+                    }
+                    return e;
+                });
+            });
+        });
+        // drop document-only bookkeeping that is not part of the model (kept in migratedFrom audit)
+        if (detectedFormat === 'legacy-document')
+            for (const k of ['schema_name', 'schema_version'])
+                if (k in s)
+                    delete s[k];
+        const issues = (0, schemaValidator_1.validateSchemaDeep)(s, schemaPath);
+        const failedPaths = new Set(fail.map((f) => f.path));
+        const errors = [...fail, ...(0, schemaValidator_1.errorsOnly)(issues).filter((i) => !failedPaths.has(i.path))];
+        const warnings = issues.filter((i) => i.severity === 'warning');
+        const ruleCounts = changes.reduce((a, c) => ((a[c.rule] = (a[c.rule] || 0) + 1), a), {});
+        if (errors.length)
+            return { status: 'rejected', detectedFormat, schemaName: name, schema: null, changes, ruleCounts, errors, warnings };
+        const dataChanged = changes.length > 0;
+        const needsStamp = detectedFormat !== 'current';
+        if (!dataChanged && !needsStamp)
+            return { status: 'current', detectedFormat, schemaName: name, schema: s, changes, ruleCounts, errors, warnings };
+        s.schemaFormat = (0, schemaFormat_1.makeStamp)(dataChanged || detectedFormat !== 'stamped-older' ? { migratedFrom: detectedFormat, migrationRules: Object.keys(ruleCounts).sort() } : {});
+        return { status: 'migrated', detectedFormat, schemaName: name, schema: s, changes, ruleCounts, errors, warnings };
+    }
+    /** True when `result.schema` differs from the input only by the writer stamp (no data change). */
+    const isStampOnly = (r) => r.status === 'migrated' && r.changes.length === 0;
+    exports.isStampOnly = isStampOnly;
+    /**
+     * Processes every schema of an incoming repository registry file independently.
+     * Successful schemas are replaced IN PLACE (so the existing loader keeps working with migrated data);
+     * rejected schemas are left untouched so the existing validator rejects them and local copies stay protected.
+     */
+    function migrateRegistryFileInPlace(file) {
+        const report = { total: 0, current: 0, migrated: 0, rejected: 0, results: [] };
+        if (!file || typeof file !== 'object' || !Array.isArray(file.schemas))
+            return report;
+        file.schemas.forEach((sch, i) => {
+            const r = migrateSchema(sch, `schemas[${i}]`);
+            report.total += 1;
+            report[r.status] += 1;
+            report.results.push({ ...r, index: i });
+            if (r.status === 'migrated' && r.schema)
+                file.schemas[i] = r.schema;
+        });
+        return report;
+    }
+    /** Publish guard: returns schemas that are safe to publish (normalized, validated, stamped) or blocks. */
+    function prepareForPublish(schemas) {
+        const results = schemas.map((s, i) => migrateSchema(s, `schemas[${i}]`));
+        const blocked = results.filter((r) => r.status === 'rejected');
+        if (blocked.length)
+            return { ok: false, blocked };
+        return { ok: true, schemas: results.map((r) => { const out = r.schema; if (!out.schemaFormat || r.status === 'current')
+                out.schemaFormat = { ...(0, schemaFormat_1.makeStamp)(), ...(out.schemaFormat?.migratedFrom ? { migratedFrom: out.schemaFormat.migratedFrom, migrationRules: out.schemaFormat.migrationRules } : {}), generatedAt: new Date().toISOString() }; return out; }) };
+    }
+});
+define("v1721/diagnostics", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.badgesFor = badgesFor;
+    exports.describeResult = describeResult;
+    exports.summarizeReport = summarizeReport;
+    const redact = (s) => s.replace(/(gh[pousr]_[A-Za-z0-9]{8,}|github_pat_[A-Za-z0-9_]{10,}|sk-[A-Za-z0-9]{10,}|Bearer\s+[A-Za-z0-9._-]+)/g, '[redacted]');
+    function badgesFor(r) {
+        if (r.status === 'current')
+            return ['Current schema'];
+        if (r.status === 'migrated')
+            return ['Legacy schema', 'Migration successful', 'Migrated schema'];
+        return r.detectedFormat === 'current' || r.detectedFormat === 'unknown' ? ['Invalid schema'] : ['Legacy schema', 'Migration required', 'Migration failed'];
+    }
+    function describeResult(r, maxLocations = 3) {
+        if (r.status === 'current')
+            return `Schema "${r.schemaName}" is in the current format.`;
+        if (r.status === 'migrated') {
+            const n = r.ruleCounts.R1 || 0;
+            return redact(`Legacy schema detected.\nThe schema "${r.schemaName}" was created by an older SQL Assistant version and required migration before synchronization.\n\nMigration completed successfully${n ? ` (${n} decode entr${n === 1 ? 'y' : 'ies'} restored from the legacy "code" field)` : ''}.\nThe schema was validated and synchronized using the current schema format.`);
+        }
+        const first = r.errors[0];
+        const more = r.errors.length - Math.min(r.errors.length, maxLocations);
+        const lines = r.errors.slice(0, maxLocations).map((e) => `• ${e.path}: ${e.reason}`);
+        return redact(`Legacy schema migration could not be completed.\n\nSchema: ${r.schemaName}\nLocation: ${first?.location ?? '(schema)'}\nReason: ${first?.reason ?? 'unknown'}\n\n${lines.join('\n')}${more > 0 ? `\n…and ${more} more.` : ''}\n\nThe existing valid local schema was preserved.`);
+    }
+    function summarizeReport(rep) {
+        const parts = [`${rep.total} schema(s) checked`];
+        if (rep.migrated)
+            parts.push(`${rep.migrated} legacy schema(s) migrated`);
+        if (rep.rejected)
+            parts.push(`${rep.rejected} could not be migrated — local copies kept unchanged`);
+        return parts.join(' · ');
+    }
+});
+define("v1721/ui", ["require", "exports", "v1721/diagnostics"], function (require, exports, diagnostics_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getLastMigrationReport = getLastMigrationReport;
+    exports.renderMigrationReport = renderMigrationReport;
+    const esc = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let last = null;
+    function getLastMigrationReport() { return last; }
+    function renderMigrationReport(rep) {
+        if (!rep || (!rep.migrated && !rep.rejected))
+            return '';
+        const items = rep.results.filter((r) => r.status !== 'current').map((r) => `<div class="v1721-item" style="margin-top:6px"><div>${(0, diagnostics_1.badgesFor)(r).map((b) => `<span class="badge" style="display:inline-block;margin:0 4px 4px 0;padding:1px 8px;border-radius:10px;font-size:11px;border:1px solid currentColor;${/failed|Invalid/.test(b) ? 'color:#c0392b' : /successful|Migrated|Current/.test(b) ? 'color:#1e8e3e' : 'color:#b26a00'}">${esc(b)}</span>`).join('')}</div><pre style="white-space:pre-wrap;margin:4px 0 0;font:inherit;font-size:12.5px">${esc((0, diagnostics_1.describeResult)(r))}</pre></div>`).join('');
+        return `<div data-v1721-migration style="margin:8px 0;padding:10px 12px;border:1px solid var(--border,#e1e6f0);border-radius:8px;background:var(--bg-card,#fff)"><strong>Schema synchronization</strong> — ${esc((0, diagnostics_1.summarizeReport)(rep))}${items}</div>`;
+    }
+    function paint() {
+        const anchor = typeof document !== 'undefined' ? document.querySelector('#syncErrorMount') : null;
+        if (!anchor || !anchor.parentElement)
+            return;
+        anchor.parentElement.querySelector('[data-v1721-migration]')?.remove();
+        const html = renderMigrationReport(last);
+        if (html)
+            anchor.insertAdjacentHTML('beforebegin', html);
+    }
+    if (typeof window !== 'undefined') {
+        window.addEventListener('sqla:v1721-migration', (e) => { last = e.detail; paint(); });
+        if (typeof MutationObserver !== 'undefined')
+            new MutationObserver(() => { if (last && document.querySelector('#syncErrorMount') && !document.querySelector('[data-v1721-migration]'))
+                paint(); }).observe(document.documentElement, { childList: true, subtree: true });
+    }
+});
+define("layouts/appShell", ["require", "exports"], function (require, exports) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.APP_VERSION = void 0;
+    exports.mountAppShell = mountAppShell;
+    exports.APP_VERSION = '17.2.1';
+    function mountAppShell(root) {
+        root.innerHTML = `<div class="app-shell"><nav class="navbar">SQL Assistant · V${exports.APP_VERSION}</nav><main><div id="syncErrorMount"></div><pre id="syncMsg"></pre></main><footer class="app-footer">SQL Assistant · Version ${exports.APP_VERSION}</footer></div>`;
+    }
+});
+define("v1721/syncHooks", ["require", "exports", "v1721/legacySchemaMigration"], function (require, exports, legacySchemaMigration_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.beforeValidateRegistryFile = beforeValidateRegistryFile;
+    exports.beforeSanitizeSchema = beforeSanitizeSchema;
+    function beforeValidateRegistryFile(file) {
+        try {
+            const rep = (0, legacySchemaMigration_1.migrateRegistryFileInPlace)(file);
+            if (rep.total && typeof window !== 'undefined' && typeof CustomEvent !== 'undefined')
+                window.dispatchEvent(new CustomEvent('sqla:v1721-migration', { detail: rep }));
+            return rep;
+        }
+        catch {
+            return null;
+        } // never break the existing pipeline; the unchanged validator still runs
+    }
+    function beforeSanitizeSchema(schema) {
+        try {
+            const r = (0, legacySchemaMigration_1.migrateSchema)(schema);
+            return (r.status === 'migrated' && r.schema ? r.schema : schema);
+        }
+        catch {
+            return schema;
+        }
+    }
+});
+define("v1721/index", ["require", "exports", "v1721/schemaFormat", "v1721/schemaValidator", "v1721/legacySchemaMigration", "v1721/diagnostics", "v1721/syncHooks", "v1721/ui"], function (require, exports, schemaFormat_2, schemaValidator_2, legacySchemaMigration_2, diagnostics_2, syncHooks_1, ui_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.getLastMigrationReport = exports.renderMigrationReport = void 0;
+    __exportStar(schemaFormat_2, exports);
+    __exportStar(schemaValidator_2, exports);
+    __exportStar(legacySchemaMigration_2, exports);
+    __exportStar(diagnostics_2, exports);
+    __exportStar(syncHooks_1, exports);
+    Object.defineProperty(exports, "renderMigrationReport", { enumerable: true, get: function () { return ui_1.renderMigrationReport; } });
+    Object.defineProperty(exports, "getLastMigrationReport", { enumerable: true, get: function () { return ui_1.getLastMigrationReport; } });
+});
+define("utils/validation", ["require", "exports", "v1721/index"], function (require, exports, __v1721) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.validateIncomingRegistryFile = validateIncomingRegistryFile;
+    exports.sanitizeIncomingSchema = sanitizeIncomingSchema;
+    /** Mock of the V17.2 strict validator (rejects empty decode raw values, like the real one). */
+    function __v1721_base_sanitizeIncomingSchema(schema) { return { ...schema, relationships: schema.relationships || [] }; }
+    function __v1721_base_validateIncomingRegistryFile(file) {
+        const perSchema = (file?.schemas || []).map((s, index) => {
+            const errors = [];
+            (s.tables || []).forEach((t) => (t.columns || []).forEach((c) => (c.decode || []).forEach((d, i) => { if (!d || typeof d.rawValue !== 'string' || !d.rawValue.trim())
+                errors.push(`Invalid column definition: Column "${t.name}.${c.name}" has a decode entry (#${i + 1}) with an empty raw value.`); })));
+            return { index, ok: errors.length === 0, errors };
+        });
+        return { valid: perSchema.every((p) => p.ok), perSchema };
+    }
+    /* V17.2.1-PATCH: legacy schema migration runs before the unchanged validateIncomingRegistryFile */
+    function validateIncomingRegistryFile(...args) { __v1721.beforeValidateRegistryFile(args[0]); return __v1721_base_validateIncomingRegistryFile(...args); }
+    /* V17.2.1-PATCH: legacy schema migration runs before the unchanged sanitizeIncomingSchema */
+    function sanitizeIncomingSchema(...args) { return __v1721_base_sanitizeIncomingSchema(__v1721.beforeSanitizeSchema(args[0]), ...args.slice(1)); }
+});
+define("services/syncService", ["require", "exports", "utils/validation"], function (require, exports, validation_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    exports.local = void 0;
+    exports.pullRegistry = pullRegistry;
+    exports.local = { schemas: [{ name: 'AP schema 77', tables: [{ name: 'LOCAL_ONLY', module: 'L', description: '', columns: [] }], relationships: [] }] };
+    function pullRegistry(file) {
+        const res = (0, validation_1.validateIncomingRegistryFile)(file);
+        const failed = res.perSchema.filter((p) => !p.ok);
+        res.perSchema.filter((p) => p.ok).forEach((p) => { const s = file.schemas[p.index]; const i = exports.local.schemas.findIndex((x) => x.name === s.name); if (i >= 0)
+            exports.local.schemas[i] = s;
+        else
+            exports.local.schemas.push(s); });
+        return failed.length ? `${failed.length} of ${res.perSchema.length} schema(s) in the repository failed validation and were not loaded — your local copies were kept unchanged.` : `All ${res.perSchema.length} schema(s) loaded.`;
+    }
+});
+define("main", ["require", "exports", "layouts/appShell", "services/syncService", "v1721/ui"], function (require, exports, appShell_1, syncService_1) {
+    "use strict";
+    Object.defineProperty(exports, "__esModule", { value: true });
+    function boot() {
+        const root = document.getElementById('app');
+        if (!root)
+            throw new Error('#app missing');
+        (0, appShell_1.mountAppShell)(root);
+        document.title = 'SQL Assistant';
+        window.__sync = (file) => { const m = (0, syncService_1.pullRegistry)(file); document.getElementById('syncMsg').textContent = m; return { message: m, local: syncService_1.local }; };
+    }
+    if (document.readyState === 'loading')
+        document.addEventListener('DOMContentLoaded', boot);
+    else
+        boot();
+});
+
+window.__sqlaRequire('main');</script></body></html>
