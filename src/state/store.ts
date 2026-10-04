@@ -1,5 +1,0 @@
-import type { ReadOnlyQueryState, CrQueryState, Route, ToastMessage } from '../types';
-export function emptyReadOnly(): ReadOnlyQueryState { return { dialect: 'Oracle', naturalLanguageText: '', selectedTables: [], selectedColumns: [], joins: [], filters: [], sorts: [], advanced: { distinct: false, groupByColumns: [], havingClause: '', limit: null, recursive: false, saveAsView: null, caseExpressions: [], decodeExpressions: [], ctes: [], tableAliases: false, joinType: 'INNER JOIN' }, generatedSql: '', lastGeneratedAt: null, joinPathChoices: {} }; }
-export function emptyCr(): CrQueryState { return { dialect: 'Oracle', naturalLanguageText: '', queryType: 'UPDATE', table: null, values: [], filters: [], confirmNoWhere: false, generatedSql: '', lastGeneratedAt: null }; }
-export interface AppState { route: Route; readOnly: ReadOnlyQueryState; cr: CrQueryState; toasts: ToastMessage[]; settingsTab: string; }
-export const state: AppState = { route: 'quickstart', readOnly: emptyReadOnly(), cr: emptyCr(), toasts: [], settingsTab: 'schema-management' };
