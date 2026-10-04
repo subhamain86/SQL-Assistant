@@ -1,13 +1,18 @@
 {
   "name": "ap-sql-assistant",
-  "version": "17.0.0",
+  "version": "17.1.0",
   "private": true,
   "type": "module",
+  "description": "AP-SQL Assistant — schema-grounded SQL generation (read-only and change request). Builds to one self-contained dist/index.html.",
+  "engines": { "node": ">=18" },
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "clean": "node scripts/clean.mjs",
+    "typecheck": "tsc --noEmit -p .",
     "build": "node scripts/build.mjs",
     "test": "node scripts/run-tests.mjs",
-    "smoke": "python3 scripts/smoke_test.py"
+    "smoke": "python3 scripts/smoke_test.py",
+    "diagnose": "node scripts/diagnose-registry.mjs",
+    "verify": "npm run clean && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": { "typescript": "^5.4.0" }
 }
