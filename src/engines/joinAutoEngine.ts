@@ -4,14 +4,9 @@ export interface JoinPathResolution { pairKey: string; tableA: string; tableB: s
 export interface AutoJoinPlan { joinLines: string[]; bridgeTablesUsed: string[]; resolutions: JoinPathResolution[]; unresolvedWarnings: string[]; }
 function pairKey(a: string, b: string): string { return [a, b].sort().join('|'); }
 function directRelationships(schema: SchemaModel, a: string, b: string): RelationshipDef[] { return schema.relationships.filter((r) => (r.fromTable === a && r.toTable === b) || (r.fromTable === b && r.toTable === a)); }
-function bridgeTablesBetween(schema: SchemaModel, a: string, b: string, excludeTables: Set<string>): { bridge: string; relA: RelationshipDef; relB: RelationshipDef }[] {
+function bridgeTablesBetween(schema: SchemaModel, a: string, b: string, excludeTables: Set<string>) {
   const results: { bridge: string; relA: RelationshipDef; relB: RelationshipDef }[] = [];
-  for (const t of schema.tables) {
-    if (t.name === a || t.name === b || excludeTables.has(t.name)) continue;
-    const relsToA = directRelationships(schema, t.name, a);
-    const relsToB = directRelationships(schema, t.name, b);
-    if (relsToA.length > 0 && relsToB.length > 0) results.push({ bridge: t.name, relA: relsToA[0], relB: relsToB[0] });
-  }
+  for (const t of schema.tables) { if (t.name === a || t.name === b || excludeTables.has(t.name)) continue; const relsToA = directRelationships(schema, t.name, a); const relsToB = directRelationships(schema, t.name, b); if (relsToA.length > 0 && relsToB.length > 0) results.push({ bridge: t.name, relA: relsToA[0], relB: relsToB[0] }); }
   return results;
 }
 function relationshipJoinLine(rel: RelationshipDef, alreadyIncluded: string, joining: string): string {
@@ -31,8 +26,8 @@ export function computeAutoJoinPlan(schema: SchemaModel, primaryTable: string, o
       const direct = directRelationships(schema, anchor, target);
       const bridges = direct.length === 0 ? bridgeTablesBetween(schema, anchor, target, inScope) : [];
       const options: JoinPathOption[] = [
-        ...direct.map((rel) => ({ id: `direct:${rel.id}`, label: `Direct: ${anchor}.${rel.fromTable === anchor ? rel.fromColumn : rel.toColumn} = ${target}.${rel.fromTable === target ? rel.fromColumn : rel.toColumn}`, bridgeTable: null, relationships: [rel] })),
-        ...bridges.map((b) => ({ id: `bridge:${b.bridge}`, label: `Via ${b.bridge}: ${anchor} → ${b.bridge} → ${target}`, bridgeTable: b.bridge, relationships: [b.relA, b.relB] }))
+        ...direct.map((rel) => ({ id: `direct:${rel.id}`, label: `Direct`, bridgeTable: null, relationships: [rel] })),
+        ...bridges.map((b) => ({ id: `bridge:${b.bridge}`, label: `Via ${b.bridge}`, bridgeTable: b.bridge, relationships: [b.relA, b.relB] }))
       ];
       if (options.length === 0) continue;
       const isAmbiguous = options.length > 1;
@@ -46,7 +41,7 @@ export function computeAutoJoinPlan(schema: SchemaModel, primaryTable: string, o
       }
       resolved = true; break;
     }
-    if (!resolved) { unresolvedWarnings.push(`No relationship path found between "${target}" and the other selected table(s) in the active schema — no JOIN was generated for it. Add an explicit manual join if one is needed, or update the schema's relationship metadata.`); inScope.add(target); }
+    if (!resolved) { unresolvedWarnings.push(`No relationship path found between "${target}" and the other selected table(s) in the active schema — no JOIN was generated for it.`); inScope.add(target); }
   }
   return { joinLines, bridgeTablesUsed, resolutions, unresolvedWarnings };
 }

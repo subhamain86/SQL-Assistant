@@ -2,7 +2,7 @@ export type Dialect = 'SQL Server' | 'Oracle' | 'PostgreSQL' | 'MySQL' | 'Generi
 export type FilterOperator = '=' | '<>' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'NOT LIKE' | 'IS NULL' | 'IS NOT NULL' | 'IN' | 'NOT IN' | 'BETWEEN';
 export interface FilterCondition { id: string; table: string; column: string; operator: FilterOperator; value: string; value2?: string; combinator: 'AND' | 'OR'; }
 export interface JoinSpec { id: string; table: string; joinType: 'INNER JOIN' | 'LEFT JOIN'; onLeftTable: string; onLeftColumn: string; onRightColumn: string; }
-export interface SortSpec { id: string; table: string; column: string; direction: 'ASC' | 'DESC'; }
+export interface SortSpec { id: string; table: string; column: string; direction: 'ASC' | 'DESC'; /* V17-PATCH:sortspec-expression */ expression?: string; }
 export type ColumnDisplayMode = 'raw' | 'schema-decode' | 'manual-decode';
 export interface SelectedColumnSpec { id: string; table: string; column: string; alias: string; aggregate?: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | null; useDecode: boolean; manualExpr?: string; displayMode?: ColumnDisplayMode; }
 export type CaseWhenClause = { whenExpr: string; thenValue: string };
@@ -19,7 +19,6 @@ export interface QueryRequirement { rawText: string; matchedTables: string[]; ma
 export interface SQLGenerationResult { sql: string; requirement: QueryRequirement | null; warnings: string[]; ok: boolean; }
 export interface ValidationIssue { severity: 'error' | 'warning'; message: string; }
 export interface ValidationResult { valid: boolean; issues: ValidationIssue[]; }
-export interface ErrorResult { code: string | null; message: string; detectedDialect: Dialect | null; }
 export interface RectifyResult { correctedSql: string; explanation: string; whatChanged: string[]; detectedDialect: Dialect | null; }
 export interface CrRequirement { rawText: string; queryType: CrQueryType | null; matchedTable: string | null; values: CrValuePair[]; filters: FilterCondition[]; notes: string[]; confidence: number; }
 export type NlpEngineSource = 'online' | 'offline' | 'copilot';

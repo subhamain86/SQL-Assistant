@@ -1,0 +1,32 @@
+/**
+ * V17.0 — Relationship awareness. Foreign keys declared on columns
+ * (isForeignKey + references) are real schema relationships even when no
+ * explicit relationship row exists. This derives them ON THE FLY for join
+ * planning only — the stored schema is never modified.
+ */
+import type { SchemaModel, RelationshipDef } from '../../types';
+
+const memo = new WeakMap<SchemaModel, { sig: string; result: SchemaModel }>();
+export function deriveFkRelationships(schema: SchemaModel): RelationshipDef[] {
+  const existing = new Set(schema.relationships.map((r) => `${r.fromTable}.${r.fromColumn}>${r.toTable}.${r.toColumn}`.toUpperCase()));
+  const reverse = new Set(schema.relationships.map((r) => `${r.toTable}.${r.toColumn}>${r.fromTable}.${r.fromColumn}`.toUpperCase()));
+  const out: RelationshipDef[] = [];
+  schema.tables.forEach((t) => t.columns.forEach((c) => {
+    if (!c.isForeignKey || !c.references?.table || !c.references.column) return;
+    const target = schema.tables.find((x) => x.name.toUpperCase() === c.references!.table.toUpperCase());
+    const targetCol = target?.columns.find((x) => x.name.toUpperCase() === c.references!.column.toUpperCase());
+    if (!target || !targetCol) return;
+    const key = `${t.name}.${c.name}>${target.name}.${targetCol.name}`.toUpperCase();
+    if (existing.has(key) || reverse.has(key)) return;
+    out.push({ id: `fk:${t.name}.${c.name}`, fromTable: t.name, fromColumn: c.name, toTable: target.name, toColumn: targetCol.name, kind: 'many-to-one' });
+  }));
+  return out;
+}
+/** Same schema object shape with FK-derived relationships appended (cached per schema instance + content). */
+export function withFkRelationships(schema: SchemaModel): SchemaModel {
+  const sig = `${schema.relationships.length}|${schema.tables.length}|${schema.updatedAt}|${schema.versionMeta?.checksum ?? ''}`;
+  const hit = memo.get(schema); if (hit && hit.sig === sig) return hit.result;
+  const derived = deriveFkRelationships(schema);
+  const result = derived.length ? { ...schema, relationships: [...schema.relationships, ...derived] } : schema;
+  memo.set(schema, { sig, result }); return result;
+}

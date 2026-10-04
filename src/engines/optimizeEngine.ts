@@ -8,6 +8,6 @@ export function optimizeSuggestions(state: ReadOnlyQueryState): string[] {
   if (state.filters.some((f) => f.operator === 'IN' && f.value.split(',').length > 50)) tips.push('One of your IN filters has a large number of literal values.');
   if (state.advanced.recursive) tips.push('Recursive hierarchy walks can be expensive on deep trees.');
   if (state.advanced.groupByColumns.length > 0 && !state.advanced.havingClause.trim() && state.selectedColumns.some((c) => c.aggregate)) tips.push('You are aggregating with GROUP BY but have no HAVING clause.');
-  if (tips.length === 0) tips.push('No obvious optimization issues detected for this query shape.');
+  if (!tips.length) tips.push('No obvious optimization issues detected for this query shape.');
   return tips;
 }

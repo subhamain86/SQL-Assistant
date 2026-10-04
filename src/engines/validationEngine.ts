@@ -1,4 +1,5 @@
 import type { ReadOnlyQueryState, CrQueryState, ValidationResult, ValidationIssue } from '../types';
+import { validateAdvancedConsistency } from '../v17/engines/advancedOptionsResolver';
 const DESTRUCTIVE_KEYWORDS = ['INSERT', 'UPDATE', 'DELETE', 'MERGE', 'DROP', 'ALTER', 'TRUNCATE', 'GRANT', 'REVOKE', 'CREATE'];
 function stripCommentsAndStrings(sql: string): string { let out = sql.replace(/--.*$/gm, ' '); out = out.replace(/\/\*[\s\S]*?\*\//g, ' '); out = out.replace(/'(?:[^']|'')*'/g, "''"); return out; }
 export function validateReadOnlySql(sql: string): ValidationResult {
@@ -11,9 +12,9 @@ export function validateReadOnlyState(state: ReadOnlyQueryState): ValidationIssu
   const issues: ValidationIssue[] = [];
   if (state.selectedTables.length === 0) issues.push({ severity: 'warning', message: 'Select at least one table, or describe your requirement above.' });
   if (state.advanced.limit !== null && state.advanced.limit <= 0) issues.push({ severity: 'error', message: 'Result limit must be a positive number.' });
-  const aliasSeen = new Set<string>();
-  state.selectedColumns.forEach((c) => { if (c.alias) { if (aliasSeen.has(c.alias)) issues.push({ severity: 'error', message: `Duplicate alias "${c.alias}" — aliases must be unique.` }); aliasSeen.add(c.alias); } });
+  const seen = new Set<string>(); state.selectedColumns.forEach((c) => { if (c.alias) { if (seen.has(c.alias)) issues.push({ severity: 'error', message: `Duplicate alias "${c.alias}" — aliases must be unique.` }); seen.add(c.alias); } });
   state.filters.forEach((f, idx) => { if (!['IS NULL', 'IS NOT NULL'].includes(f.operator) && f.value.trim() === '') issues.push({ severity: 'error', message: `Filter #${idx + 1} on ${f.table}.${f.column} needs a value.` }); });
+  issues.push(...validateAdvancedConsistency(state)); // V17
   return issues;
 }
 export function validateCrState(state: CrQueryState): ValidationIssue[] {
@@ -23,8 +24,4 @@ export function validateCrState(state: CrQueryState): ValidationIssue[] {
   if ((state.queryType === 'UPDATE' || state.queryType === 'DELETE') && state.filters.length === 0 && !state.confirmNoWhere) issues.push({ severity: 'error', message: 'A WHERE condition is required — add a filter or explicitly confirm no WHERE condition.' });
   return issues;
 }
-export function validateFullReadOnly(state: ReadOnlyQueryState): ValidationResult {
-  const structural = validateReadOnlyState(state); const sqlCheck = validateReadOnlySql(state.generatedSql);
-  const issues = [...structural, ...sqlCheck.issues];
-  return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues };
-}
+export function validateFullReadOnly(state: ReadOnlyQueryState): ValidationResult { const issues = [...validateReadOnlyState(state), ...validateReadOnlySql(state.generatedSql).issues]; return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues }; }

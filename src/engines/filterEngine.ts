@@ -1,4 +1,5 @@
 import type { FilterOperator } from '../types';
+import { isSafeDateExpression } from '../v17/engines/dateExpressions';
 export const FILTER_OPERATORS: FilterOperator[] = ['=', '<>', '>', '>=', '<', '<=', 'LIKE', 'NOT LIKE', 'IS NULL', 'IS NOT NULL', 'IN', 'NOT IN', 'BETWEEN'];
 export function requiresValue(op: FilterOperator): boolean { return op !== 'IS NULL' && op !== 'IS NOT NULL'; }
 export function requiresSecondValue(op: FilterOperator): boolean { return op === 'BETWEEN'; }
@@ -7,6 +8,7 @@ function quoteIfNeeded(v: string): string {
   if (trimmed === '') return "''";
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
   if (/^(sysdate|getdate\(\)|now\(\)|current_date|current_timestamp)$/i.test(trimmed)) return trimmed.toUpperCase();
+  if (isSafeDateExpression(trimmed)) return trimmed; // V17: exact generated date expressions only
   return `'${trimmed.replace(/'/g, "''")}'`;
 }
 export function renderFilterClause(table: string, column: string, operator: FilterOperator, value: string, value2?: string): string {

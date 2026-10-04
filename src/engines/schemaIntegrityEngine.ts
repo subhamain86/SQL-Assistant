@@ -1,99 +1,60 @@
 import type { SchemaModel, TableDef, SchemaIntegrityResult, SchemaIntegrityIssue } from '../types';
 import { safeTrim, safeUpperTrim } from '../utils/validation';
-
-/**
- * V16.1/V16.3 fixes — root causes of "Remote schema file failed validation".
- * Only structural issues that make a row fundamentally unusable/
- * unidentifiable (missing table name, missing column name) are blocking
- * `error`s. Referential-integrity and data-quality issues that don't
- * prevent SQL generation from working (dangling FK reference, duplicate
- * column, duplicate decode raw value, negative length/precision) are
- * `warning`s (non-blocking) — still surfaced so drift is visible and
- * fixable, but they no longer abort synchronization of the whole file.
- * A data type is required to be present, but is NOT restricted to a
- * 5-value UI enum (VARCHAR2, INTEGER, BOOLEAN, etc. are all accepted).
- */
+/** V16.1: a data type must be present (non-empty); real-world types such as VARCHAR2/INTEGER are valid. */
 export function validateSchemaIntegrity(tables: TableDef[]): SchemaIntegrityResult {
-  const issues: SchemaIntegrityIssue[] = [];
-  const seenTableColumn = new Set<string>();
+  const issues: SchemaIntegrityIssue[] = []; const seen = new Set<string>();
   const tableNames = new Set(tables.map((t) => safeUpperTrim(t?.name)));
   tables.forEach((t) => {
     const tName = safeTrim(t?.name);
     if (!tName) { issues.push({ severity: 'error', message: 'A table is missing its Table Name.' }); return; }
-    if (!Array.isArray(t.columns) || t.columns.length === 0) { issues.push({ severity: 'warning', message: `Table "${tName}" has no columns defined.` }); }
-    let pkCount = 0;
+    if (!Array.isArray(t.columns) || t.columns.length === 0) issues.push({ severity: 'warning', message: `Table "${tName}" has no columns defined.` });
+    let pk = 0;
     (t.columns || []).forEach((c) => {
       const cName = safeTrim(c?.name);
       if (!cName) { issues.push({ severity: 'error', message: `Table "${tName}" has a column with a missing Column Name.` }); return; }
       const key = `${safeUpperTrim(tName)}::${safeUpperTrim(cName)}`;
-      if (seenTableColumn.has(key)) issues.push({ severity: 'warning', message: `Duplicate column "${tName}.${cName}" — each table/column combination is expected to be unique.` });
-      seenTableColumn.add(key);
+      if (seen.has(key)) issues.push({ severity: 'error', message: `Duplicate column "${tName}.${cName}" — each table/column combination must be unique.` });
+      seen.add(key);
       if (!safeTrim(c?.type)) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" is missing a Data Type.` });
-      if (c.isPrimaryKey) pkCount += 1;
+      if (c.isPrimaryKey) pk += 1;
       if (c.isForeignKey) {
-        const refTable = safeTrim(c.references?.table);
-        const refColumn = safeTrim(c.references?.column);
-        if (!refTable || !refColumn) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" is marked as a Foreign Key but has no reference table/column.` });
-        else {
-          const refTableUpper = safeUpperTrim(refTable);
-          if (!tableNames.has(refTableUpper)) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" references table "${refTable}", which does not exist in this schema.` });
-          else {
-            const refTableObj = tables.find((rt) => safeUpperTrim(rt?.name) === refTableUpper);
-            const refColExists = refTableObj?.columns?.some((rc) => safeUpperTrim(rc?.name) === safeUpperTrim(refColumn));
-            if (!refColExists) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" references "${refTable}.${refColumn}", which does not exist.` });
-          }
-        }
+        const rt = safeTrim(c.references?.table); const rc = safeTrim(c.references?.column);
+        if (!rt || !rc) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" is marked as a Foreign Key but has no reference table/column.` });
+        else if (!tableNames.has(safeUpperTrim(rt))) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" references table "${rt}", which does not exist in this schema.` });
+        else { const o = tables.find((x) => safeUpperTrim(x?.name) === safeUpperTrim(rt)); if (!o?.columns?.some((x) => safeUpperTrim(x?.name) === safeUpperTrim(rc))) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" references "${rt}.${rc}", which does not exist.` }); }
       }
-      if (c.decode) {
-        const seenRaw = new Set<string>();
-        c.decode.forEach((d) => {
-          const rawValue = safeTrim(d?.rawValue);
-          if (!rawValue) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" has a decode entry with an empty raw value.` });
-          const rk = safeUpperTrim(d?.rawValue);
-          if (rk && seenRaw.has(rk)) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" has duplicate decode raw value "${rawValue}".` });
-          seenRaw.add(rk);
-        });
-      }
-      if (c.length !== undefined && c.length !== null && c.length < 0) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" has a negative Length.` });
-      if (c.precision !== undefined && c.precision !== null && c.precision < 0) issues.push({ severity: 'warning', message: `Column "${tName}.${cName}" has a negative Precision.` });
+      if (c.decode) { const s = new Set<string>(); c.decode.forEach((d) => { const rv = safeTrim(d?.rawValue); if (!rv) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" has a decode entry with an empty raw value.` }); const k = safeUpperTrim(d?.rawValue); if (k && s.has(k)) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" has duplicate decode raw value "${rv}".` }); s.add(k); }); }
+      if (c.length !== undefined && c.length !== null && c.length < 0) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" has a negative Length.` });
+      if (c.precision !== undefined && c.precision !== null && c.precision < 0) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" has a negative Precision.` });
     });
-    if (pkCount > 1) issues.push({ severity: 'warning', message: `Table "${tName}" has ${pkCount} primary-key columns (composite key) — confirm this is intentional.` });
-    if (pkCount === 0 && (t.columns || []).length > 0 && t.objectType !== 'VIEW') issues.push({ severity: 'warning', message: `Table "${tName}" has no primary key defined.` });
+    if (pk > 1) issues.push({ severity: 'warning', message: `Table "${tName}" has ${pk} primary-key columns (composite key) — confirm this is intentional.` });
+    if (pk === 0 && (t.columns || []).length > 0 && t.objectType !== 'VIEW') issues.push({ severity: 'warning', message: `Table "${tName}" has no primary key defined.` });
   });
   return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues };
 }
 export function validateSingleRowAgainstSchema(schema: SchemaModel, tableName: unknown, columnName: unknown, originalTableName: unknown, originalColumnName: unknown): SchemaIntegrityIssue[] {
-  const issues: SchemaIntegrityIssue[] = [];
-  const tName = safeTrim(tableName);
-  const cName = safeTrim(columnName);
-  if (!tName) issues.push({ severity: 'error', message: 'Table Name is required.' });
-  if (!cName) issues.push({ severity: 'error', message: 'Column Name is required.' });
-  if (!tName || !cName) return issues;
-  const isSameAsOriginal = safeUpperTrim(originalTableName) === safeUpperTrim(tName) && safeUpperTrim(originalColumnName) === safeUpperTrim(cName);
-  if (isSameAsOriginal) return issues;
-  const table = schema.tables.find((t) => safeUpperTrim(t?.name) === safeUpperTrim(tName));
-  const clash = table?.columns?.some((c) => safeUpperTrim(c?.name) === safeUpperTrim(cName));
-  if (clash) issues.push({ severity: 'error', message: `Column "${tName}.${cName}" already exists in this schema.` });
+  const issues: SchemaIntegrityIssue[] = []; const t = safeTrim(tableName); const c = safeTrim(columnName);
+  if (!t) issues.push({ severity: 'error', message: 'Table Name is required.' }); if (!c) issues.push({ severity: 'error', message: 'Column Name is required.' });
+  if (!t || !c) return issues;
+  if (safeUpperTrim(originalTableName) === safeUpperTrim(t) && safeUpperTrim(originalColumnName) === safeUpperTrim(c)) return issues;
+  const table = schema.tables.find((x) => safeUpperTrim(x?.name) === safeUpperTrim(t));
+  if (table?.columns?.some((x) => safeUpperTrim(x?.name) === safeUpperTrim(c))) issues.push({ severity: 'error', message: `Column "${t}.${c}" already exists in this schema.` });
   return issues;
 }
 export function validateIncomingSchemaFile(candidate: unknown): SchemaIntegrityResult {
   const issues: SchemaIntegrityIssue[] = [];
-  if (typeof candidate !== 'object' || candidate === null) { issues.push({ severity: 'error', message: 'File is not a valid JSON object.' }); return { valid: false, issues }; }
+  if (typeof candidate !== 'object' || candidate === null) return { valid: false, issues: [{ severity: 'error', message: 'File is not a valid JSON object.' }] };
   const obj = candidate as Record<string, unknown>;
-  if (!Array.isArray(obj.tables)) { issues.push({ severity: 'error', message: 'Missing required "tables" array.' }); return { valid: false, issues }; }
+  if (!Array.isArray(obj.tables)) return { valid: false, issues: [{ severity: 'error', message: 'Missing required "tables" array.' }] };
   if (!safeTrim(obj.name)) issues.push({ severity: 'warning', message: 'Schema has no name — a default will be used.' });
-  const structural = validateSchemaIntegrity(obj.tables as TableDef[]);
-  issues.push(...structural.issues);
+  issues.push(...validateSchemaIntegrity(obj.tables as TableDef[]).issues);
   return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues };
 }
 export function validateIncomingRegistryFile(candidate: unknown): SchemaIntegrityResult {
   const issues: SchemaIntegrityIssue[] = [];
-  if (typeof candidate !== 'object' || candidate === null) { issues.push({ severity: 'error', message: 'File is not a valid JSON object.' }); return { valid: false, issues }; }
+  if (typeof candidate !== 'object' || candidate === null) return { valid: false, issues: [{ severity: 'error', message: 'File is not a valid JSON object.' }] };
   const obj = candidate as Record<string, unknown>;
-  if (!Array.isArray(obj.schemas)) { issues.push({ severity: 'error', message: 'Missing required "schemas" array.' }); return { valid: false, issues }; }
-  (obj.schemas as unknown[]).forEach((s, idx) => {
-    const result = validateIncomingSchemaFile(s);
-    result.issues.forEach((i) => issues.push({ severity: i.severity, message: `Schema #${idx + 1}: ${i.message}` }));
-  });
+  if (!Array.isArray(obj.schemas)) return { valid: false, issues: [{ severity: 'error', message: 'Missing required "schemas" array.' }] };
+  (obj.schemas as unknown[]).forEach((s, idx) => validateIncomingSchemaFile(s).issues.forEach((i) => issues.push({ severity: i.severity, message: `Schema #${idx + 1}: ${i.message}` })));
   return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues };
 }

@@ -1,9 +1,9 @@
-import type { SchemaModel, SchemaRegistry, DecodeEntry, TableDef, ColumnDef, SchemaEditorRow } from '../types';
+import type { SchemaModel, SchemaRegistry, DecodeEntry, TableDef, SchemaEditorRow } from '../types';
 import { DEFAULT_SCHEMAS, DEFAULT_ACTIVE_SCHEMA_ID } from '../data/defaultSchemas';
 import { validateDecodeEntries } from '../engines/decodeEngine';
 import { validateSchemaIntegrity } from '../engines/schemaIntegrityEngine';
-import { stampNewVersion, sameLogicalSchema, getDeviceTag } from '../engines/schemaVersionEngine';
-import type { ActiveSchemaPointer } from '../engines/schemaSyncMerge';
+import { stampNewVersion, sameLogicalSchema } from '../engines/schemaVersionEngine';
+import { upsertSchemaRecord, deleteSchemaRecord } from '../v17/engines/schemaRecordEngine';
 import { makeId } from '../utils/id';
 import { validateSchemaName, sanitizeIncomingSchema, safeLocalStorageSet, estimateStringBytes } from '../utils/validation';
 const STORAGE_KEY = 'sqla.registry.v15';
@@ -15,293 +15,124 @@ export class SchemaService {
   private storageHealth: StorageHealth = { bytesUsed: 0, lastPersistOk: true, lastError: null, lastRecovered: false };
   constructor() { this.registry = this.load(); }
   private load(): SchemaRegistry {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as SchemaRegistry;
-        if (parsed.schemas?.length) {
-          // Local data saved before V16.4 never had an Active Schema pointer
-          // timestamp. Stamp one now so this device's current selection is
-          // treated as "explicitly set" from this point on, rather than
-          // perpetually looking "never set" (which would make it lose every
-          // future comparison against ANY remote pointer, even a stale one
-          // — see shouldApplyRemoteActiveSchema in schemaSyncMerge.ts).
-          if (!parsed.activeSchemaUpdatedAt) parsed.activeSchemaUpdatedAt = new Date().toISOString();
-          return parsed;
-        }
-      }
-    } catch { }
-    return { schemas: clone(DEFAULT_SCHEMAS), activeSchemaId: DEFAULT_ACTIVE_SCHEMA_ID, activeSchemaUpdatedAt: new Date().toISOString() };
+    try { const raw = localStorage.getItem(STORAGE_KEY); if (raw) { const p = JSON.parse(raw) as SchemaRegistry; if (p.schemas?.length) return p; } } catch { /* fall back to defaults */ }
+    return { schemas: clone(DEFAULT_SCHEMAS), activeSchemaId: DEFAULT_ACTIVE_SCHEMA_ID, activeSchemaUpdatedAt: null };
   }
   private static readonly PRUNE_ESCALATION_CAPS = [12, 6, 3, 1];
   private persist(): void {
-    const result = safeLocalStorageSet(STORAGE_KEY, () => {
-      const serialized = JSON.stringify(this.registry);
-      this.storageHealth.bytesUsed = estimateStringBytes(serialized);
-      return serialized;
-    }, (attempt) => {
-      const cap = SchemaService.PRUNE_ESCALATION_CAPS[Math.min(attempt, SchemaService.PRUNE_ESCALATION_CAPS.length - 1)];
-      this.pruneForSpace(cap);
-    }, SchemaService.PRUNE_ESCALATION_CAPS.length);
-    this.storageHealth.lastPersistOk = result.ok;
-    this.storageHealth.lastRecovered = result.recovered;
-    this.storageHealth.lastError = result.error || null;
+    const result = safeLocalStorageSet(STORAGE_KEY, () => { const s = JSON.stringify(this.registry); this.storageHealth.bytesUsed = estimateStringBytes(s); return s; }, (attempt) => { this.pruneForSpace(SchemaService.PRUNE_ESCALATION_CAPS[Math.min(attempt, SchemaService.PRUNE_ESCALATION_CAPS.length - 1)]); }, SchemaService.PRUNE_ESCALATION_CAPS.length);
+    this.storageHealth.lastPersistOk = result.ok; this.storageHealth.lastRecovered = result.recovered; this.storageHealth.lastError = result.error || null;
     this.listeners.forEach((l) => l());
   }
   pruneForSpace(maxInactive = 12): { removedCount: number; freedApproxBytes: number } {
-    const effectiveMaxInactive = Math.max(1, maxInactive);
-    const before = estimateStringBytes(JSON.stringify(this.registry));
-    const byName = new Map<string, SchemaModel[]>();
-    this.registry.schemas.forEach((s) => { const key = s.name.trim().toLowerCase(); const list = byName.get(key) || []; list.push(s); byName.set(key, list); });
-    const keep: SchemaModel[] = [];
-    byName.forEach((group) => {
-      if (group.length === 1) { keep.push(group[0]); return; }
-      const active = group.find((s) => s.status === 'active');
-      const rest = group.filter((s) => s !== active).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-      if (active) keep.push(active);
-      if (rest.length) keep.push(rest[0]);
-    });
-    const inactiveSorted = keep.filter((s) => s.status !== 'active').sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    const activeOnes = keep.filter((s) => s.status === 'active');
-    const trimmedInactive = inactiveSorted.slice(0, effectiveMaxInactive);
-    const finalSchemas = [...activeOnes, ...trimmedInactive];
-    const removedCount = this.registry.schemas.length - finalSchemas.length;
-    if (finalSchemas.length === 0) return { removedCount: 0, freedApproxBytes: 0 };
-    this.registry = { ...this.registry, schemas: finalSchemas };
-    if (!finalSchemas.some((s) => s.id === this.registry.activeSchemaId)) { this.registry.activeSchemaId = finalSchemas[0].id; finalSchemas[0].status = 'active'; }
-    const after = estimateStringBytes(JSON.stringify(this.registry));
-    return { removedCount, freedApproxBytes: Math.max(0, before - after) };
+    const cap = Math.max(1, maxInactive); const before = estimateStringBytes(JSON.stringify(this.registry));
+    const byName = new Map<string, SchemaModel[]>(); this.registry.schemas.forEach((s) => { const k = s.name.trim().toLowerCase(); byName.set(k, [...(byName.get(k) || []), s]); });
+    const keep: SchemaModel[] = []; byName.forEach((g) => { if (g.length === 1) { keep.push(g[0]); return; } const a = g.find((s) => s.status === 'active'); const rest = g.filter((s) => s !== a).sort((x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime()); if (a) keep.push(a); if (rest.length) keep.push(rest[0]); });
+    const inactive = keep.filter((s) => s.status !== 'active').sort((x, y) => new Date(y.updatedAt).getTime() - new Date(x.updatedAt).getTime()); const active = keep.filter((s) => s.status === 'active');
+    const final = [...active, ...inactive.slice(0, cap)]; const removedCount = this.registry.schemas.length - final.length;
+    if (!final.length) return { removedCount: 0, freedApproxBytes: 0 };
+    this.registry = { ...this.registry, schemas: final };
+    if (!final.some((s) => s.id === this.registry.activeSchemaId)) { this.registry.activeSchemaId = final[0].id; final[0].status = 'active'; }
+    return { removedCount, freedApproxBytes: Math.max(0, before - estimateStringBytes(JSON.stringify(this.registry))) };
   }
   getStorageHealth(): StorageHealth { return { ...this.storageHealth }; }
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   getRegistry(): SchemaRegistry { return this.registry; }
-  getActiveSchema(): SchemaModel { const found = this.registry.schemas.find((s) => s.id === this.registry.activeSchemaId); return found || this.registry.schemas[0]; }
+  getActiveSchema(): SchemaModel { return this.registry.schemas.find((s) => s.id === this.registry.activeSchemaId) || this.registry.schemas[0]; }
   getAllSchemas(): SchemaModel[] { return this.registry.schemas; }
   getSchemaById(id: string): SchemaModel | undefined { return this.registry.schemas.find((s) => s.id === id); }
-  getModulesForSchema(schemaId: string): string[] { const s = this.getSchemaById(schemaId); if (!s) return []; return Array.from(new Set(s.tables.map((t) => t.module))).sort(); }
+  getModulesForSchema(schemaId: string): string[] { const s = this.getSchemaById(schemaId); return s ? Array.from(new Set(s.tables.map((t) => t.module))).sort() : []; }
   getTablesForModule(schemaId: string, module: string | null): TableDef[] { const s = this.getSchemaById(schemaId); if (!s) return []; return module ? s.tables.filter((t) => t.module === module) : s.tables; }
   getAllSchemaNames(excludeId?: string): string[] { return this.registry.schemas.filter((s) => s.id !== excludeId).map((s) => s.name); }
-  /**
-   * Used by user-initiated (local) Active Schema changes. Always stamps a
-   * FRESH timestamp, marking this as the device's most recent deliberate
-   * choice, so it correctly wins any future cross-device comparison until
-   * something newer supersedes it.
-   */
+  getActiveSchemaUpdatedAt(): string | null { return this.registry.activeSchemaUpdatedAt ?? null; }
   switchActiveSchema(schemaId: string): void {
     if (!this.registry.schemas.some((s) => s.id === schemaId)) return;
     this.registry.schemas.forEach((s) => { s.status = s.id === schemaId ? 'active' : (s.status === 'active' ? 'inactive' : s.status); });
-    this.registry.activeSchemaId = schemaId;
-    this.registry.activeSchemaUpdatedAt = new Date().toISOString();
-    this.registry.activeSchemaUpdatedByDevice = getDeviceTag();
-    this.persist();
+    this.registry.activeSchemaId = schemaId; this.registry.activeSchemaUpdatedAt = new Date().toISOString(); this.persist();
+  }
+  /** V16.4/16.5: apply a newer Active Schema selection made on another device (keeps the remote timestamp). */
+  applyRemoteActivePointer(schemaId: string, at: string): boolean {
+    if (!this.registry.schemas.some((s) => s.id === schemaId)) return false;
+    this.registry.schemas.forEach((s) => { s.status = s.id === schemaId ? 'active' : (s.status === 'active' ? 'inactive' : s.status); });
+    this.registry.activeSchemaId = schemaId; this.registry.activeSchemaUpdatedAt = at; this.persist(); return true;
   }
   resetToDefaultSchema(): void { this.switchActiveSchema(DEFAULT_ACTIVE_SCHEMA_ID); }
-  /** Read-only snapshot of the current Active Schema pointer, for sync comparison. */
-  getActiveSchemaPointer(): ActiveSchemaPointer { return { activeSchemaId: this.registry.activeSchemaId, activeSchemaUpdatedAt: this.registry.activeSchemaUpdatedAt ?? null }; }
-  /**
-   * Applies an Active Schema selection that arrived FROM the central
-   * repository (i.e. it already won the `shouldApplyRemoteActiveSchema()`
-   * comparison in syncService.ts). Unlike `switchActiveSchema()`, this
-   * preserves the REMOTE timestamp exactly (rather than re-stamping "now")
-   * so later comparisons on other devices remain accurate to when the
-   * choice actually happened. Returns false (and makes no change) if the
-   * referenced schema isn't known locally yet — callers should always
-   * merge schemas in before attempting this.
-   */
-  applyRemoteActiveSchemaPointer(pointer: ActiveSchemaPointer): boolean {
-    if (!pointer.activeSchemaId || !this.registry.schemas.some((s) => s.id === pointer.activeSchemaId)) return false;
-    this.registry.schemas.forEach((s) => { s.status = s.id === pointer.activeSchemaId ? 'active' : (s.status === 'active' ? 'inactive' : s.status); });
-    this.registry.activeSchemaId = pointer.activeSchemaId;
-    this.registry.activeSchemaUpdatedAt = pointer.activeSchemaUpdatedAt;
-    this.persist();
-    return true;
-  }
-  validateNewSchemaName(name: unknown, excludeId?: string): string | null {
-    const result = validateSchemaName(name, this.getAllSchemaNames(excludeId));
-    return result.valid ? null : (result.message || 'Invalid schema name.');
-  }
+  validateNewSchemaName(name: unknown, excludeId?: string): string | null { const r = validateSchemaName(name, this.getAllSchemaNames(excludeId)); return r.valid ? null : (r.message || 'Invalid schema name.'); }
   importSchema(schema: SchemaModel, customName: string, originalFileName?: string): { ok: boolean; error?: string; schemaId?: string; replacedExisting?: boolean } {
     if (!schema || !Array.isArray(schema.tables)) return { ok: false, error: 'Invalid schema file: missing "tables" array.' };
     const sanitized = sanitizeIncomingSchema(schema) as SchemaModel;
-    const integrity = validateSchemaIntegrity(sanitized.tables);
-    const blockingIssues = integrity.issues.filter((i) => i.severity === 'error');
-    if (blockingIssues.length) return { ok: false, error: `Schema validation failed: ${blockingIssues.map((i) => i.message).join(' ')}` };
-    const trimmedName = customName.trim();
-    const existingByName = this.registry.schemas.find((s) => s.status !== 'active' && sameLogicalSchema(s, { name: trimmedName }));
-    if (existingByName) {
-      existingByName.tables = sanitized.tables;
-      existingByName.relationships = sanitized.relationships || [];
-      existingByName.updatedAt = new Date().toISOString();
-      existingByName.originalFileName = originalFileName || existingByName.originalFileName;
-      this.persist();
-      return { ok: true, schemaId: existingByName.id, replacedExisting: true };
-    }
-    const nameError = this.validateNewSchemaName(customName);
-    if (nameError) return { ok: false, error: nameError };
+    const blocking = validateSchemaIntegrity(sanitized.tables).issues.filter((i) => i.severity === 'error');
+    if (blocking.length) return { ok: false, error: `Schema validation failed: ${blocking.map((i) => i.message).join(' ')}` };
+    const name = customName.trim();
+    const existing = this.registry.schemas.find((s) => s.status !== 'active' && sameLogicalSchema(s, { name }));
+    if (existing) { existing.tables = sanitized.tables; existing.relationships = sanitized.relationships || []; existing.updatedAt = new Date().toISOString(); existing.originalFileName = originalFileName || existing.originalFileName; this.persist(); return { ok: true, schemaId: existing.id, replacedExisting: true }; }
+    const err = this.validateNewSchemaName(customName); if (err) return { ok: false, error: err };
     const id = makeId('schema');
-    const withDefaults: SchemaModel = { id, name: trimmedName, version: sanitized.version || '1.0', status: 'inactive', updatedAt: new Date().toISOString(), lastSyncedAt: null, tables: sanitized.tables, relationships: sanitized.relationships || [], originalFileName: originalFileName || undefined };
-    this.registry.schemas.push(withDefaults);
-    this.persist();
-    return { ok: true, schemaId: id };
+    this.registry.schemas.push({ id, name, version: sanitized.version || '1.0', status: 'inactive', updatedAt: new Date().toISOString(), lastSyncedAt: null, tables: sanitized.tables, relationships: sanitized.relationships || [], originalFileName: originalFileName || undefined });
+    this.persist(); return { ok: true, schemaId: id };
   }
-  addNewSchema(name: string): { ok: boolean; error?: string; schema?: SchemaModel } {
-    const nameError = this.validateNewSchemaName(name);
-    if (nameError) return { ok: false, error: nameError };
-    const fresh: SchemaModel = { id: makeId('schema'), name: name.trim(), version: '1.0', status: 'inactive', updatedAt: new Date().toISOString(), lastSyncedAt: null, tables: [], relationships: [] };
-    this.registry.schemas.push(fresh);
-    this.persist();
-    return { ok: true, schema: fresh };
-  }
-  renameSchema(schemaId: string, newName: string): { ok: boolean; error?: string } {
-    const schema = this.getSchemaById(schemaId);
-    if (!schema) return { ok: false, error: 'Schema not found.' };
-    const nameError = this.validateNewSchemaName(newName, schemaId);
-    if (nameError) return { ok: false, error: nameError };
-    schema.name = newName.trim();
-    schema.updatedAt = new Date().toISOString();
-    this.persist();
-    return { ok: true };
-  }
+  addNewSchema(name: string): { ok: boolean; error?: string; schema?: SchemaModel } { const err = this.validateNewSchemaName(name); if (err) return { ok: false, error: err }; const fresh: SchemaModel = { id: makeId('schema'), name: name.trim(), version: '1.0', status: 'inactive', updatedAt: new Date().toISOString(), lastSyncedAt: null, tables: [], relationships: [] }; this.registry.schemas.push(fresh); this.persist(); return { ok: true, schema: fresh }; }
+  renameSchema(schemaId: string, newName: string): { ok: boolean; error?: string } { const s = this.getSchemaById(schemaId); if (!s) return { ok: false, error: 'Schema not found.' }; const err = this.validateNewSchemaName(newName, schemaId); if (err) return { ok: false, error: err }; s.name = newName.trim(); s.updatedAt = new Date().toISOString(); this.persist(); return { ok: true }; }
   deleteSchema(schemaId: string): { ok: boolean; error?: string } {
     if (this.registry.schemas.length <= 1) return { ok: false, error: 'Cannot delete the only remaining schema.' };
-    const wasActive = this.registry.activeSchemaId === schemaId;
-    this.registry.schemas = this.registry.schemas.filter((s) => s.id !== schemaId);
+    const wasActive = this.registry.activeSchemaId === schemaId; this.registry.schemas = this.registry.schemas.filter((s) => s.id !== schemaId);
     if (wasActive) { this.registry.activeSchemaId = this.registry.schemas[0].id; this.registry.schemas[0].status = 'active'; this.registry.activeSchemaUpdatedAt = new Date().toISOString(); }
-    this.persist();
-    return { ok: true };
+    this.persist(); return { ok: true };
   }
-  addTable(schemaId: string, table: TableDef): void {
-    const schema = this.registry.schemas.find((s) => s.id === schemaId);
-    if (!schema) return;
-    schema.tables.push(table);
-    schema.updatedAt = new Date().toISOString();
-    this.persist();
-  }
-  saveDecodeDefinition(schemaId: string, tableName: string, columnName: string, entries: DecodeEntry[]): string[] {
-    const issues = validateDecodeEntries(entries);
-    if (issues.length) return issues;
-    const schema = this.registry.schemas.find((s) => s.id === schemaId);
-    const table = schema?.tables.find((t) => t.name === tableName);
-    const column = table?.columns.find((c) => c.name === columnName);
-    if (!column) return ['Column not found.'];
-    column.decode = entries;
-    if (schema) schema.updatedAt = new Date().toISOString();
-    this.persist();
-    return [];
-  }
-  exportSchemaJson(schemaId: string): string { const schema = this.registry.schemas.find((s) => s.id === schemaId); return JSON.stringify(schema, null, 2); }
+  saveDecodeDefinition(schemaId: string, tableName: string, columnName: string, entries: DecodeEntry[]): string[] { const issues = validateDecodeEntries(entries); if (issues.length) return issues; const s = this.getSchemaById(schemaId); const c = s?.tables.find((t) => t.name === tableName)?.columns.find((x) => x.name === columnName); if (!c || !s) return ['Column not found.']; c.decode = entries; s.updatedAt = new Date().toISOString(); this.persist(); return []; }
+  exportSchemaJson(schemaId: string): string { return JSON.stringify(this.getSchemaById(schemaId), null, 2); }
   exportSchemaCsv(schemaId: string): string {
-    const schema = this.registry.schemas.find((s) => s.id === schemaId);
-    if (!schema) return '';
+    const s = this.getSchemaById(schemaId); if (!s) return '';
     const header = 'Module,Table Name,Object Type,Table Description,Column Name,Column Description,Data Type,Length,Precision,Nullable,Alias,Primary Key,Foreign Key,Decode';
-    const rows = schema.tables.flatMap((t) => t.columns.map((c) => [t.module, t.name, t.objectType || 'TABLE', t.description, c.name, c.description, c.type, c.length ?? '', c.precision ?? '', c.nullable ? 'Y' : 'N', c.alias ?? '', c.isPrimaryKey ? 'Y' : 'N', c.references ? `${c.references.table}.${c.references.column}` : '', c.decode ? c.decode.map((d) => `${d.rawValue}=${d.label}`).join(';') : ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')));
-    return [header, ...rows].join('\n');
+    return [header, ...s.tables.flatMap((t) => t.columns.map((c) => [t.module, t.name, t.objectType || 'TABLE', t.description, c.name, c.description, c.type, c.length ?? '', c.precision ?? '', c.nullable ? 'Y' : 'N', c.alias ?? '', c.isPrimaryKey ? 'Y' : 'N', c.references ? `${c.references.table}.${c.references.column}` : '', c.decode ? c.decode.map((d) => `${d.rawValue}=${d.label}`).join(';') : ''].map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')))].join('\n');
   }
   getFlattenedRows(schemaId: string, moduleFilter: string | null = null, tableFilter: string | null = null): SchemaEditorRow[] {
-    const schema = this.getSchemaById(schemaId);
-    if (!schema) return [];
-    const rows: SchemaEditorRow[] = [];
-    schema.tables.forEach((t) => {
-      if (moduleFilter && t.module !== moduleFilter) return;
-      if (tableFilter && t.name !== tableFilter) return;
-      t.columns.forEach((c) => {
-        rows.push({ rowId: `${t.name}::${c.name}`, module: t.module, tableDescription: t.description, tableName: t.name, columnName: c.name, columnDescription: c.description, dataType: c.type as any, length: c.length ?? null, precision: c.precision ?? null, nullable: c.nullable, alias: c.alias ?? '', decodeText: c.decode ? c.decode.map((d) => `${d.rawValue}=${d.label}`).join('\n') : '', isPrimaryKey: !!c.isPrimaryKey, isForeignKey: !!c.isForeignKey, fkTable: c.references?.table ?? '', fkColumn: c.references?.column ?? '' });
-      });
-    });
-    return rows;
+    const s = this.getSchemaById(schemaId); if (!s) return [];
+    return s.tables.filter((t) => (!moduleFilter || t.module === moduleFilter) && (!tableFilter || t.name === tableFilter)).flatMap((t) => t.columns.map((c) => ({ rowId: `${t.name}::${c.name}`, module: t.module, tableName: t.name, tableDescription: t.description, columnName: c.name, columnDescription: c.description, dataType: c.type as any, length: c.length ?? null, precision: c.precision ?? null, nullable: c.nullable, alias: c.alias ?? '', decodeText: c.decode ? c.decode.map((d) => `${d.rawValue}=${d.label}`).join('\n') : '', isPrimaryKey: !!c.isPrimaryKey, isForeignKey: !!c.isForeignKey, fkTable: c.references?.table ?? '', fkColumn: c.references?.column ?? '' })));
   }
-  /**
-   * V15.6/V15.7 requirement (explicitly re-confirmed intact for V16.5):
-   * Manual Schema Update writes back ONLY the single edited/added row's
-   * column — the rest of the table's columns and every other table are
-   * left completely untouched in the in-memory model before persist()
-   * serializes the whole (otherwise-unmodified) registry.
-   */
+  /* V17-PATCH:schema-record-methods — single-record edit/delete with dependency checks; persists to the centralized registry */
   async upsertRow(schemaId: string, row: SchemaEditorRow, originalRowId: string | null): Promise<string[]> {
     const schema = this.getSchemaById(schemaId);
-    if (!schema) return ['Schema not found.'];
-    const candidateTables: TableDef[] = clone(schema.tables);
-    const [origTableName, origColumnName] = originalRowId ? originalRowId.split('::') : [null, null];
-    if (origTableName && origColumnName) {
-      const origTableIdx = candidateTables.findIndex((t) => t.name === origTableName);
-      if (origTableIdx !== -1) {
-        candidateTables[origTableIdx].columns = candidateTables[origTableIdx].columns.filter((c) => c.name !== origColumnName);
-        if (candidateTables[origTableIdx].columns.length === 0 && candidateTables[origTableIdx].name !== row.tableName) candidateTables.splice(origTableIdx, 1);
-      }
-    }
-    const decodeEntries: DecodeEntry[] = row.decodeText.split(/[\n;]+/).map((l) => l.trim()).filter((l) => l.length > 0).map((line) => { const idx = line.indexOf('='); return idx === -1 ? { rawValue: line, label: line } : { rawValue: line.slice(0, idx).trim(), label: line.slice(idx + 1).trim() }; });
-    const newColumn: ColumnDef = { name: row.columnName.trim(), label: row.columnName.trim(), description: row.columnDescription, type: row.dataType, length: row.length ?? undefined, precision: row.precision ?? undefined, nullable: row.nullable, alias: row.alias || undefined, isPrimaryKey: row.isPrimaryKey, isForeignKey: row.isForeignKey, references: row.isForeignKey && row.fkTable && row.fkColumn ? { table: row.fkTable.trim(), column: row.fkColumn.trim() } : undefined, decode: decodeEntries.length ? decodeEntries : undefined };
-    let targetTable = candidateTables.find((t) => t.name.trim().toUpperCase() === row.tableName.trim().toUpperCase());
-    if (targetTable) { targetTable.module = row.module || targetTable.module; targetTable.description = row.tableDescription || targetTable.description; targetTable.columns.push(newColumn); }
-    else { targetTable = { name: row.tableName.trim(), module: row.module || 'General', description: row.tableDescription || '', columns: [newColumn] }; candidateTables.push(targetTable); }
-    const integrity = validateSchemaIntegrity(candidateTables);
-    const errors = integrity.issues.filter((i) => i.severity === 'error').map((i) => i.message);
-    if (errors.length) return errors;
-    schema.tables = candidateTables;
-    schema.updatedAt = new Date().toISOString();
-    schema.versionMeta = await stampNewVersion(schema, 'local');
+    if (!schema) return ['Schema update failed: the selected schema no longer exists (it may have been removed on another device). Reload the editor.'];
+    const result = upsertSchemaRecord(schema, row, originalRowId);
+    if (!result.ok || !result.schema) return result.errors.flatMap((e) => [e.message, ...(e.details || [])]);
+    return this.v17CommitRecordChange(schemaId, result.schema);
+  }
+  async deleteRow(schemaId: string, rowId: string, opts: { cascade?: boolean } = {}): Promise<{ ok: boolean; error?: string; requiresCascade?: boolean; dependencies?: string[]; changes?: string[] }> {
+    const schema = this.getSchemaById(schemaId);
+    if (!schema) return { ok: false, error: 'Schema update failed: the selected schema no longer exists (it may have been removed on another device).' };
+    const result = deleteSchemaRecord(schema, rowId, opts);
+    if (!result.ok || !result.schema) return { ok: false, error: result.errors.map((e) => e.message).join(' '), requiresCascade: result.errors.some((e) => e.code === 'SCHEMA_DEPENDENCY_BLOCKED'), dependencies: result.dependencies.map((d) => d.description) };
+    const errs = await this.v17CommitRecordChange(schemaId, result.schema);
+    return errs.length ? { ok: false, error: errs.join(' ') } : { ok: true, changes: result.changes };
+  }
+  private async v17CommitRecordChange(schemaId: string, next: SchemaModel): Promise<string[]> {
+    const target = this.registry.schemas.find((s) => s.id === schemaId);
+    if (!target) return ['Schema update failed: the selected schema no longer exists. Reload the editor.'];
+    const before = JSON.stringify({ tables: target.tables, relationships: target.relationships, updatedAt: target.updatedAt, versionMeta: target.versionMeta ?? null });
+    target.tables = next.tables;
+    target.relationships = next.relationships;
+    target.updatedAt = new Date().toISOString();
+    target.versionMeta = await stampNewVersion(target, 'local');
     this.persist();
+    if (!this.storageHealth.lastPersistOk) {
+      const prev = JSON.parse(before);
+      target.tables = prev.tables; target.relationships = prev.relationships; target.updatedAt = prev.updatedAt; target.versionMeta = prev.versionMeta ?? undefined;
+      this.persist();
+      return [`Schema update failed: the change could not be saved to browser storage (${this.storageHealth.lastError || 'storage write rejected'}). No change was applied.`];
+    }
     return [];
   }
-  async deleteRow(schemaId: string, rowId: string): Promise<{ ok: boolean; error?: string }> {
-    const schema = this.getSchemaById(schemaId);
-    if (!schema) return { ok: false, error: 'Schema not found.' };
-    const [tableName, columnName] = rowId.split('::');
-    const table = schema.tables.find((t) => t.name === tableName);
-    if (!table) return { ok: false, error: 'Table not found.' };
-    table.columns = table.columns.filter((c) => c.name !== columnName);
-    if (table.columns.length === 0) schema.tables = schema.tables.filter((t) => t.name !== tableName);
-    schema.updatedAt = new Date().toISOString();
-    schema.versionMeta = await stampNewVersion(schema, 'local');
-    this.persist();
-    return { ok: true };
-  }
-  deleteAllSchemaContents(schemaId: string): string {
-    const schema = this.getSchemaById(schemaId);
-    if (!schema) return '';
-    const backup = JSON.stringify(schema, null, 2);
-    schema.tables = []; schema.relationships = []; schema.updatedAt = new Date().toISOString();
-    this.persist();
-    return backup;
-  }
-  async applySynchronizedSchema(schemaId: string, incoming: SchemaModel, source: 'location' | 'github'): Promise<void> {
-    const schema = this.getSchemaById(schemaId);
-    if (!schema) return;
-    const sanitized = sanitizeIncomingSchema(incoming) as SchemaModel;
-    schema.tables = sanitized.tables;
-    schema.relationships = sanitized.relationships;
-    schema.lastSyncedAt = new Date().toISOString();
-    schema.versionMeta = await stampNewVersion(schema, source);
-    this.persist();
-  }
-  replaceSchemaContent(schemaId: string, incoming: SchemaModel): void {
-    const idx = this.registry.schemas.findIndex((s) => s.id === schemaId);
-    if (idx === -1) return;
-    const sanitized = sanitizeIncomingSchema(incoming) as SchemaModel;
-    const wasActive = this.registry.schemas[idx].status === 'active';
-    this.registry.schemas[idx] = { ...sanitized, status: wasActive ? 'active' : sanitized.status };
-    this.persist();
-  }
+
+  deleteAllSchemaContents(schemaId: string): string { const s = this.getSchemaById(schemaId); if (!s) return ''; const backup = JSON.stringify(s, null, 2); s.tables = []; s.relationships = []; s.updatedAt = new Date().toISOString(); this.persist(); return backup; }
+  replaceSchemaContent(schemaId: string, incoming: SchemaModel): void { const idx = this.registry.schemas.findIndex((s) => s.id === schemaId); if (idx === -1) return; const san = sanitizeIncomingSchema(incoming) as SchemaModel; const wasActive = this.registry.schemas[idx].status === 'active'; this.registry.schemas[idx] = { ...san, status: wasActive ? 'active' : (san.status === 'active' ? 'inactive' : san.status) }; this.persist(); }
   addSchemaFromRemote(incoming: SchemaModel): 'added' | 'updated' | 'skipped' {
-    const sanitized = sanitizeIncomingSchema(incoming) as SchemaModel;
+    const san = sanitizeIncomingSchema(incoming) as SchemaModel;
     if (this.registry.schemas.some((s) => s.id === incoming.id)) return 'skipped';
-    const existingByName = this.registry.schemas.find((s) => s.status !== 'active' && sameLogicalSchema(s, sanitized));
-    if (existingByName) {
-      existingByName.tables = sanitized.tables;
-      existingByName.relationships = sanitized.relationships;
-      existingByName.lastSyncedAt = new Date().toISOString();
-      existingByName.versionMeta = sanitized.versionMeta || existingByName.versionMeta;
-      this.persist();
-      return 'updated';
-    }
-    this.registry.schemas.push({ ...sanitized, status: 'inactive' });
-    this.persist();
-    return 'added';
+    const ex = this.registry.schemas.find((s) => s.status !== 'active' && sameLogicalSchema(s, san));
+    if (ex) { ex.tables = san.tables; ex.relationships = san.relationships; ex.lastSyncedAt = new Date().toISOString(); ex.versionMeta = san.versionMeta || ex.versionMeta; this.persist(); return 'updated'; }
+    this.registry.schemas.push({ ...san, status: 'inactive' }); this.persist(); return 'added';
   }
-  markAllSynced(): void {
-    const now = new Date().toISOString();
-    this.registry.schemas.forEach((s) => { s.lastSyncedAt = now; });
-    this.persist();
-  }
+  markAllSynced(): void { const now = new Date().toISOString(); this.registry.schemas.forEach((s) => { s.lastSyncedAt = now; }); this.persist(); }
 }
 export const schemaService = new SchemaService();

@@ -1,11 +1,13 @@
 {
   "name": "ap-sql-assistant",
-  "version": "16.5.0",
+  "version": "17.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "node scripts/build.mjs",
-    "test": "node --test test/"
-  }
+    "test": "node scripts/run-tests.mjs",
+    "smoke": "python3 scripts/smoke_test.py"
+  },
+  "devDependencies": { "typescript": "^5.4.0" }
 }
