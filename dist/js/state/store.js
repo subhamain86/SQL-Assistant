@@ -1,4 +1,0 @@
-export function emptyReadOnly() { return { dialect: 'Oracle', naturalLanguageText: '', selectedTables: [], selectedColumns: [], joins: [], filters: [], sorts: [], advanced: { distinct: false, groupByColumns: [], havingClause: '', limit: null, recursive: false, saveAsView: null, caseExpressions: [], decodeExpressions: [], ctes: [], tableAliases: false, joinType: 'INNER JOIN' }, generatedSql: '', lastGeneratedAt: null, joinPathChoices: {} }; }
-export function emptyCr() { return { dialect: 'Oracle', naturalLanguageText: '', queryType: 'UPDATE', table: null, values: [], filters: [], confirmNoWhere: false, generatedSql: '', lastGeneratedAt: null }; }
-export const state = { route: 'quickstart', readOnly: emptyReadOnly(), cr: emptyCr(), toasts: [], settingsTab: 'schema-management' };
-//# sourceMappingURL=store.js.map
