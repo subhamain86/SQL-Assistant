@@ -14,7 +14,7 @@ export function validateReadOnlyState(state: ReadOnlyQueryState): ValidationIssu
   if (state.advanced.limit !== null && state.advanced.limit <= 0) issues.push({ severity: 'error', message: 'Result limit must be a positive number.' });
   const seen = new Set<string>(); state.selectedColumns.forEach((c) => { if (c.alias) { if (seen.has(c.alias)) issues.push({ severity: 'error', message: `Duplicate alias "${c.alias}" — aliases must be unique.` }); seen.add(c.alias); } });
   state.filters.forEach((f, idx) => { if (!['IS NULL', 'IS NOT NULL'].includes(f.operator) && f.value.trim() === '') issues.push({ severity: 'error', message: `Filter #${idx + 1} on ${f.table}.${f.column} needs a value.` }); });
-  issues.push(...validateAdvancedConsistency(state)); // V17
+  issues.push(...validateAdvancedConsistency(state));
   return issues;
 }
 export function validateCrState(state: CrQueryState): ValidationIssue[] {

@@ -21,11 +21,7 @@ export class GuidedTour {
   start(): void { this.index = 0; this.showStep(); }
   private cleanup(): void { this.overlay?.remove(); this.overlay = undefined; }
   exit(): void { this.cleanup(); store.markWalkthroughSeen(); }
-  private showStep(): void {
-    const step = this.steps[this.index]; if (!step) { this.exit(); return; }
-    if (store.route !== step.route) this.navigate(step.route);
-    setTimeout(() => requestAnimationFrame(() => this.render(step)), 80);
-  }
+  private showStep(): void { const step = this.steps[this.index]; if (!step) { this.exit(); return; } if (store.route !== step.route) this.navigate(step.route); setTimeout(() => requestAnimationFrame(() => this.render(step)), 80); }
   private render(step: WalkthroughStep): void {
     this.cleanup(); const target = document.querySelector<HTMLElement>(step.targetSelector);
     const ov = document.createElement('div'); ov.className = 'tour-overlay'; const r = target?.getBoundingClientRect();

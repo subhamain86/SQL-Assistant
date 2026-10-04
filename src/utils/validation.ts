@@ -19,23 +19,6 @@ export function assertSyncConfigOrError(fields: SyncConfigCheckField[]): SyncCon
   if (!missing.length) return { ok: true, missingFields: [], message: null };
   return { ok: false, missingFields: missing, message: `Repository synchronization configuration is incomplete. Please verify the required configuration in Secret Vault. Missing: ${missing.join(', ')}.` };
 }
-export function sanitizeIncomingSchema(raw: unknown): any {
-  if (!raw || typeof raw !== 'object') return raw;
-  const schema = raw as Record<string, unknown>;
-  const tables = Array.isArray(schema.tables) ? schema.tables : [];
-  const sanitizedTables = tables.map((rawTable: unknown) => {
-    const t = (rawTable && typeof rawTable === 'object') ? (rawTable as Record<string, unknown>) : {};
-    const columns = Array.isArray(t.columns) ? t.columns : [];
-    const sanitizedColumns = columns.map((rawCol: unknown) => {
-      const c = (rawCol && typeof rawCol === 'object') ? (rawCol as Record<string, unknown>) : {};
-      const decode = Array.isArray(c.decode) ? c.decode.map((rawD: unknown) => { const d = (rawD && typeof rawD === 'object') ? (rawD as Record<string, unknown>) : {}; return { rawValue: safeString(d.rawValue, ''), label: safeString(d.label, '') }; }) : undefined;
-      const refs = (c.references && typeof c.references === 'object') ? (c.references as Record<string, unknown>) : null;
-      return { ...c, name: safeString(c.name, ''), label: safeString(c.label, safeString(c.name, '')), description: safeString(c.description, ''), type: safeString(c.type, 'VARCHAR'), references: refs ? { table: safeString(refs.table, ''), column: safeString(refs.column, '') } : c.references, decode };
-    });
-    return { ...t, name: safeString(t.name, ''), module: safeString(t.module, 'General'), description: safeString(t.description, ''), columns: sanitizedColumns };
-  });
-  return { ...schema, tables: sanitizedTables, relationships: Array.isArray(schema.relationships) ? schema.relationships : [] };
-}
 export interface SafeSetItemResult { ok: boolean; recovered: boolean; attemptsUsed: number; error?: string; }
 export function safeLocalStorageSet(key: string, value: string | (() => string), onQuotaExceeded?: (attempt: number) => void, maxAttempts = 4): SafeSetItemResult {
   const getValue = () => (typeof value === 'function' ? value() : value); let lastError: unknown = null;

@@ -13,5 +13,6 @@ const program = ts.createProgram(cfg.fileNames, { ...cfg.options, noEmit: false,
 const r = program.emit(); const d = [...ts.getPreEmitDiagnostics(program), ...r.diagnostics];
 if (d.length) { console.error(ts.formatDiagnostics(d, { getCanonicalFileName: (f) => f, getCurrentDirectory: () => root, getNewLine: () => '\n' })); process.exit(1); }
 writeFileSync(path.join(out, 'package.json'), JSON.stringify({ type: 'commonjs' }));
-const files = readdirSync(path.join(root, 'test')).filter((f) => /\.test\.c?js$/.test(f)).map((f) => path.join('test', f));
+const only = process.argv.slice(2);
+const files = readdirSync(path.join(root, 'test')).filter((f) => /\.test\.c?js$/.test(f)).filter((f) => !only.length || only.some((o) => f.includes(o))).map((f) => path.join('test', f));
 execFileSync(process.execPath, ['--test', ...files], { cwd: root, stdio: 'inherit', env: { ...process.env, V17_BUILD: out } });

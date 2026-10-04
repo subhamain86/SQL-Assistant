@@ -10,8 +10,8 @@ import { renderAboutPage } from '../pages/aboutPage';
 import { GuidedTour } from '../components/tourOverlay';
 import { store } from '../state/store';
 import { initAutoSync, setAutoSyncToastHandler, performPublicDiscovery } from '../services/autoSyncService';
+import { APP_VERSION } from '../v17/sync/schemaFormat';
 import type { Route } from '../types';
-export const APP_VERSION = '17.0.0';
 const VALID: Route[] = ['quickstart', 'readonly', 'cr', 'schema-used', 'error-rectifier', 'settings', 'about'];
 const SIGNATURE_NAME = 'Subham Ain';
 export function mountAppShell(root: HTMLElement): void {

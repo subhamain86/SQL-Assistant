@@ -2,7 +2,7 @@ import type { ReadOnlyQueryState, SchemaModel, SelectedColumnSpec } from '../typ
 import { renderFilterClause } from './filterEngine';
 import { buildSchemaDecodeExpression } from './decodeEngine';
 import { computeAutoJoinPlan } from './joinAutoEngine';
-import { withFkRelationships } from '../v17/engines/joinGraph'; /* V17-PATCH:sql-fk-joins-import */
+import { withFkRelationships } from '../v17/engines/joinGraph';
 function renderColumn(spec: SelectedColumnSpec, schema: SchemaModel, dialect: ReadOnlyQueryState['dialect']): string {
   if (spec.manualExpr) return spec.manualExpr;
   const base = spec.aggregate ? `${spec.aggregate}(${spec.table}.${spec.column})` : `${spec.table}.${spec.column}`;
@@ -21,7 +21,7 @@ export function buildSelectSQL(state: ReadOnlyQueryState, schema: SchemaModel): 
   const primaryTable = state.selectedTables[0]; const otherTables = state.selectedTables.slice(1);
   const explicitJoinTables = new Set(state.joins.map((j) => j.table));
   const autoJoinTargets = otherTables.filter((t) => !explicitJoinTables.has(t));
-  const autoPlan = computeAutoJoinPlan(withFkRelationships(schema) /* V17-PATCH:sql-fk-joins */, primaryTable, autoJoinTargets, state.joinPathChoices);
+  const autoPlan = computeAutoJoinPlan(withFkRelationships(schema), primaryTable, autoJoinTargets, state.joinPathChoices);
   const selectList = state.selectedColumns.length ? state.selectedColumns.map((c) => renderColumn(c, schema, state.dialect)).join(',\n  ') : '*';
   const lines: string[] = [];
   if (state.advanced.ctes.length) { const cteParts = state.advanced.ctes.filter((c) => c.name.trim() && c.body.trim()).map((c) => `${c.name} AS (\n  ${c.body}\n)`); if (cteParts.length) lines.push(`WITH ${state.advanced.recursive ? 'RECURSIVE ' : ''}${cteParts.join(',\n')}`); }
@@ -33,7 +33,7 @@ export function buildSelectSQL(state: ReadOnlyQueryState, schema: SchemaModel): 
   if (where) lines.push(`WHERE ${where}`);
   if (state.advanced.groupByColumns.length) lines.push(`GROUP BY ${state.advanced.groupByColumns.join(', ')}`);
   if (state.advanced.havingClause.trim()) lines.push(`HAVING ${state.advanced.havingClause.trim()}`);
-  if (state.sorts.length) lines.push(`ORDER BY ${state.sorts.map((s) => `${/* V17-PATCH:sql-orderby-expression */ s.expression || `${s.table}.${s.column}`} ${s.direction}`).join(', ')}`);
+  if (state.sorts.length) lines.push(`ORDER BY ${state.sorts.map((s) => `${s.expression || `${s.table}.${s.column}`} ${s.direction}`).join(', ')}`);
   if (state.advanced.limit && state.dialect !== 'SQL Server') { if (state.dialect === 'Oracle') lines.push(`FETCH FIRST ${state.advanced.limit} ROWS ONLY`); else lines.push(`LIMIT ${state.advanced.limit}`); }
   return lines.join('\n') + ';';
 }

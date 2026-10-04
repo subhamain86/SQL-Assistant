@@ -57,8 +57,8 @@ export function renderSchemaEditorSection(container: HTMLElement): void {
       ev.preventDefault();
       const num = (id: string) => { const x = v<HTMLInputElement>(id).value.trim(); return x === '' ? null : Number(x); };
       const cand: SchemaEditorRow = { rowId: '', module: (v<HTMLInputElement>('f_module').value || 'General').trim(), tableName: v<HTMLInputElement>('f_tableName').value.trim(), tableDescription: v<HTMLInputElement>('f_tableDescription').value.trim(), columnName: v<HTMLInputElement>('f_columnName').value.trim(), columnDescription: v<HTMLInputElement>('f_columnDescription').value.trim(), dataType: v<HTMLSelectElement>('f_dataType').value as ColumnDataType, length: num('f_length'), precision: num('f_precision'), nullable: v<HTMLInputElement>('f_nullable').checked, alias: v<HTMLInputElement>('f_alias').value.trim(), decodeText: v<HTMLTextAreaElement>('f_decode').value, isPrimaryKey: v<HTMLInputElement>('f_isPrimaryKey').checked, isForeignKey: v<HTMLInputElement>('f_isForeignKey').checked, fkTable: v<HTMLInputElement>('f_fkTable').value.trim(), fkColumn: v<HTMLInputElement>('f_fkColumn').value.trim() };
-      const pre = validateRecordFields(cand, schema); if (pre.length) { box.innerHTML = issues(pre); return; }
-      const errs = await schemaService.upsertRow(editingSchemaId, cand, isEdit ? existing!.rowId : null);
+      const pre = validateRecordFields(cand, schema, existing); if (pre.length) { box.innerHTML = issues(pre); return; }
+      const errs = await schemaService.upsertRow(editingSchemaId, cand, isEdit ? existing!.rowId : null, existing);
       if (errs.length) { box.innerHTML = issues(errs); return; }
       store.pushToast('success', `${isEdit ? 'Updated' : 'Added'} ${cand.tableName}.${cand.columnName}. The active schema and SQL generation use this change immediately.`);
       modal.close(); if (cand.tableName !== selTable) { selModule = cand.module; selTable = cand.tableName; draw(); } else refreshTable();

@@ -1,12 +1,5 @@
-# Source provenance — please read
+# Source provenance
 
-The V16.5 source files in the SharePoint folder could not be opened by the build assistant (each file returned HTTP 400). This package was therefore rebuilt from these sources:
-
-| Part | Source |
-|---|---|
-| Engines, services, sync, vault, password, Copilot / MSAL, schema service, store, navbar, tour, icons, CSS | V16.2 source (readable zip in OneDrive), carried over as-is in behaviour |
-| V16.3 – V16.5 changes | Reimplemented from `CHANGELOG_V16.5.md`: 8-second GitHub timeout, and Active Schema pointer sync (last-write-wins) in both public discovery and authenticated pull |
-| Page / dialog HTML markup | **Rebuilt.** The readable V16.2 text had the HTML templates stripped, so markup was rewritten from the surviving IDs, CSS classes, labels and smoke-test selectors. Layout, sections, labels, buttons and IDs follow V16, but the markup is not byte-identical. |
-| V17.0 | New modules in `src/v17/`, integrated directly |
-
-**Recommendation:** before you replace V16.5 for all users, open both versions side by side once. If you upload the real V16.5 zip, the V17 changes can be applied on top of it unchanged (`src/v17/` is self-contained).
+- **V17.1 is built on the V17.0 project** delivered as `AP-SQL-Assistant-V17.0.zip`. That project was reconstructed source-for-source, with every V17.0 fix included, because the zip's text index strips HTML from TypeScript template strings. Behaviour and UI were then re-verified with the full V17.0 test and browser suites.
+- **V17.0 itself** was built from the V16.2 source plus the V16.3–V16.5 changes described in their changelogs, because the V16.5 source files could not be opened. Page markup was rebuilt from the surviving IDs, classes and labels.
+- **Not inspected:** the live repository file (`sql-assistant-data/schemas/registry.json`) was not reachable from the build environment. The root cause was established by tracing the code and reproducing it with data exactly as V16.x wrote it. Use **Validate repository file** (or `npm run diagnose`) to confirm it on your data.

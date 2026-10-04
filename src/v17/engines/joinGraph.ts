@@ -1,12 +1,12 @@
 /**
- * V17.0 — Relationship awareness. Foreign keys declared on columns
- * (isForeignKey + references) are real schema relationships even when no
- * explicit relationship row exists. This derives them ON THE FLY for join
- * planning only — the stored schema is never modified.
+ * Relationship awareness for join planning. Foreign keys declared on columns are derived as
+ * relationships ON THE FLY (the stored schema is never modified). V17.1: relationships whose
+ * endpoints do not exist in the schema (legacy V16 delete leftovers) are excluded from join
+ * planning so SQL never joins on a missing column; the schema validator reports them.
  */
 import type { SchemaModel, RelationshipDef } from '../../types';
-
-const memo = new WeakMap<SchemaModel, { sig: string; result: SchemaModel }>();
+function hasColumn(schema: SchemaModel, table: string, column: string): boolean { const t = schema.tables.find((x) => x.name.toUpperCase() === String(table || '').toUpperCase()); return !!t && t.columns.some((c) => c.name.toUpperCase() === String(column || '').toUpperCase()); }
+export function isResolvableRelationship(schema: SchemaModel, r: RelationshipDef): boolean { return hasColumn(schema, r.fromTable, r.fromColumn) && hasColumn(schema, r.toTable, r.toColumn); }
 export function deriveFkRelationships(schema: SchemaModel): RelationshipDef[] {
   const existing = new Set(schema.relationships.map((r) => `${r.fromTable}.${r.fromColumn}>${r.toTable}.${r.toColumn}`.toUpperCase()));
   const reverse = new Set(schema.relationships.map((r) => `${r.toTable}.${r.toColumn}>${r.fromTable}.${r.fromColumn}`.toUpperCase()));
@@ -22,11 +22,13 @@ export function deriveFkRelationships(schema: SchemaModel): RelationshipDef[] {
   }));
   return out;
 }
-/** Same schema object shape with FK-derived relationships appended (cached per schema instance + content). */
+const memo = new WeakMap<SchemaModel, { sig: string; result: SchemaModel }>();
+/** Same schema with only resolvable relationships, plus FK-derived ones (cached per instance + content signature). */
 export function withFkRelationships(schema: SchemaModel): SchemaModel {
-  const sig = `${schema.relationships.length}|${schema.tables.length}|${schema.updatedAt}|${schema.versionMeta?.checksum ?? ''}`;
+  const sig = `${schema.relationships.length}|${schema.tables.length}|${schema.tables.reduce((n, t) => n + t.columns.length, 0)}|${schema.updatedAt}|${schema.versionMeta?.checksum ?? ''}`;
   const hit = memo.get(schema); if (hit && hit.sig === sig) return hit.result;
+  const valid = schema.relationships.filter((r) => isResolvableRelationship(schema, r));
   const derived = deriveFkRelationships(schema);
-  const result = derived.length ? { ...schema, relationships: [...schema.relationships, ...derived] } : schema;
+  const result = derived.length || valid.length !== schema.relationships.length ? { ...schema, relationships: [...valid, ...derived] } : schema;
   memo.set(schema, { sig, result }); return result;
 }

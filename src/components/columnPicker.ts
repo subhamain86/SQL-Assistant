@@ -18,7 +18,7 @@ export function renderColumnPicker(container: HTMLElement, schema: SchemaModel, 
     if (!selectedTables.length) { list.innerHTML = '<p class="hint">Select one or more tables first.</p>'; if (count) count.textContent = ''; if (all) { all.checked = false; all.disabled = true; } return; }
     const sc = scope(); if (all) { all.disabled = false; all.checked = sc.length > 0 && sc.every((r) => !!spec(r.table, r.column.name)); }
     const term = searchTerm.toLowerCase();
-    list.innerHTML = selectedTables.map((tn) => { const t = schema.tables.find((x) => x.name === tn); if (!t) return ''; const cols = t.columns.filter((c) => !term || c.name.toLowerCase().includes(term) || c.label.toLowerCase().includes(term)); return cols.length ? `<div class="picker-group-label">${e(tn)}</div>${cols.map((c) => row(tn, c)).join('')}` : ''; }).join('') || '<p class="hint">No columns match your search.</p>';
+    list.innerHTML = selectedTables.map((tn) => { const t = schema.tables.find((x) => x.name === tn); if (!t) return ''; const cols = t.columns.filter((c) => !term || c.name.toLowerCase().includes(term) || (c.label || '').toLowerCase().includes(term)); return cols.length ? `<div class="picker-group-label">${e(tn)}</div>${cols.map((c) => row(tn, c)).join('')}` : ''; }).join('') || '<p class="hint">No columns match your search.</p>';
     if (count) count.textContent = `${current.filter((c) => !c.manualExpr).length} selected`;
     list.querySelectorAll<HTMLElement>('.column-row').forEach((r) => {
       const t = r.dataset.table!; const cn = r.dataset.column!; const def = schema.tables.find((x) => x.name === t)?.columns.find((x) => x.name === cn); if (!def) return;

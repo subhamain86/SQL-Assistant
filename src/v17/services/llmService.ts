@@ -1,16 +1,9 @@
 /**
- * V17.0 — Settings → AI / LLM Model (replaces "Online AI/NLP Endpoint").
- *
- * Optional, additional intelligence layer. The offline NLU stays primary and
- * the application remains fully usable with no model configured, when the
- * model is disabled, unreachable, slow or returns something invalid.
- * Non-secret settings live in localStorage; the API key lives ONLY in the
- * encrypted Secret Vault (never in localStorage, logs, the UI or errors).
- * Any SQL a model returns is accepted only if it passes the existing read-only
- * safety validator AND the Active Schema validator.
+ * V17.0 — Settings → AI / LLM Model (replaces "Online AI/NLP Endpoint"). Optional additional layer:
+ * the offline NLU stays primary. Non-secret settings live in localStorage; the API key lives ONLY in
+ * the encrypted Secret Vault. Model SQL is accepted only after read-only + Active Schema validation.
  */
 import { makeError, redactSecrets, type AppError } from '../errors/appErrors';
-
 export type LlmProvider = 'openai-compatible' | 'azure-openai' | 'anthropic' | 'custom-endpoint';
 export const LLM_PROVIDERS: { id: LlmProvider; label: string; needsModel: boolean; needsKey: boolean }[] = [
   { id: 'openai-compatible', label: 'OpenAI-compatible (Chat Completions API)', needsModel: true, needsKey: true },
@@ -18,13 +11,9 @@ export const LLM_PROVIDERS: { id: LlmProvider; label: string; needsModel: boolea
   { id: 'anthropic', label: 'Anthropic (Messages API)', needsModel: true, needsKey: true },
   { id: 'custom-endpoint', label: 'Custom endpoint (V16 Online AI/NLP contract)', needsModel: false, needsKey: false }
 ];
-export interface LlmModelConfig {
-  enabled: boolean; provider: LlmProvider; endpoint: string; model: string; deployment: string; apiVersion: string;
-  temperature: number; maxTokens: number; timeoutMs: number; useWhen: 'always' | 'low-confidence'; migratedFromV16?: boolean;
-}
+export interface LlmModelConfig { enabled: boolean; provider: LlmProvider; endpoint: string; model: string; deployment: string; apiVersion: string; temperature: number; maxTokens: number; timeoutMs: number; useWhen: 'always' | 'low-confidence'; migratedFromV16?: boolean; }
 export const LLM_CONFIG_KEY = 'sqla.llmconfig.v17';
 export function defaultLlmConfig(): LlmModelConfig { return { enabled: false, provider: 'openai-compatible', endpoint: '', model: '', deployment: '', apiVersion: '', temperature: 0, maxTokens: 800, timeoutMs: 15000, useWhen: 'always' }; }
-
 export function normalizeLlmConfig(raw: unknown): LlmModelConfig {
   const d = defaultLlmConfig(); const r = (raw && typeof raw === 'object' ? raw : {}) as Partial<LlmModelConfig>;
   const num = (v: unknown, def: number, lo: number, hi: number) => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : def);
@@ -32,15 +21,13 @@ export function normalizeLlmConfig(raw: unknown): LlmModelConfig {
 }
 export interface KeyValueStorage { getItem(k: string): string | null; setItem(k: string, v: string): void; }
 export function loadLlmConfig(storage: KeyValueStorage): LlmModelConfig { try { const raw = storage.getItem(LLM_CONFIG_KEY); return raw ? normalizeLlmConfig(JSON.parse(raw)) : defaultLlmConfig(); } catch { return defaultLlmConfig(); } }
-export function saveLlmConfig(storage: KeyValueStorage, cfg: LlmModelConfig): void { const safe = normalizeLlmConfig(cfg); storage.setItem(LLM_CONFIG_KEY, JSON.stringify(safe)); }
-/** One-time migration of the V16 "Online AI/NLP Endpoint" into an AI / LLM Model configuration. */
+export function saveLlmConfig(storage: KeyValueStorage, cfg: LlmModelConfig): void { storage.setItem(LLM_CONFIG_KEY, JSON.stringify(normalizeLlmConfig(cfg))); }
 export function migrateFromV16Endpoint(storage: KeyValueStorage, v16Endpoint: string | null | undefined): { migrated: boolean; config: LlmModelConfig } {
   if (storage.getItem(LLM_CONFIG_KEY)) return { migrated: false, config: loadLlmConfig(storage) };
   const ep = (v16Endpoint || '').trim();
   const cfg: LlmModelConfig = ep ? { ...defaultLlmConfig(), enabled: true, provider: 'custom-endpoint', endpoint: ep, migratedFromV16: true } : defaultLlmConfig();
   saveLlmConfig(storage, cfg); return { migrated: !!ep, config: cfg };
 }
-
 export function validateLlmConfig(cfg: LlmModelConfig, hasApiKey: boolean): string[] {
   const issues: string[] = []; const p = LLM_PROVIDERS.find((x) => x.id === cfg.provider);
   if (!p) { issues.push('Choose a supported provider.'); return issues; }
@@ -54,54 +41,25 @@ export function validateLlmConfig(cfg: LlmModelConfig, hasApiKey: boolean): stri
   if (p.needsKey && !hasApiKey) issues.push('An API key is required for this provider (stored encrypted in the Secret Vault).');
   return issues;
 }
-
 export interface LlmPrompt { system: string; user: string; }
 export interface LlmSuggestion { sql?: string; tables?: string[]; columns?: { table: string; column: string }[]; explanation?: string; }
-
 export function buildLlmPrompt(args: { request: string; schemaContext: string; offlineSql: string; dialect: string; examples: { request: string; sql: string }[] }): LlmPrompt {
-  const system = [
-    'You convert a business request into ONE read-only SQL SELECT (or WITH ... SELECT) statement.',
-    `Target SQL dialect: ${args.dialect}.`,
-    'Use ONLY the tables, columns and relationships listed in the schema. Never invent identifiers. Qualify every column as TABLE.COLUMN.',
-    'Never produce INSERT, UPDATE, DELETE, MERGE, DDL, GRANT or multiple statements.',
-    'If the schema does not contain what is needed, return sql as an empty string and explain what is missing.',
-    'Respond with JSON only: {"sql": string, "tables": string[], "columns": [{"table": string, "column": string}], "explanation": string}.'
-  ].join('\n');
+  const system = ['You convert a business request into ONE read-only SQL SELECT (or WITH ... SELECT) statement.', `Target SQL dialect: ${args.dialect}.`, 'Use ONLY the tables, columns and relationships listed in the schema. Never invent identifiers. Qualify every column as TABLE.COLUMN.', 'Never produce INSERT, UPDATE, DELETE, MERGE, DDL, GRANT or multiple statements.', 'If the schema does not contain what is needed, return sql as an empty string and explain what is missing.', 'Respond with JSON only: {"sql": string, "tables": string[], "columns": [{"table": string, "column": string}], "explanation": string}.'].join('\n');
   const ex = args.examples.slice(0, 2).map((e, i) => `Example ${i + 1} (confirmed by the user):\nRequest: ${e.request}\nSQL: ${e.sql}`).join('\n\n');
-  const user = `ACTIVE SCHEMA:\n${args.schemaContext}\n\n${ex ? `${ex}\n\n` : ''}OFFLINE ENGINE DRAFT (may be incomplete):\n${args.offlineSql}\n\nREQUEST:\n${args.request}`;
-  return { system, user };
+  return { system, user: `ACTIVE SCHEMA:\n${args.schemaContext}\n\n${ex ? `${ex}\n\n` : ''}OFFLINE ENGINE DRAFT (may be incomplete):\n${args.offlineSql}\n\nREQUEST:\n${args.request}` };
 }
-
 export function buildLlmRequest(cfg: LlmModelConfig, apiKey: string | null, prompt: LlmPrompt, schemaContext: string): { url: string; init: RequestInit } {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const base = cfg.endpoint.replace(/\/+$/, '');
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' }; const base = cfg.endpoint.replace(/\/+$/, '');
   switch (cfg.provider) {
-    case 'azure-openai': {
-      if (apiKey) headers['api-key'] = apiKey;
-      const url = /\/chat\/completions/.test(base) ? base : `${base}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion)}`;
-      return { url, init: { method: 'POST', headers, body: JSON.stringify({ messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], temperature: cfg.temperature, max_tokens: cfg.maxTokens }) } };
-    }
-    case 'anthropic': {
-      if (apiKey) headers['x-api-key'] = apiKey; headers['anthropic-version'] = '2023-06-01'; headers['anthropic-dangerous-direct-browser-access'] = 'true';
-      const url = /\/v1\/messages$/.test(base) ? base : `${base}/v1/messages`;
-      return { url, init: { method: 'POST', headers, body: JSON.stringify({ model: cfg.model, max_tokens: cfg.maxTokens, temperature: cfg.temperature, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] }) } };
-    }
-    case 'custom-endpoint': {
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      return { url: base, init: { method: 'POST', headers, body: JSON.stringify({ prompt: prompt.user.split('REQUEST:\n').pop(), schemaContext, instructions: prompt.system }) } };
-    }
-    default: {
-      if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
-      const url = /\/chat\/completions$/.test(base) ? base : `${base}/chat/completions`;
-      return { url, init: { method: 'POST', headers, body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], temperature: cfg.temperature, max_tokens: cfg.maxTokens }) } };
-    }
+    case 'azure-openai': { if (apiKey) headers['api-key'] = apiKey; const url = /\/chat\/completions/.test(base) ? base : `${base}/openai/deployments/${encodeURIComponent(cfg.deployment)}/chat/completions?api-version=${encodeURIComponent(cfg.apiVersion)}`; return { url, init: { method: 'POST', headers, body: JSON.stringify({ messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], temperature: cfg.temperature, max_tokens: cfg.maxTokens }) } }; }
+    case 'anthropic': { if (apiKey) headers['x-api-key'] = apiKey; headers['anthropic-version'] = '2023-06-01'; headers['anthropic-dangerous-direct-browser-access'] = 'true'; const url = /\/v1\/messages$/.test(base) ? base : `${base}/v1/messages`; return { url, init: { method: 'POST', headers, body: JSON.stringify({ model: cfg.model, max_tokens: cfg.maxTokens, temperature: cfg.temperature, system: prompt.system, messages: [{ role: 'user', content: prompt.user }] }) } }; }
+    case 'custom-endpoint': { if (apiKey) headers.Authorization = `Bearer ${apiKey}`; return { url: base, init: { method: 'POST', headers, body: JSON.stringify({ prompt: prompt.user.split('REQUEST:\n').pop(), schemaContext, instructions: prompt.system }) } }; }
+    default: { if (apiKey) headers.Authorization = `Bearer ${apiKey}`; const url = /\/chat\/completions$/.test(base) ? base : `${base}/chat/completions`; return { url, init: { method: 'POST', headers, body: JSON.stringify({ model: cfg.model, messages: [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], temperature: cfg.temperature, max_tokens: cfg.maxTokens }) } }; }
   }
 }
-
 function extractJsonObject(text: string): unknown { const t = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, ''); try { return JSON.parse(t); } catch { const i = t.indexOf('{'); const j = t.lastIndexOf('}'); if (i >= 0 && j > i) { try { return JSON.parse(t.slice(i, j + 1)); } catch { /* fall through */ } } } const sql = t.match(/(?:^|\n)\s*((?:WITH|SELECT)\b[\s\S]+?;?)\s*$/i); return sql ? { sql: sql[1] } : null; }
 export function parseLlmResponse(provider: LlmProvider, json: unknown): LlmSuggestion | null {
-  const j = json as Record<string, any>;
-  let payload: unknown = null;
+  const j = json as Record<string, any>; let payload: unknown = null;
   if (provider === 'anthropic') { const text = Array.isArray(j?.content) ? j.content.filter((c: any) => c?.type === 'text').map((c: any) => c.text).join('\n') : ''; payload = text ? extractJsonObject(text) : null; }
   else if (provider === 'custom-endpoint') payload = j && (j.sql !== undefined || j.tables !== undefined || j.columns !== undefined) ? j : (typeof j?.text === 'string' ? extractJsonObject(j.text) : null);
   else { const text = j?.choices?.[0]?.message?.content; payload = typeof text === 'string' ? extractJsonObject(text) : null; }
@@ -109,7 +67,6 @@ export function parseLlmResponse(provider: LlmProvider, json: unknown): LlmSugge
   const p = payload as Record<string, unknown>;
   return { sql: typeof p.sql === 'string' ? p.sql.trim() : undefined, tables: Array.isArray(p.tables) ? p.tables.filter((x): x is string => typeof x === 'string') : undefined, columns: Array.isArray(p.columns) ? (p.columns as unknown[]).filter((c): c is { table: string; column: string } => !!c && typeof (c as any).table === 'string' && typeof (c as any).column === 'string') : undefined, explanation: typeof p.explanation === 'string' ? p.explanation.slice(0, 600) : undefined };
 }
-
 export async function callLlm(cfg: LlmModelConfig, apiKey: string | null, prompt: LlmPrompt, schemaContext: string, fetchImpl: typeof fetch = fetch): Promise<{ ok: true; suggestion: LlmSuggestion } | { ok: false; error: AppError }> {
   const secrets = [apiKey];
   const issues = validateLlmConfig(cfg, !!apiKey);

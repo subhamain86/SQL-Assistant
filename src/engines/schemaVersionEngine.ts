@@ -13,12 +13,17 @@ export function detectConflict(local: SchemaModel, remote: SchemaModel): SchemaC
   local.tables.forEach((t) => t.columns.forEach((c) => map.set(`${t.name}.${c.name}`, JSON.stringify(c))));
   remote.tables.forEach((t) => t.columns.forEach((c) => { const p = `${t.name}.${c.name}`; const l = map.get(p); if (l === undefined) changed.push(p + ' (new)'); else if (l !== JSON.stringify(c)) changed.push(p); map.delete(p); }));
   map.forEach((_v, p) => changed.push(p + ' (removed remotely)'));
+  const relKey = (r: RelationshipDef) => `${r.fromTable}.${r.fromColumn}>${r.toTable}.${r.toColumn}`;
+  const lr = new Set(local.relationships.map(relKey)); const rr = new Set(remote.relationships.map(relKey));
+  rr.forEach((k) => { if (!lr.has(k)) changed.push(`relationship ${k} (new)`); }); lr.forEach((k) => { if (!rr.has(k)) changed.push(`relationship ${k} (removed remotely)`); });
   return { hasConflict: changed.length > 0, localVersion: lv, remoteVersion: rv, changedPaths: changed };
 }
 export function sameLogicalSchema(a: Pick<SchemaModel, 'name'>, b: Pick<SchemaModel, 'name'>): boolean { return a.name.trim().toLowerCase() === b.name.trim().toLowerCase(); }
 /** V16.4/V16.5: last-write-wins for the Active Schema pointer across devices. */
 export function shouldApplyRemoteActiveSchema(localAt: string | null | undefined, remoteAt: string | null | undefined, remoteId: string | null | undefined, localId: string): boolean {
   if (!remoteId || remoteId === localId || !remoteAt) return false;
+  const r = new Date(remoteAt).getTime(); if (!Number.isFinite(r)) return false;
   if (!localAt) return true;
-  return new Date(remoteAt).getTime() > new Date(localAt).getTime();
+  const l = new Date(localAt).getTime(); if (!Number.isFinite(l)) return true;
+  return r > l;
 }

@@ -20,7 +20,7 @@ function findColumnMentions(text: string, tables: TableDef[]): ColumnRef[] {
   const pool = tables.length ? tables.flatMap((t) => t.columns.map((c) => ({ table: t.name, column: c }))) : [];
   const SYNONYMS: Record<string, string[]> = { NAME: ['SUPPLIER NAME', 'VENDOR NAME'], STATUS: ['STATE'], AMOUNT: ['VALUE', 'TOTAL'] };
   for (const ref of pool) {
-    const nameSpaced = ref.column.name.replace(/_/g, ' '); const labelUpper = ref.column.label.toUpperCase();
+    const nameSpaced = ref.column.name.replace(/_/g, ' '); const labelUpper = (ref.column.label || ref.column.name).toUpperCase();
     if (upper.includes(ref.column.name) || upper.includes(nameSpaced) || upper.includes(labelUpper)) { cols.push(ref); continue; }
     for (const [canon, syns] of Object.entries(SYNONYMS)) { if (nameSpaced.includes(canon) && syns.some((s) => upper.includes(s))) { cols.push(ref); break; } }
   }
@@ -39,7 +39,7 @@ const COMPARISON_PHRASES: ComparisonPhrase[] = [
 function extractNumericFilters(text: string, columns: ColumnRef[], combinator: 'AND' | 'OR'): FilterCondition[] {
   const filters: FilterCondition[] = []; const numericCols = columns.filter((c) => c.column.type === 'NUMBER'); const lower = text.toLowerCase();
   numericCols.forEach((ref) => {
-    const variants = [ref.column.name.toLowerCase(), ref.column.label.toLowerCase(), ref.column.name.replace(/_/g, ' ').toLowerCase()];
+    const variants = [ref.column.name.toLowerCase(), (ref.column.label || '').toLowerCase(), ref.column.name.replace(/_/g, ' ').toLowerCase()].filter(Boolean);
     for (const variant of variants) { const idx = lower.indexOf(variant); if (idx === -1) continue; const w = lower.slice(idx, idx + 90); for (const cmp of COMPARISON_PHRASES) { const m = w.match(cmp.pattern); if (m) { const after = w.slice(m.index || 0); const num = after.match(/-?\d[\d,]*(\.\d+)?/); if (num) { filters.push({ id: makeId('filt'), table: ref.table, column: ref.column.name, operator: cmp.operator, combinator, value: num[0].replace(/,/g, '') }); break; } } } break; }
   });
   return filters;
@@ -65,7 +65,7 @@ function extractDateFilterCandidates(text: string, tables: TableDef[]): { filter
 }
 function extractDecodeFilters(text: string, tables: TableDef[]): FilterCondition[] {
   const upper = text.toUpperCase(); const filters: FilterCondition[] = [];
-  tables.flatMap((t) => t.columns.filter((c) => c.decode && c.decode.length > 0).map((c) => ({ table: t.name, column: c }))).forEach((ref) => { ref.column.decode!.forEach((d) => { if (upper.includes(d.label.toUpperCase())) filters.push({ id: makeId('filt'), table: ref.table, column: ref.column.name, operator: '=', combinator: 'AND', value: d.rawValue }); }); });
+  tables.flatMap((t) => t.columns.filter((c) => c.decode && c.decode.length > 0).map((c) => ({ table: t.name, column: c }))).forEach((ref) => { ref.column.decode!.forEach((d) => { if (d.label && upper.includes(d.label.toUpperCase())) filters.push({ id: makeId('filt'), table: ref.table, column: ref.column.name, operator: '=', combinator: 'AND', value: d.rawValue }); }); });
   return filters;
 }
 function detectCombinator(text: string): 'AND' | 'OR' { return /\bor\b/i.test(text) && !/\band\b/i.test(text) ? 'OR' : 'AND'; }
@@ -74,7 +74,7 @@ function extractDistinct(text: string): boolean { return /\bdistinct\b|\bunique\
 function extractSorts(text: string, tables: TableDef[]): SortSpec[] {
   const m = text.match(/sort(?:ed)?\s+by\s+([a-z0-9_ ]+?)(?:\s+(ascending|asc|descending|desc))?(?:[.,]|$)/i); if (!m) return [];
   const phrase = m[1].trim().toLowerCase(); const direction: SortSpec['direction'] = /desc/i.test(m[2] || '') ? 'DESC' : 'ASC';
-  for (const t of tables) for (const c of t.columns) if (phrase.includes(c.name.toLowerCase()) || phrase.includes(c.label.toLowerCase())) return [{ id: makeId('sort'), table: t.name, column: c.name, direction }];
+  for (const t of tables) for (const c of t.columns) if (phrase.includes(c.name.toLowerCase()) || (c.label && phrase.includes(c.label.toLowerCase()))) return [{ id: makeId('sort'), table: t.name, column: c.name, direction }];
   return [];
 }
 function findUnresolvedTerms(text: string, schema: SchemaModel): string[] {

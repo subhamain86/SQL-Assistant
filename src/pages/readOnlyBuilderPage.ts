@@ -33,21 +33,24 @@ export function renderReadOnlyBuilderPage(container: HTMLElement): void {
     container.querySelector<HTMLSelectElement>('#dialectSelect')!.addEventListener('change', (ev) => { store.updateReadOnly((x) => { x.dialect = (ev.target as HTMLSelectElement).value as Dialect; }); refresh(); });
     container.querySelector('#nlBuildBtn')!.addEventListener('click', () => runNlBuild());
     container.querySelector('#buildQueryBtn')!.addEventListener('click', () => { store.regenerateReadOnlySql(); store.pushToast('info', 'Query rebuilt from manual selections.'); refresh(); });
-    renderSqlOutput(); renderTabsSection();
-    reattachExtras();
+    renderSqlOutput(); renderTabsSection(); reattachExtras();
   }
   function reattachExtras(): void { const n = container.querySelector<HTMLElement>('#nlNotes'); if (n && lastNotesHtml) { wireClarify(n); renderV17Extras(n, () => renderSqlOutput()); } }
   function refresh(): void { renderSqlOutput(); const m = container.querySelector('#roIssues'); if (m) m.innerHTML = issuesHtml(); }
   function wireClarify(n: HTMLElement): void { n.querySelectorAll<HTMLElement>('.clarify-btn').forEach((b) => b.addEventListener('click', () => { const [t, c] = (b.dataset.col || '').split('.'); store.updateReadOnly((x) => { x.filters = x.filters.map((f) => (f.table === t || x.selectedTables.includes(f.table)) && /DATE|TIME/i.test(schemaService.getActiveSchema().tables.find((tt) => tt.name === f.table)?.columns.find((cc) => cc.name === f.column)?.type || '') ? { ...f, table: t, column: c } : f); if (!x.selectedTables.includes(t)) x.selectedTables.push(t); }); store.pushToast('info', `Date filter moved to ${b.dataset.col}.`); refresh(); renderTabsSection(); })); }
   async function runNlBuild(): Promise<void> {
     isBuilding = true; const btn = container.querySelector<HTMLButtonElement>('#nlBuildBtn'); if (btn) { btn.disabled = true; btn.innerHTML = `${icon('zap', 15)} Processing…`; }
-    const schema = schemaService.getActiveSchema();
-    const orchestrated = await orchestrateReadOnlyNlpV17(store.readOnly.naturalLanguageText, schema); const req = orchestrated.result;
-    applyV17ResultToStore(req); isBuilding = false;
-    const badge = orchestrated.engineUsed === 'copilot' ? `<span class="engine-badge engine-online">${icon('bot', 13)} M365 Copilot Enterprise + Offline NLU</span>` : orchestrated.engineUsed === 'online' ? `<span class="engine-badge engine-online">${icon('bot', 13)} Offline NLU + AI / LLM Model</span>` : `<span class="engine-badge engine-offline">${icon('wifi-off', 13)} Offline NLU (V17)${orchestrated.onlineAttempted ? ' — AI / LLM not used' : ''}</span>`;
-    const active = schemaService.getActiveSchema();
-    const clar = req.clarifications.length ? `<div class="issue-box warn mini">${icon('alert-triangle', 14)}${req.clarifications.map((c) => `<div>${e(c.question)} ${c.options.map((o) => `<button type="button" class="btn btn-outline btn-sm clarify-btn" data-col="${e(o)}">${e(o)}</button>`).join(' ')}</div>`).join('')}</div>` : '';
-    lastNotesHtml = `<div class="notes-box"><div style="width:100%">${badge}<div class="schema-audit-line">${icon('database', 12)} Active Schema used: ${e(active.name)} (v${e(String(active.versionMeta?.version ?? active.version))})</div>${req.queryPlan.length ? `<strong>Query Plan</strong><ul class="plan-list">${req.queryPlan.map((p) => `<li>${p}</li>`).join('')}</ul>` : ''}${req.notes.length ? `<strong>Notes</strong><ul>${req.notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}</div></div>${clar}`;
+    try {
+      const schema = schemaService.getActiveSchema();
+      const orchestrated = await orchestrateReadOnlyNlpV17(store.readOnly.naturalLanguageText, schema); const req = orchestrated.result;
+      applyV17ResultToStore(req);
+      const badge = orchestrated.engineUsed === 'copilot' ? `<span class="engine-badge engine-online">${icon('bot', 13)} M365 Copilot Enterprise + Offline NLU</span>` : orchestrated.engineUsed === 'online' ? `<span class="engine-badge engine-online">${icon('bot', 13)} Offline NLU + AI / LLM Model</span>` : `<span class="engine-badge engine-offline">${icon('wifi-off', 13)} Offline NLU (V17)${orchestrated.onlineAttempted ? ' — AI / LLM not used' : ''}</span>`;
+      const active = schemaService.getActiveSchema();
+      const clar = req.clarifications.length ? `<div class="issue-box warn mini">${icon('alert-triangle', 14)}${req.clarifications.map((c) => `<div>${e(c.question)} ${c.options.map((o) => `<button type="button" class="btn btn-outline btn-sm clarify-btn" data-col="${e(o)}">${e(o)}</button>`).join(' ')}</div>`).join('')}</div>` : '';
+      lastNotesHtml = `<div class="notes-box"><div style="width:100%">${badge}<div class="schema-audit-line">${icon('database', 12)} Active Schema used: ${e(active.name)} (v${e(String(active.versionMeta?.version ?? active.version))})</div>${req.queryPlan.length ? `<strong>Query Plan</strong><ul class="plan-list">${req.queryPlan.map((p) => `<li>${p}</li>`).join('')}</ul>` : ''}${req.notes.length ? `<strong>Notes</strong><ul>${req.notes.map((n) => `<li>${n}</li>`).join('')}</ul>` : ''}</div></div>${clar}`;
+    } catch (err) {
+      lastNotesHtml = `<div class="issue-box mini">${icon('alert-triangle', 14)} Offline model unable to process request — ${e((err as Error)?.message || 'internal error')}. Manual Selectors still work.</div>`;
+    } finally { isBuilding = false; }
     draw();
   }
   function renderSqlOutput(): void {

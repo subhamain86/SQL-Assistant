@@ -1,6 +1,6 @@
 import type { SchemaModel } from '../types';
 export const CORE_SCHEMA: SchemaModel = {
-  id: 'schema-core-ap-p2p', name: 'AP / P2P Core', version: '1.0', status: 'active', updatedAt: new Date().toISOString(), lastSyncedAt: null,
+  id: 'schema-core-ap-p2p', name: 'AP / P2P Core', version: '1.0', status: 'active', updatedAt: '2026-01-01T00:00:00.000Z', lastSyncedAt: null,
   tables: [
     { name: 'PO_HEADER', module: 'Purchase Orders', description: 'One row per purchase order.', columns: [
       { name: 'PO_ID', label: 'PO ID', type: 'NUMBER', nullable: false, isPrimaryKey: true, description: 'Primary key.' },
@@ -81,9 +81,9 @@ export const CORE_SCHEMA: SchemaModel = {
   ]
 };
 export const EXTENDED_SCHEMA: SchemaModel = {
-  id: 'schema-extended-p2p', name: 'AP / P2P Extended (with Contracts)', version: '1.0', status: 'inactive', updatedAt: new Date().toISOString(), lastSyncedAt: null,
+  id: 'schema-extended-p2p', name: 'AP / P2P Extended (with Contracts)', version: '1.0', status: 'inactive', updatedAt: '2026-01-01T00:00:00.000Z', lastSyncedAt: null,
   tables: [
-    ...CORE_SCHEMA.tables,
+    ...JSON.parse(JSON.stringify(CORE_SCHEMA.tables)),
     { name: 'CONTRACT', module: 'Contracts', description: 'Master service / supply contracts with vendors.', columns: [
       { name: 'CONTRACT_ID', label: 'Contract ID', type: 'NUMBER', nullable: false, isPrimaryKey: true, description: 'Primary key.' },
       { name: 'VENDOR_ID', label: 'Vendor ID', type: 'NUMBER', nullable: false, isForeignKey: true, references: { table: 'VENDOR', column: 'VENDOR_ID' }, description: 'Contracted vendor.' },
@@ -92,7 +92,7 @@ export const EXTENDED_SCHEMA: SchemaModel = {
       { name: 'CONTRACT_VALUE', label: 'Contract Value', type: 'NUMBER', nullable: false, description: 'Total contracted value.' },
       { name: 'STATUS', label: 'Status', type: 'VARCHAR', length: 1, nullable: false, decode: [{ rawValue: 'A', label: 'Active' }, { rawValue: 'E', label: 'Expired' }, { rawValue: 'D', label: 'Draft' }], description: 'Contract status.' } ] }
   ],
-  relationships: [...CORE_SCHEMA.relationships, { id: 'r7', fromTable: 'CONTRACT', fromColumn: 'VENDOR_ID', toTable: 'VENDOR', toColumn: 'VENDOR_ID', kind: 'many-to-one' }]
+  relationships: [...CORE_SCHEMA.relationships.map((r) => ({ ...r })), { id: 'r7', fromTable: 'CONTRACT', fromColumn: 'VENDOR_ID', toTable: 'VENDOR', toColumn: 'VENDOR_ID', kind: 'many-to-one' }]
 };
 export const DEFAULT_SCHEMAS: SchemaModel[] = [CORE_SCHEMA, EXTENDED_SCHEMA];
 export const DEFAULT_ACTIVE_SCHEMA_ID = CORE_SCHEMA.id;

@@ -2,7 +2,7 @@ export type Dialect = 'SQL Server' | 'Oracle' | 'PostgreSQL' | 'MySQL' | 'Generi
 export type FilterOperator = '=' | '<>' | '>' | '>=' | '<' | '<=' | 'LIKE' | 'NOT LIKE' | 'IS NULL' | 'IS NOT NULL' | 'IN' | 'NOT IN' | 'BETWEEN';
 export interface FilterCondition { id: string; table: string; column: string; operator: FilterOperator; value: string; value2?: string; combinator: 'AND' | 'OR'; }
 export interface JoinSpec { id: string; table: string; joinType: 'INNER JOIN' | 'LEFT JOIN'; onLeftTable: string; onLeftColumn: string; onRightColumn: string; }
-export interface SortSpec { id: string; table: string; column: string; direction: 'ASC' | 'DESC'; /* V17-PATCH:sortspec-expression */ expression?: string; }
+export interface SortSpec { id: string; table: string; column: string; direction: 'ASC' | 'DESC'; expression?: string; }
 export type ColumnDisplayMode = 'raw' | 'schema-decode' | 'manual-decode';
 export interface SelectedColumnSpec { id: string; table: string; column: string; alias: string; aggregate?: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX' | null; useDecode: boolean; manualExpr?: string; displayMode?: ColumnDisplayMode; }
 export type CaseWhenClause = { whenExpr: string; thenValue: string };

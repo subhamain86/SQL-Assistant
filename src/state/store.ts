@@ -27,13 +27,15 @@ class AppStore {
   unlockSettings(): void { this.settingsUnlocked = true; this.bumpActivity(); this.notify(); }
   lockSettings(): void { this.settingsUnlocked = false; if (this.inactivityTimer) { clearTimeout(this.inactivityTimer); this.inactivityTimer = null; } this.notify(); }
   private bumpActivity(): void { if (!this.settingsUnlocked) return; if (this.inactivityTimer) clearTimeout(this.inactivityTimer); this.inactivityTimer = setTimeout(() => { this.lockSettings(); this.pushToast('info', 'Settings locked automatically after inactivity.'); }, SETTINGS_INACTIVITY_MS); }
+  /** Rebuilds SQL from the CURRENT active schema; selections that no longer exist in it are dropped (no stale schema use). */
   regenerateReadOnlySql(): void {
     const schema = schemaService.getActiveSchema(); const valid = new Set(schema.tables.map((t) => t.name));
-    const pruned = this.readOnly.selectedTables.filter((t) => valid.has(t));
-    if (pruned.length !== this.readOnly.selectedTables.length) { this.readOnly.selectedTables = pruned; this.readOnly.selectedColumns = this.readOnly.selectedColumns.filter((c) => c.manualExpr || valid.has(c.table)); this.readOnly.filters = this.readOnly.filters.filter((f) => valid.has(f.table)); this.readOnly.sorts = this.readOnly.sorts.filter((s) => s.expression || valid.has(s.table)); this.readOnly.joins = this.readOnly.joins.filter((j) => valid.has(j.table)); }
-    // V17: also drop columns that were deleted/renamed in the active schema
-    this.readOnly.selectedColumns = this.readOnly.selectedColumns.filter((c) => c.manualExpr || schema.tables.find((t) => t.name === c.table)?.columns.some((x) => x.name === c.column));
-    this.readOnly.filters = this.readOnly.filters.filter((f) => schema.tables.find((t) => t.name === f.table)?.columns.some((x) => x.name === f.column));
+    const hasCol = (t: string, c: string) => schema.tables.find((x) => x.name === t)?.columns.some((x) => x.name === c);
+    this.readOnly.selectedTables = this.readOnly.selectedTables.filter((t) => valid.has(t));
+    this.readOnly.selectedColumns = this.readOnly.selectedColumns.filter((c) => c.manualExpr || hasCol(c.table, c.column));
+    this.readOnly.filters = this.readOnly.filters.filter((f) => hasCol(f.table, f.column));
+    this.readOnly.sorts = this.readOnly.sorts.filter((s) => s.expression || hasCol(s.table, s.column));
+    this.readOnly.joins = this.readOnly.joins.filter((j) => valid.has(j.table));
     this.readOnly.generatedSql = buildSelectSQL(this.readOnly, schema); this.readOnly.lastGeneratedAt = new Date().toISOString(); this.notify();
   }
   updateReadOnly(mutator: (s: ReadOnlyQueryState) => void): void { mutator(this.readOnly); this.regenerateReadOnlySql(); }
@@ -47,7 +49,7 @@ class AppStore {
       if (requirement.limit && !s.advanced.limit) s.advanced.limit = requirement.limit; if (requirement.distinct) s.advanced.distinct = true;
     });
   }
-  regenerateCrSql(): void { const r = buildCrSQL(this.cr); this.cr.generatedSql = r.sql; this.cr.lastGeneratedAt = new Date().toISOString(); this.notify(); }
+  regenerateCrSql(): void { const schema = schemaService.getActiveSchema(); if (this.cr.table && !schema.tables.some((t) => t.name === this.cr.table)) { this.cr.table = null; this.cr.values = []; this.cr.filters = []; } const r = buildCrSQL(this.cr); this.cr.generatedSql = r.sql; this.cr.lastGeneratedAt = new Date().toISOString(); this.notify(); }
   updateCr(mutator: (s: CrQueryState) => void): void { mutator(this.cr); this.regenerateCrSql(); }
   resetCr(): void { this.cr = emptyCrState(this.cr.dialect); this.regenerateCrSql(); }
 }

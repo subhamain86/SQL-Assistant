@@ -1,7 +1,7 @@
 /**
- * Local Secret Vault (unchanged V16 behaviour: AES-GCM, key derived from the Admin Password, stored in localStorage).
- * V17: adds optional llmApiKey / vaultSyncPassphrase; repository synchronisation is now an explicit,
- * passphrase-encrypted action (src/v17/services/vaultSyncService.ts) — the implicit V16 auto-push is removed.
+ * Local Secret Vault (V16 behaviour: AES-GCM, key derived from the Admin Password, stored in localStorage).
+ * V17: optional llmApiKey / vaultSyncPassphrase; repository synchronisation is an explicit, passphrase-
+ * encrypted action (src/v17/services/vaultSyncService.ts) — the implicit V16 auto-push is removed.
  */
 import { encryptWithSecret, decryptWithSecret, type EncryptedBlob } from './cryptoService';
 import { getFile } from './githubApiService';
@@ -25,9 +25,7 @@ export function maskToken(token: unknown): string { const t = safeString(token);
 async function checksum(c: SecretVaultConfig): Promise<string> { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify({ r: c.githubRepo, b: c.githubBranch, p: c.githubSchemaPath })) as BufferSource); return Array.from(new Uint8Array(d)).map((b) => b.toString(16).padStart(2, '0')).join(''); }
 export interface VaultBootstrapOutcome { ok: boolean; source: 'local' | 'repository' | 'created-fresh'; error?: string; }
 class SecretVaultService {
-  private unlockedConfig: SecretVaultConfig | null = null;
-  private unlockedPassword: string | null = null;
-  private listeners = new Set<() => void>();
+  private unlockedConfig: SecretVaultConfig | null = null; private unlockedPassword: string | null = null; private listeners = new Set<() => void>();
   subscribe(fn: () => void): () => void { this.listeners.add(fn); return () => this.listeners.delete(fn); }
   private notify(): void { this.listeners.forEach((l) => l()); }
   exists(): boolean { return localStorage.getItem(SECRET_VAULT_STORAGE_KEY) !== null; }
@@ -41,13 +39,13 @@ class SecretVaultService {
   async tryAutoUnlock(adminPassword: string): Promise<VaultBootstrapOutcome> {
     const rawLocal = localStorage.getItem(SECRET_VAULT_STORAGE_KEY);
     if (rawLocal) {
-      try { const parsed = JSON.parse(rawLocal) as StoredVaultFile; const dec = await decryptWithSecret(adminPassword, parsed.blob); if (dec === null) return { ok: false, source: 'local', error: 'Decryption failed: the local Secret Vault could not be unlocked with the current Admin Password (it may have been reset). Use Secret Vault → Reset, or Pull/Import the V17 encrypted copy.' }; this.unlockedConfig = normalizeVaultConfig(JSON.parse(dec)); this.unlockedPassword = adminPassword; this.notify(); return { ok: true, source: 'local' }; }
-      catch { return { ok: false, source: 'local', error: 'The local Secret Vault data is corrupted and could not be read.' }; }
+      try { const parsed = JSON.parse(rawLocal) as StoredVaultFile; const dec = await decryptWithSecret(adminPassword, parsed?.blob); if (dec === null) return { ok: false, source: 'local', error: 'Decryption failed: the local Secret Vault could not be unlocked with the current Admin Password (it may have been reset). Use Secret Vault → Reset, or Pull/Import the V17 encrypted copy.' }; this.unlockedConfig = normalizeVaultConfig(JSON.parse(dec)); this.unlockedPassword = adminPassword; this.notify(); return { ok: true, source: 'local' }; }
+      catch { return { ok: false, source: 'local', error: 'The local Secret Vault data is corrupted and could not be read. Use Secret Vault → Reset, then Pull or Import the encrypted copy.' }; }
     }
-    try { // V16 legacy copy (read-only compatibility)
+    try {
       const remote = await getFile(DEFAULT_BOOTSTRAP_CONFIG.githubRepo, DEFAULT_BOOTSTRAP_CONFIG.githubBranch, LEGACY_VAULT_BLOB_PATH, '');
-      if (remote) { const pr = JSON.parse(remote.content) as StoredVaultFile; const dec = await decryptWithSecret(adminPassword, pr.blob); if (dec !== null) { const cfg = normalizeVaultConfig(JSON.parse(dec)); await this.persistLocal(cfg, adminPassword); this.unlockedConfig = cfg; this.unlockedPassword = adminPassword; this.notify(); return { ok: true, source: 'repository' }; } }
-    } catch { /* offline / private repo — fall through to a fresh local vault */ }
+      if (remote) { const pr = JSON.parse(remote.content) as StoredVaultFile; const dec = await decryptWithSecret(adminPassword, pr?.blob); if (dec !== null) { const cfg = normalizeVaultConfig(JSON.parse(dec)); await this.persistLocal(cfg, adminPassword); this.unlockedConfig = cfg; this.unlockedPassword = adminPassword; this.notify(); return { ok: true, source: 'repository' }; } }
+    } catch { /* offline / private repo / unreadable legacy copy — fall through to a fresh local vault */ }
     const cfg = bootstrapConfig(); const r = await this.persistLocal(cfg, adminPassword);
     this.unlockedConfig = cfg; this.unlockedPassword = adminPassword; this.notify();
     return r.ok ? { ok: true, source: 'created-fresh' } : { ok: true, source: 'created-fresh', error: r.error };
@@ -63,7 +61,7 @@ class SecretVaultService {
   async saveM365CopilotConfig(patch: Partial<M365CopilotConfig>): Promise<{ ok: boolean; error?: string }> { if (!this.unlockedConfig) return { ok: false, error: 'The Secret Vault is locked.' }; return this.saveConfig({ m365Copilot: { ...this.unlockedConfig.m365Copilot, ...patch } }); }
   async reencryptForNewPassword(oldPassword: string, newPassword: string): Promise<{ ok: boolean; error?: string }> {
     const raw = localStorage.getItem(SECRET_VAULT_STORAGE_KEY); if (!raw) return { ok: true };
-    try { const p = JSON.parse(raw) as StoredVaultFile; const dec = await decryptWithSecret(oldPassword, p.blob); if (dec === null) return { ok: false, error: 'Could not re-encrypt the Secret Vault — the old password did not match.' }; const r = await this.persistLocal(normalizeVaultConfig(JSON.parse(dec)), newPassword); if (!r.ok) return r; if (this.unlockedConfig) { this.unlockedPassword = newPassword; this.notify(); } return { ok: true }; }
+    try { const p = JSON.parse(raw) as StoredVaultFile; const dec = await decryptWithSecret(oldPassword, p?.blob); if (dec === null) return { ok: false, error: 'Could not re-encrypt the Secret Vault — the old password did not match.' }; const r = await this.persistLocal(normalizeVaultConfig(JSON.parse(dec)), newPassword); if (!r.ok) return r; if (this.unlockedConfig) { this.unlockedPassword = newPassword; this.notify(); } return { ok: true }; }
     catch { return { ok: false, error: 'The local Secret Vault data is corrupted.' }; }
   }
   resetVault(): void { localStorage.removeItem(SECRET_VAULT_STORAGE_KEY); this.unlockedConfig = null; this.unlockedPassword = null; this.notify(); }

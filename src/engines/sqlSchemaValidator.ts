@@ -20,8 +20,8 @@ export function validateSqlAgainstSchema(sql: string, schema: SchemaModel): SqlS
   const columnsByTable = new Map<string, Set<string>>();
   schema.tables.forEach((t) => columnsByTable.set(t.name.toUpperCase(), new Set(t.columns.map((c) => c.name.toUpperCase()))));
   // CTE names and Oracle's DUAL are not schema tables and must not be reported as missing.
-  const cteNames = new Set<string>(['DUAL']); const cleanedForCte = clean(sql);
-  [...cleanedForCte.matchAll(/(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(/gi)].forEach((m) => cteNames.add(m[1].toUpperCase()));
+  const cteNames = new Set<string>(['DUAL']);
+  [...clean(sql).matchAll(/(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(/gi)].forEach((m) => cteNames.add(m[1].toUpperCase()));
   const unknownTables = extractFromJoinTables(sql).filter((t) => !knownTableNames.has(t.toUpperCase()) && !cteNames.has(t.toUpperCase()) && !SQL_KEYWORDS.has(t.toLowerCase()));
   const unknownColumnRefs: string[] = [];
   extractQualifiedIdentifiers(sql).forEach(({ table, column }) => { const tu = table.toUpperCase(); if (!knownTableNames.has(tu)) return; const cols = columnsByTable.get(tu); if (cols && !cols.has(column.toUpperCase())) unknownColumnRefs.push(`${table}.${column}`); });
