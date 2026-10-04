@@ -1,0 +1,7 @@
+import type { Dialect } from '../../types';
+export type DateUnit = 'DAY' | 'WEEK' | 'MONTH' | 'YEAR';
+export function agoExpr(n: number, u: DateUnit, d: Dialect): string { const a = Math.max(0, Math.floor(n)); if (d === 'Oracle') return u === 'DAY' ? `TRUNC(SYSDATE) - ${a}` : u === 'WEEK' ? `TRUNC(SYSDATE) - ${a * 7}` : `ADD_MONTHS(TRUNC(SYSDATE), -${u === 'YEAR' ? a * 12 : a})`; if (d === 'SQL Server') return `DATEADD(${u}, -${a}, CAST(GETDATE() AS DATE))`; if (d === 'MySQL') return `DATE_SUB(CURDATE(), INTERVAL ${a} ${u})`; return `CURRENT_DATE - INTERVAL '${a} ${u}'`; }
+export function startOfExpr(u: 'WEEK' | 'MONTH' | 'YEAR', d: Dialect): string { if (d === 'Oracle') return `TRUNC(SYSDATE, '${u === 'WEEK' ? 'IW' : u === 'MONTH' ? 'MM' : 'YYYY'}')`; return `DATE_TRUNC('${u}', CURRENT_DATE)`; }
+export const dateLiteral = (iso: string, d: Dialect) => (d === 'SQL Server' ? `CAST('${iso}' AS DATE)` : `DATE '${iso}'`);
+const SAFE = [/^CURRENT_DATE( - INTERVAL '\d{1,5} (DAY|WEEK|MONTH|YEAR)')?$/, /^TRUNC\(SYSDATE(, '(IW|MM|YYYY)')?\)( - \d{1,5})?$/, /^ADD_MONTHS\(TRUNC\(SYSDATE\), -\d{1,5}\)$/, /^DATEADD\((DAY|WEEK|MONTH|YEAR), -\d{1,5}, CAST\(GETDATE\(\) AS DATE\)\)$/, /^DATE_SUB\(CURDATE\(\), INTERVAL \d{1,5} (DAY|WEEK|MONTH|YEAR)\)$/, /^DATE_TRUNC\('(WEEK|MONTH|YEAR)', CURRENT_DATE\)$/, /^DATE '\d{4}-\d{2}-\d{2}'$/, /^CAST\('\d{4}-\d{2}-\d{2}' AS DATE\)$/];
+export const isSafeDateExpression = (v: string) => SAFE.some((r) => r.test(v.trim()));

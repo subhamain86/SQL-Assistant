@@ -1,0 +1,22 @@
+/** AES-256-GCM authenticated encryption. Repository copy: PBKDF2-SHA-256 (310 000 it.) key from the Vault Sync Passphrase. Device copy: non-extractable key in IndexedDB. */
+export const PBKDF2_ITERATIONS = 310_000;
+const AAD = new TextEncoder().encode('sql-assistant/secret-vault/v1');
+export interface VaultEnvelope { v: number; alg: 'AES-256-GCM'; kdf: 'PBKDF2-SHA256' | 'DEVICE-KEY'; iter?: number; salt?: string; iv: string; ct: string; }
+const b64 = (u: Uint8Array) => { let s = ''; u.forEach((b) => { s += String.fromCharCode(b); }); return btoa(s); };
+const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+function subtle(): SubtleCrypto { const s = globalThis.crypto?.subtle; if (!s) throw new Error('Web Crypto is not available in this browser context.'); return s; }
+async function derive(pass: string, salt: Uint8Array, it: number): Promise<CryptoKey> { if (!pass || pass.length < 10) throw new Error('The Vault Sync Passphrase must be at least 10 characters.'); const b = await subtle().importKey('raw', new TextEncoder().encode(pass) as BufferSource, 'PBKDF2', false, ['deriveKey']); return subtle().deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: salt as BufferSource, iterations: it }, b, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']); }
+async function seal(k: CryptoKey, p: string) { const iv = crypto.getRandomValues(new Uint8Array(12)); return { iv: b64(iv), ct: b64(new Uint8Array(await subtle().encrypt({ name: 'AES-GCM', iv: iv as BufferSource, additionalData: AAD as BufferSource }, k, new TextEncoder().encode(p) as BufferSource))) }; }
+async function open(k: CryptoKey, e: VaultEnvelope): Promise<string> { try { return new TextDecoder().decode(await subtle().decrypt({ name: 'AES-GCM', iv: unb64(e.iv) as BufferSource, additionalData: AAD as BufferSource }, k, unb64(e.ct) as BufferSource)); } catch { throw new Error('The vault could not be decrypted — the passphrase is wrong or the data was modified.'); } }
+export async function encryptWithPassphrase(p: string, pass: string): Promise<VaultEnvelope> { const salt = crypto.getRandomValues(new Uint8Array(16)); return { v: 1, alg: 'AES-256-GCM', kdf: 'PBKDF2-SHA256', iter: PBKDF2_ITERATIONS, salt: b64(salt), ...(await seal(await derive(pass, salt, PBKDF2_ITERATIONS), p)) }; }
+export async function decryptWithPassphrase(e: VaultEnvelope, pass: string): Promise<string> { if (!e || e.v !== 1 || e.kdf !== 'PBKDF2-SHA256' || !e.salt) throw new Error('The vault file is not a recognised encrypted vault.'); return open(await derive(pass, unb64(e.salt), e.iter || PBKDF2_ITERATIONS), e); }
+export async function encryptWithKey(p: string, k: CryptoKey): Promise<VaultEnvelope> { return { v: 1, alg: 'AES-256-GCM', kdf: 'DEVICE-KEY', ...(await seal(k, p)) }; }
+export const decryptWithKey = (e: VaultEnvelope, k: CryptoKey) => open(k, e);
+export interface DeviceKeyProvider { getKey(): Promise<CryptoKey>; }
+export function memoryKeyProvider(): DeviceKeyProvider { let k: CryptoKey | null = null; return { async getKey() { if (!k) k = (await subtle().generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])) as CryptoKey; return k; } }; }
+export const indexedDbKeyProvider: DeviceKeyProvider = (() => { const fb = memoryKeyProvider(); return { async getKey() {
+  try { if (typeof indexedDB === 'undefined') return fb.getKey();
+    const db = await new Promise<IDBDatabase>((res, rej) => { const r = indexedDB.open('sql-assistant-keys', 1); r.onupgradeneeded = () => r.result.createObjectStore('keys'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
+    const get = () => new Promise<CryptoKey | undefined>((res, rej) => { const t = db.transaction('keys', 'readonly').objectStore('keys').get('vault-device-key'); t.onsuccess = () => res(t.result as CryptoKey | undefined); t.onerror = () => rej(t.error); });
+    let key = await get(); if (!key) { key = (await subtle().generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])) as CryptoKey; await new Promise<void>((res, rej) => { const t = db.transaction('keys', 'readwrite').objectStore('keys').put(key, 'vault-device-key'); t.onsuccess = () => res(); t.onerror = () => rej(t.error); }); }
+    return key; } catch { return fb.getKey(); } } }; })();

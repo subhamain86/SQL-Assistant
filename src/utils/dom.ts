@@ -1,0 +1,2 @@
+export function escapeHtml(s: string): string { return String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+export function downloadBlob(name: string, content: string, mime: string): void { const u = URL.createObjectURL(new Blob([content], { type: mime })); const a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(u); }

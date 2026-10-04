@@ -1,0 +1,5 @@
+const RULES: [RegExp, string][] = [[/ORA-00904/i, 'ORA-00904: a referenced column or alias does not exist in the tables in scope.'], [/ORA-00942/i, 'ORA-00942: the table or view does not exist or you lack privileges.'], [/ORA-00918/i, 'ORA-00918: a column is ambiguous — qualify it with its table alias.'], [/ORA-00937|ORA-00979/i, 'Aggregate and non-aggregate columns are mixed without a matching GROUP BY.'], [/Incorrect syntax near/i, 'SQL Server syntax error near the reported token.'], [/Unknown column/i, 'MySQL could not find the column in the tables in scope.']];
+export function rectify(err: string, sql: string): { correctedSql: string; explanation: string; whatChanged: string[] } {
+  const fixed = sql.replace(/,\s*(FROM|WHERE|GROUP BY|ORDER BY|HAVING)\b/gi, ' $1'); const ch = fixed !== sql ? ['Removed a trailing comma before a clause keyword.'] : [];
+  const r = RULES.find(([re]) => re.test(err)); return { correctedSql: fixed, explanation: r ? r[1] : 'The error did not match a known pattern. Check names, GROUP BY, ambiguous columns and quotes/parentheses.', whatChanged: ch.length ? ch : ['No automatic change applied.'] };
+}

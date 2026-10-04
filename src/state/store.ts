@@ -1,0 +1,4 @@
+import type { ReadOnlyQueryState, CrQueryState, Route } from '../types';
+export const emptyReadOnly = (): ReadOnlyQueryState => ({ dialect: 'Oracle', naturalLanguageText: '', selectedTables: [], selectedColumns: [], joins: [], filters: [], sorts: [], advanced: { distinct: false, groupByColumns: [], havingClause: '', limit: null, recursive: false, ctes: [], tableAliases: false, joinType: 'INNER JOIN' }, generatedSql: '', joinPathChoices: {} });
+export const emptyCr = (): CrQueryState => ({ naturalLanguageText: '', queryType: 'UPDATE', table: null, values: [], filters: [], confirmNoWhere: false, generatedSql: '' });
+export const state: { route: Route; readOnly: ReadOnlyQueryState; cr: CrQueryState; settingsTab: string } = { route: 'quickstart', readOnly: emptyReadOnly(), cr: emptyCr(), settingsTab: 'schema-management' };

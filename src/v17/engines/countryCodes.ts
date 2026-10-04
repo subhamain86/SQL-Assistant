@@ -1,0 +1,2 @@
+const M: Record<string, string> = { austria: 'AT', belgium: 'BE', denmark: 'DK', finland: 'FI', france: 'FR', germany: 'DE', india: 'IN', ireland: 'IE', italy: 'IT', netherlands: 'NL', norway: 'NO', poland: 'PL', spain: 'ES', sweden: 'SE', 'united kingdom': 'GB', uk: 'GB', 'united states': 'US', usa: 'US' };
+export const countryNameToIso2 = (n: string) => M[String(n || '').trim().toLowerCase()] ?? null;
