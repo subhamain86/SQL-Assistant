@@ -8,7 +8,6 @@ export function validateReadOnlySql(sql: string): ValidationResult {
   if (!/\bSELECT\b/.test(cleaned) && !/\bWITH\b/.test(cleaned)) issues.push({ severity: 'warning', message: 'No SELECT / WITH statement detected yet.' });
   return { valid: issues.filter((i) => i.severity === 'error').length === 0, issues };
 }
-/** V17.2 — structural SQL checks (syntax shape, clause order, aliases) that apply to generated, learned and edited SQL alike. */
 export function validateSqlStructure(sql: string): ValidationIssue[] {
   const issues: ValidationIssue[] = []; const s = sql.trim();
   if (!s || s.startsWith('--')) return issues;

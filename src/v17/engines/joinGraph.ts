@@ -1,8 +1,3 @@
-/**
- * Relationship awareness for join planning. Foreign keys declared on columns are derived as
- * relationships ON THE FLY (the stored schema is never modified). Relationships whose endpoints do not
- * exist in the schema are excluded from join planning so SQL never joins on a missing column.
- */
 import type { SchemaModel, RelationshipDef } from '../../types';
 function hasColumn(schema: SchemaModel, table: string, column: string): boolean { const t = schema.tables.find((x) => x.name.toUpperCase() === String(table || '').toUpperCase()); return !!t && t.columns.some((c) => c.name.toUpperCase() === String(column || '').toUpperCase()); }
 export function isResolvableRelationship(schema: SchemaModel, r: RelationshipDef): boolean { return hasColumn(schema, r.fromTable, r.fromColumn) && hasColumn(schema, r.toTable, r.toColumn); }

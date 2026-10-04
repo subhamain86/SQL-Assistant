@@ -1,12 +1,6 @@
-/**
- * Validates SQL against the Active Schema. V17.2: understands table aliases (FROM T a / JOIN T a),
- * so aliased SQL is checked column-by-column instead of being skipped, and reports duplicate or
- * unknown aliases.
- */
 import type { SchemaModel, SqlSchemaValidationResult } from '../types';
 const SQL_KEYWORDS = new Set(['select','from','where','group','by','having','order','join','inner','left','right','full','cross','outer','on','and','or','not','null','as','distinct','case','when','then','else','end','with','recursive','union','all','top','limit','fetch','first','rows','only','is','in','between','like','asc','desc','count','sum','avg','min','max','decode','current_date','current_timestamp','sysdate','getdate','now','date_trunc','interval','day','week','month','year','true','false','offset','using','natural','lateral']);
 function clean(sql: string): string { return sql.replace(/--.*$/gm, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/'(?:[^']|'')*'/g, "''"); }
-/** alias(upper) → table name as written; also maps each table name to itself. */
 export function parseTableAliases(sql: string): { aliases: Map<string, string>; duplicates: string[] } {
   const aliases = new Map<string, string>(); const duplicates: string[] = [];
   const re = /\b(?:FROM|JOIN)\s+([A-Za-z_][A-Za-z0-9_$#]*)(?:\s+(?:AS\s+)?([A-Za-z_][A-Za-z0-9_$#]*))?/gi; let m: RegExpExecArray | null;
@@ -35,7 +29,6 @@ export function validateSqlAgainstSchema(sql: string, schema: SchemaModel): SqlS
   const knownTableNames = new Set(schema.tables.map((t) => t.name.toUpperCase()));
   const columnsByTable = new Map<string, Set<string>>();
   schema.tables.forEach((t) => columnsByTable.set(t.name.toUpperCase(), new Set(t.columns.map((c) => c.name.toUpperCase()))));
-  // CTE names and Oracle's DUAL are not schema tables and must not be reported as missing.
   const cteNames = new Set<string>(['DUAL']);
   [...clean(sql).matchAll(/(?:\bWITH\s+(?:RECURSIVE\s+)?|,\s*)([A-Za-z_][A-Za-z0-9_]*)\s+AS\s*\(/gi)].forEach((m) => cteNames.add(m[1].toUpperCase()));
   const unknownTables = extractFromJoinTables(sql).filter((t) => !knownTableNames.has(t.toUpperCase()) && !cteNames.has(t.toUpperCase()) && !SQL_KEYWORDS.has(t.toLowerCase()));

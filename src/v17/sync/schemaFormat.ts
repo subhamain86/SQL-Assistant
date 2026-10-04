@@ -1,390 +1,445 @@
 /**
- * The single schema format authority (V17.1+). EVERY path that reads or writes schema data uses this module:
- * local load, import, Manual Schema Update, push, public discovery, authenticated pull, conflict resolution
- * and the diagnostics CLI.
+ * Schema file format, legacy migration and validation — the single source of truth used by
+ * repository sync (pull + push), import, local load, and Manual Schema Update.
  *
- * Pipeline:  parseRegistryText → normalizeRegistry (lossless legacy conversions, each one reported)
- *            → validateSchemaModel (exact JSON paths + table/column names) → per-schema verdict.
- * Validation is never relaxed: errors still block. Repairs are only applied by an explicit user action.
- * V17.2: contentHash() (3-way sync merge), stageOf() (failing-stage labels), writer/device provenance,
- *        decode raw values compared exactly (database codes are case-sensitive).
+ * V17.2.1 ROOT-CAUSE FIX
+ * ----------------------
+ * Schema registries written by SQL Assistant V17.0 or older carry no writer stamp
+ * (`writtenBy` / `formatVersion`). Those versions also stored decode entries in the original
+ * export shape `{ "code": "...", "label": "..." }` (and `primary_key` / `foreign_key` objects).
+ * The V17.1/V17.2 reader took the FIRST key that was *present* — an empty `rawValue: ""`
+ * written by an old device beat the real `code` — so every decode entry was rejected with
+ * "decode entry (#n) with an empty raw value" (437 entries for AP schema 77) and the whole
+ * schema failed synchronization permanently.
+ *
+ * V17.2.1 pipeline (per schema, independently):
+ *   Detect format → (legacy) normalize + apply explicit migration rules → validate (unchanged,
+ *   strict validator) → caller persists → caller publishes with the current writer stamp.
+ * Validation is never disabled: legacy rules only rewrite representations that are proven
+ * lossless or are explicitly documented below; anything else is still rejected with an exact
+ * path, and the caller keeps the local copy.
+ *
+ * LEGACY MIGRATION RULES (applied only to files without a writer stamp, and to user imports):
+ *   L1  decode `code` / `value` / `raw` / `key`  → `rawValue`. The first NON-EMPTY alias wins, so
+ *       an empty `rawValue` written by an old device no longer hides a real `code`. (lossless)
+ *   L2  decode entry with empty raw AND empty label → removed (empty placeholder row; carries no
+ *       information). Reported.
+ *   L3  decode entry with empty raw but a label → the code was lost by an older version
+ *       (incomplete migration / export defect). The label is preserved in
+ *       `column.unmappedDecodeLabels` (not used in SQL) and reported as a warning so the code can
+ *       be restored via "Recover decode codes from source file" or Manual Schema Update.
+ *       Rationale: an empty raw value is NOT a supported NULL mapping in this schema model
+ *       (NULL is handled with IS NULL filters) and inventing a code would corrupt data.
+ *   L4  exact duplicate decode entries (same raw + same label) → de-duplicated. Reported.
+ *   L5  `primary_key` / `foreign_key: {table, column}` / `schema_name` → current properties. (lossless)
+ *   L6  a foreign key whose target table/column is not part of this schema → kept as
+ *       `column.unresolvedReference` (documentation only, not used for JOINs). Reported.
+ *   Anything else (decode that is not a list, conflicting duplicate codes, empty names, broken
+ *   relationships…) is NOT repaired: the schema is rejected with the exact location.
  */
-import type { SchemaModel, TableDef, ColumnDef, RelationshipDef, DecodeEntry, SchemaRegistry, SchemaStatus } from '../../types';
+import type { SchemaModel, SchemaRegistry, TableDef, ColumnDef, DecodeEntry, RelationshipDef, SchemaMigrationInfo } from '../../types';
 
-export const REGISTRY_FORMAT_VERSION = 2;
-export const APP_VERSION = '17.2.0';
+export const APP_VERSION = '17.2.1';
 export const APP_NAME = 'SQL Assistant';
+/** Registry file format. 2 = V17.1+ (stamped). Files without a stamp are "legacy" (V17.0 or older). */
+export const SCHEMA_FORMAT_VERSION = 2;
+export const WRITER_LABEL = `${APP_NAME} ${APP_VERSION}`;
+export const LEGACY_FORMAT_LABEL = 'SQL Assistant V17.0 or older (no writer stamp)';
 
-export type IssueSeverity = 'error' | 'warning';
 export type IssueCode =
-  | 'NOT_OBJECT' | 'TABLES_MISSING' | 'TABLE_NOT_OBJECT' | 'TABLE_NAME_MISSING' | 'TABLE_NAME_CHARS' | 'TABLE_NAME_UNUSUAL' | 'DUPLICATE_TABLE'
-  | 'OBJECT_TYPE_INVALID' | 'COLUMNS_INVALID' | 'NO_COLUMNS' | 'COLUMN_NOT_OBJECT' | 'COLUMN_NAME_MISSING' | 'COLUMN_NAME_CHARS' | 'COLUMN_NAME_UNUSUAL'
-  | 'DUPLICATE_COLUMN' | 'TYPE_MISSING' | 'TYPE_INVALID' | 'BOOLEAN_INVALID' | 'NUMBER_INVALID' | 'NEGATIVE_NUMBER'
-  | 'FK_REFERENCE_MISSING' | 'FK_TABLE_NOT_FOUND' | 'FK_COLUMN_NOT_FOUND' | 'DECODE_INVALID' | 'DECODE_EMPTY_RAW' | 'DECODE_DUPLICATE_RAW' | 'DECODE_EMPTY_LABEL'
-  | 'RELATIONSHIPS_INVALID' | 'RELATIONSHIP_INCOMPLETE' | 'RELATIONSHIP_DANGLING' | 'RELATIONSHIP_DUPLICATE_ID'
-  | 'PK_COMPOSITE' | 'PK_MISSING' | 'DUPLICATE_SCHEMA_ID' | 'SCHEMA_NAME_MISSING';
-export interface SchemaIssue { severity: IssueSeverity; code: IssueCode; path: string; message: string; repairable?: boolean; }
-export type FileProblemCode = 'EMPTY' | 'HTML' | 'LFS_POINTER' | 'MERGE_CONFLICT' | 'INVALID_JSON' | 'NOT_A_REGISTRY' | 'UNSUPPORTED_VERSION';
-export interface FileProblem { code: FileProblemCode; message: string; }
-export interface SchemaReport { index: number; id: string; name: string; valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[]; notes: string[]; schema: SchemaModel | null; allErrorsRepairable: boolean; }
-export interface RegistryReport {
-  fileProblem: FileProblem | null; detectedFormat: string; formatVersion: number | null; writtenBy: string | null; writtenByDevice: string | null;
-  schemas: SchemaReport[]; registryNotes: string[]; activeSchemaId: string | null; activeSchemaUpdatedAt: string | null;
-  validSchemas: SchemaModel[]; invalidSchemas: SchemaReport[];
-}
-/** V17.2 — the synchronisation stage at which a problem was detected (shown in every sync error). */
-export type SyncStage = 'Remote file retrieval failed' | 'Remote file could not be parsed' | 'Schema structure is invalid' | 'Required schema property is missing' | 'Invalid table definition' | 'Invalid column definition' | 'Invalid relationship definition' | 'Duplicate schema object' | 'Schema version is unsupported' | 'Schema normalization failed' | 'Schema persistence failed';
-export function fileProblemStage(code: FileProblemCode): SyncStage { return code === 'UNSUPPORTED_VERSION' ? 'Schema version is unsupported' : code === 'NOT_A_REGISTRY' ? 'Schema structure is invalid' : 'Remote file could not be parsed'; }
-export function stageOf(i: Pick<SchemaIssue, 'code'>): SyncStage {
-  const c = i.code;
-  if (c.startsWith('DUPLICATE_')) return 'Duplicate schema object';
-  if (c === 'TABLES_MISSING' || c === 'NOT_OBJECT' || c === 'SCHEMA_NAME_MISSING') return 'Required schema property is missing';
-  if (c.startsWith('RELATIONSHIP')) return 'Invalid relationship definition';
-  if (c.startsWith('TABLE_') || c === 'OBJECT_TYPE_INVALID' || c === 'COLUMNS_INVALID' || c === 'NO_COLUMNS' || c.startsWith('PK_')) return 'Invalid table definition';
-  return 'Invalid column definition';
+  | 'FILE_NOT_JSON' | 'FILE_EMPTY' | 'FILE_NOT_REGISTRY' | 'FILE_NEWER_FORMAT'
+  | 'SCHEMA_NOT_OBJECT' | 'SCHEMA_NAME_EMPTY' | 'SCHEMA_NO_TABLES' | 'TABLES_NOT_ARRAY'
+  | 'TABLE_NOT_OBJECT' | 'TABLE_NAME_EMPTY' | 'TABLE_DUPLICATE' | 'TABLE_NO_COLUMNS' | 'COLUMNS_NOT_ARRAY'
+  | 'COLUMN_NOT_OBJECT' | 'COLUMN_NAME_EMPTY' | 'COLUMN_DUPLICATE' | 'COLUMN_TYPE_EMPTY' | 'COLUMN_PROPERTY_INVALID'
+  | 'DECODE_NOT_ARRAY' | 'DECODE_ENTRY_INVALID' | 'DECODE_RAW_EMPTY' | 'DECODE_LABEL_EMPTY' | 'DECODE_DUPLICATE'
+  | 'FK_INCOMPLETE' | 'FK_TABLE_NOT_FOUND' | 'FK_COLUMN_NOT_FOUND' | 'PK_MISSING'
+  | 'RELATIONSHIPS_NOT_ARRAY' | 'REL_INVALID' | 'REL_TABLE_NOT_FOUND' | 'REL_COLUMN_NOT_FOUND' | 'REL_DUPLICATE'
+  | 'LEGACY_MIGRATED' | 'LEGACY_UNMAPPED_DECODE' | 'LEGACY_UNRESOLVED_REFERENCE';
+
+export interface SchemaIssue {
+  severity: 'error' | 'warning';
+  code: IssueCode;
+  message: string;
+  /** Exact JSON path, e.g. schemas[2].tables[0].columns[2].decode[0].rawValue */
+  path: string;
+  table?: string;
+  column?: string;
+  property?: string;
 }
 
-// ---------------------------------------------------------------- parsing
-function describeChar(ch: string | undefined): string {
-  if (ch === undefined) return 'end of file';
-  const cp = ch.codePointAt(0)!; const hex = `U+${cp.toString(16).toUpperCase().padStart(4, '0')}`;
-  if (cp < 32) return `control character ${hex}${cp === 9 ? ' (tab)' : cp === 10 ? ' (line feed)' : cp === 13 ? ' (carriage return)' : ''}`;
-  if (cp === 0xfeff) return `byte-order mark ${hex}`;
-  if ([0x200b, 0x200c, 0x200d, 0x2060, 0x00a0].includes(cp)) return `invisible character ${hex}`;
-  if ([0x201c, 0x201d, 0x2018, 0x2019].includes(cp)) return `typographic quote "${ch}" ${hex} (JSON requires straight double quotes)`;
-  return `"${ch}" (${hex})`;
-}
-/** Finds the offset of the first JSON syntax error (V8 does not always report one). Returns -1 when none is found. */
-export function locateJsonError(t: string): number {
-  let i = 0; const n = t.length;
-  const ws = () => { while (i < n && ' \t\n\r'.includes(t[i])) i++; };
-  const fail = (): never => { throw i; };
-  const str = () => { if (t[i] !== '"') fail(); i++; while (i < n) { const c = t[i]; if (c === '"') { i++; return; } if (c === '\\') { i += 2; continue; } if (c.charCodeAt(0) < 32) fail(); i++; } fail(); };
-  const lit = (w: string) => { if (t.startsWith(w, i)) i += w.length; else fail(); };
-  const num = () => { const m = /^-?(0|[1-9]\d*)(\.\d+)?([eE][+-]?\d+)?/.exec(t.slice(i)); if (!m || !m[0]) fail(); i += m![0].length; };
-  const val = (): void => { ws(); const c = t[i]; if (c === '{') { i++; ws(); if (t[i] === '}') { i++; return; } for (;;) { ws(); str(); ws(); if (t[i] !== ':') fail(); i++; val(); ws(); if (t[i] === ',') { i++; continue; } if (t[i] === '}') { i++; return; } fail(); } } if (c === '[') { i++; ws(); if (t[i] === ']') { i++; return; } for (;;) { val(); ws(); if (t[i] === ',') { i++; continue; } if (t[i] === ']') { i++; return; } fail(); } } if (c === '"') return str(); if (c === 't') return lit('true'); if (c === 'f') return lit('false'); if (c === 'n') return lit('null'); if (c === '-' || (c >= '0' && c <= '9')) return num(); fail(); };
-  try { val(); ws(); return i < n ? i : -1; } catch (pos) { return typeof pos === 'number' ? pos : -1; }
-}
-function lineCol(text: string, pos: number): { line: number; col: number } { const before = text.slice(0, pos); const lines = before.split('\n'); return { line: lines.length, col: lines[lines.length - 1].length + 1 }; }
-export interface ParsedText { value?: unknown; problem?: FileProblem; notes: string[]; }
-export function parseRegistryText(textRaw: string): ParsedText {
-  const notes: string[] = [];
-  let text = String(textRaw ?? '');
-  if (text.charCodeAt(0) === 0xfeff) { text = text.slice(1); notes.push('Removed a UTF-8 byte-order mark (BOM) at the start of the file (added by some editors; not valid JSON).'); }
-  const trimmed = text.trim();
-  if (!trimmed) return { notes, problem: { code: 'EMPTY', message: 'The schema file is empty (0 bytes of content). It may have been created but never written, or truncated during an upload.' } };
-  if (/^<(!doctype|html|\?xml|head|body)/i.test(trimmed)) return { notes, problem: { code: 'HTML', message: 'The repository returned an HTML page instead of JSON. This usually means a sign-in page, a proxy/firewall page or a wrong URL/path was received instead of the schema file.' } };
-  if (/^version https:\/\/git-lfs/i.test(trimmed)) return { notes, problem: { code: 'LFS_POINTER', message: 'The schema file is stored with Git LFS, so the repository returned an LFS pointer instead of the file content. Store sql-assistant-data/schemas/registry.json as a normal Git file.' } };
-  const conflictLine = trimmed.split('\n').findIndex((l) => /^(<{7}|={7}|>{7})( |$)/.test(l));
-  if (conflictLine >= 0) return { notes, problem: { code: 'MERGE_CONFLICT', message: `The schema file contains unresolved Git merge-conflict markers (<<<<<<< / ======= / >>>>>>>) at line ${conflictLine + 1}. Resolve the conflict in the repository, or publish a valid copy from a device.` } };
-  try { return { value: JSON.parse(text), notes }; }
-  catch (e) {
-    const msg = (e as Error).message || 'parse error';
-    const posM = msg.match(/position (\d+)/i); const located = posM ? +posM[1] : locateJsonError(text);
-    let where = ''; let hint = '';
-    if (located >= 0 && located < text.length) {
-      const pos = located; const { line, col } = lineCol(text, pos); const ch = text[pos];
-      const snippet = text.slice(Math.max(0, pos - 30), pos + 30).replace(/\n/g, '⏎').replace(/[\u0000-\u001f]/g, '·');
-      where = ` at line ${line}, column ${col} (unexpected ${describeChar(ch)}; near "${snippet}")`;
-      const prev = text.slice(0, pos).replace(/\s+$/, '').slice(-1);
-      if ((ch === '}' || ch === ']') && prev === ',') hint = ' A trailing comma before a closing bracket is not allowed in JSON.';
-      else if (ch === "'") hint = ' JSON strings must use double quotes, not single quotes.';
-      else if (ch && ch.charCodeAt(0) < 32) hint = ' A line break or control character appears inside a string; it must be escaped (\\n, \\t).';
-      else if (/[\u201c\u201d\u2018\u2019]/.test(ch || '')) hint = ' The file was probably edited in a word processor that replaced quotes.';
-    } else if (/unexpected end/i.test(msg) || located >= text.length) { where = ' (the file ends before the JSON is complete — it was probably truncated or only partially written)'; }
-    if (/\bNaN\b|\bInfinity\b|\bundefined\b/.test(text) && !hint) hint = ' NaN, Infinity and undefined are not valid JSON values.';
-    return { notes, problem: { code: 'INVALID_JSON', message: `The schema file is not valid JSON${where}.${hint}` } };
-  }
+export interface MigrationNote { rule: 'L1' | 'L2' | 'L3' | 'L4' | 'L5' | 'L6'; path: string; message: string; warning?: boolean; }
+
+export function describeIssue(i: SchemaIssue): string {
+  const where = i.table ? ` [${i.table}${i.column ? `.${i.column}` : ''}]` : '';
+  return `${i.message}${where} (at ${i.path})`;
 }
 
-// ---------------------------------------------------------------- normalisation (lossless only)
+// ───────────────────────────── helpers ─────────────────────────────
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
-const pick = (o: Record<string, unknown>, keys: string[]): { key: string; value: unknown } | null => { for (const k of keys) if (k in o && o[k] !== undefined) return { key: k, value: o[k] }; return null; };
-class Notes { private counts = new Map<string, number>(); add(msg: string): void { this.counts.set(msg, (this.counts.get(msg) || 0) + 1); } list(): string[] { return Array.from(this.counts.entries()).map(([m, n]) => (n > 1 ? `${m} (${n}×)` : m)); } }
-function toBool(v: unknown, def: boolean, path: string, field: string, issues: SchemaIssue[], notes: Notes): boolean {
-  if (v === undefined || v === null) return def;
-  if (typeof v === 'boolean') return v;
-  const s = String(v).trim().toUpperCase();
-  if (['Y', 'YES', 'TRUE', '1', 'T'].includes(s)) { notes.add(`Converted text/number flag "${v}" to true for "${field}"`); return true; }
-  if (['N', 'NO', 'FALSE', '0', 'F', ''].includes(s)) { notes.add(`Converted text/number flag "${v}" to false for "${field}"`); return false; }
-  issues.push({ severity: 'error', code: 'BOOLEAN_INVALID', path, message: `"${field}" must be true or false, but the file contains ${JSON.stringify(v)}.` });
-  return def;
+const str = (v: unknown): string => (typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : '');
+const trimStr = (v: unknown): string => str(v).trim();
+function firstPresent(o: Record<string, unknown>, keys: string[]): unknown { for (const k of keys) if (k in o && o[k] !== undefined && o[k] !== null) return o[k]; return undefined; }
+/** First alias whose value is a non-empty string/number — the L1 fix. */
+function firstNonEmpty(o: Record<string, unknown>, keys: string[]): { key: string | null; value: string } {
+  for (const k of keys) { const v = trimStr(o[k]); if (v) return { key: k, value: v }; }
+  return { key: null, value: '' };
 }
-function toOptNumber(v: unknown, path: string, field: string, issues: SchemaIssue[], notes: Notes): number | undefined {
-  if (v === undefined || v === null || v === '') return undefined;
-  if (typeof v === 'number' && Number.isFinite(v)) return v;
-  if (typeof v === 'string' && /^\s*-?\d+(\.\d+)?\s*$/.test(v)) { notes.add(`Converted numeric text to a number for "${field}"`); return Number(v); }
-  issues.push({ severity: 'error', code: 'NUMBER_INVALID', path, message: `"${field}" must be a number, but the file contains ${JSON.stringify(v)}.` });
-  return undefined;
+function bool(v: unknown, fallback = false): boolean { if (typeof v === 'boolean') return v; if (v === 1 || v === '1' || v === 'true' || v === 'Y' || v === 'y' || v === 'yes') return true; if (v === 0 || v === '0' || v === 'false' || v === 'N' || v === 'n' || v === 'no') return false; return fallback; }
+function num(v: unknown): number | undefined { if (typeof v === 'number' && Number.isFinite(v)) return v; if (typeof v === 'string' && /^\d+$/.test(v.trim())) return parseInt(v, 10); return undefined; }
+const U = (s: string) => s.trim().toUpperCase();
+function slug(s: string): string { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'schema'; }
+
+// ───────────────────────────── format detection ─────────────────────────────
+export interface WriterInfo { stamped: boolean; formatVersion: number | null; writtenBy: string | null; legacy: boolean; label: string; }
+export function detectWriter(reg: unknown): WriterInfo {
+  const o = isObj(reg) ? reg : {};
+  const writtenBy = trimStr(o.writtenBy) || null;
+  const fv = typeof o.formatVersion === 'number' ? o.formatVersion : null;
+  const stamped = !!writtenBy || fv !== null;
+  return { stamped, formatVersion: fv, writtenBy, legacy: !stamped, label: stamped ? (writtenBy || `format ${fv}`) : LEGACY_FORMAT_LABEL };
 }
-function toText(v: unknown): string { return v === undefined || v === null ? '' : typeof v === 'string' ? v : typeof v === 'number' || typeof v === 'boolean' ? String(v) : ''; }
-function normalizeDecode(v: unknown, path: string, issues: SchemaIssue[], notes: Notes): DecodeEntry[] | undefined {
-  if (v === undefined || v === null || v === '') return undefined;
+
+// ───────────────────────────── normalization (+ legacy migration) ─────────────────────────────
+interface NormCtx { legacy: boolean; issues: SchemaIssue[]; notes: MigrationNote[]; basePath: string; }
+
+function normalizeDecode(raw: unknown, path: string, table: string, column: string, c: NormCtx): { decode?: DecodeEntry[]; unmapped: string[] } {
+  const unmapped: string[] = [];
+  if (raw === undefined || raw === null) return { unmapped };
   let list: unknown[];
-  if (Array.isArray(v)) list = v;
-  else if (typeof v === 'string') { notes.add('Converted decode text ("RAW=Label; …") to a decode list'); list = v.split(/[\n;]+/).map((s) => s.trim()).filter(Boolean).map((line) => { const i = line.indexOf('='); return i < 0 ? { rawValue: line, label: line } : { rawValue: line.slice(0, i).trim(), label: line.slice(i + 1).trim() }; }); }
-  else if (isObj(v)) { notes.add('Converted decode map {RAW: Label} to a decode list'); list = Object.entries(v).map(([k, l]) => ({ rawValue: k, label: l })); }
-  else { issues.push({ severity: 'error', code: 'DECODE_INVALID', path, message: `"decode" must be a list of {rawValue, label} entries, but the file contains ${typeof v}.` }); return undefined; }
-  return list.map((d, i) => {
-    if (!isObj(d)) { issues.push({ severity: 'error', code: 'DECODE_INVALID', path: `${path}[${i}]`, message: `Decode entry #${i + 1} is not an object (found ${JSON.stringify(d)}).` }); return { rawValue: '', label: '' }; }
-    const raw = pick(d, ['rawValue', 'raw', 'value', 'code', 'key']); const lab = pick(d, ['label', 'text', 'description', 'meaning', 'name']);
-    if (raw && raw.key !== 'rawValue') notes.add(`Renamed decode property "${raw.key}" to "rawValue"`);
-    if (lab && lab.key !== 'label') notes.add(`Renamed decode property "${lab.key}" to "label"`);
-    if (raw && typeof raw.value === 'number') notes.add('Converted numeric decode raw value to text');
-    return { rawValue: toText(raw?.value).trim(), label: toText(lab?.value).trim() };
+  if (Array.isArray(raw)) list = raw;
+  else if (isObj(raw)) { list = Object.entries(raw).map(([k, v]) => ({ rawValue: k, label: str(v) })); c.notes.push({ rule: 'L1', path, message: `${table}.${column}: decode map object converted to a decode list.` }); }
+  else { c.issues.push({ severity: 'error', code: 'DECODE_NOT_ARRAY', message: `Invalid column definition: Column "${table}.${column}" has a decode value that is not a list (found ${typeof raw}).`, path, table, column, property: 'decode' }); return { unmapped }; }
+  const out: DecodeEntry[] = []; const seenPair = new Set<string>();
+  list.forEach((e, i) => {
+    const p = `${path}[${i}]`;
+    if (!isObj(e)) { c.issues.push({ severity: 'error', code: 'DECODE_ENTRY_INVALID', message: `Invalid column definition: Column "${table}.${column}" has a decode entry (#${i + 1}) that is not an object.`, path: p, table, column, property: 'decode' }); return; }
+    const rawPick = firstNonEmpty(e, ['rawValue', 'raw', 'value', 'code', 'key', 'id']);
+    const label = trimStr(firstPresent(e, ['label', 'description', 'name', 'text', 'meaning']));
+    if (rawPick.key && rawPick.key !== 'rawValue') c.notes.push({ rule: 'L1', path: `${p}.${rawPick.key}`, message: `${table}.${column} decode #${i + 1}: raw value read from legacy "${rawPick.key}".` });
+    if (!rawPick.value) {
+      if (c.legacy && !label) { c.notes.push({ rule: 'L2', path: p, message: `${table}.${column} decode #${i + 1}: empty placeholder entry removed.` }); return; }
+      if (c.legacy && label) { unmapped.push(label); c.notes.push({ rule: 'L3', path: p, warning: true, message: `${table}.${column} decode #${i + 1}: label "${label}" has no raw code (lost by an older version) — preserved as an unmapped label.` }); return; }
+      out.push({ rawValue: '', label }); // current-format file: kept so the strict validator reports it
+      return;
+    }
+    const key = `${rawPick.value}\u0000${label}`;
+    if (c.legacy && seenPair.has(key)) { c.notes.push({ rule: 'L4', path: p, message: `${table}.${column} decode #${i + 1}: exact duplicate removed.` }); return; }
+    seenPair.add(key); out.push({ rawValue: rawPick.value, label });
   });
+  return { decode: out.length ? out : undefined, unmapped };
 }
-function normalizeReferences(c: Record<string, unknown>, notes: Notes): { table: string; column: string } | undefined {
-  const r = c.references;
-  if (isObj(r)) { const t = pick(r, ['table', 'tableName', 'refTable']); const col = pick(r, ['column', 'columnName', 'refColumn']); if (t?.key !== 'table' || col?.key !== 'column') { if (t || col) notes.add('Renamed reference properties to {table, column}'); } return { table: toText(t?.value).trim(), column: toText(col?.value).trim() }; }
-  if (typeof r === 'string' && r.trim()) { const i = r.lastIndexOf('.'); notes.add('Converted reference text "TABLE.COLUMN" to {table, column}'); return i > 0 ? { table: r.slice(0, i).trim(), column: r.slice(i + 1).trim() } : { table: r.trim(), column: '' }; }
-  const ft = pick(c, ['fkTable', 'referencesTable', 'refTable']); const fc = pick(c, ['fkColumn', 'referencesColumn', 'refColumn']);
-  if (ft || fc) { notes.add('Converted fkTable/fkColumn properties to "references"'); return { table: toText(ft?.value).trim(), column: toText(fc?.value).trim() }; }
-  return undefined;
-}
-const KNOWN_COLUMN_KEYS = new Set(['name', 'label', 'type', 'length', 'precision', 'nullable', 'alias', 'isPrimaryKey', 'isForeignKey', 'references', 'decode', 'description']);
-function normalizeColumn(raw: unknown, path: string, issues: SchemaIssue[], notes: Notes): ColumnDef | null {
-  if (!isObj(raw)) { issues.push({ severity: 'error', code: 'COLUMN_NOT_OBJECT', path, message: `This column entry is not an object (found ${raw === null ? 'null' : typeof raw}).` }); return null; }
-  const name = pick(raw, ['name', 'columnName', 'column_name', 'COLUMN_NAME']); const type = pick(raw, ['type', 'dataType', 'data_type', 'datatype', 'DATA_TYPE']);
-  if (name && name.key !== 'name') notes.add(`Renamed column property "${name.key}" to "name"`);
-  if (type && type.key !== 'type') notes.add(`Renamed column property "${type.key}" to "type" (pre-V16 format)`);
-  const nameStr = toText(name?.value); const nameTrim = nameStr.trim(); if (nameStr !== nameTrim) notes.add('Removed leading/trailing spaces from a column name');
-  const typeStr = toText(type?.value).trim();
-  const desc = pick(raw, ['description', 'columnDescription', 'comment']); if (desc && desc.key !== 'description') notes.add(`Renamed column property "${desc.key}" to "description"`);
-  const label = toText(raw.label).trim(); if (!label && nameTrim) notes.add('Added a missing column label (copied from the column name)');
-  const nullable = pick(raw, ['nullable', 'isNullable', 'NULLABLE']);
-  const isPk = pick(raw, ['isPrimaryKey', 'primaryKey', 'pk', 'PK']); const isFk = pick(raw, ['isForeignKey', 'foreignKey', 'fk', 'FK']);
-  const refs = normalizeReferences(raw, notes);
+
+function normalizeColumn(raw: unknown, path: string, table: string, c: NormCtx): ColumnDef | null {
+  if (!isObj(raw)) { c.issues.push({ severity: 'error', code: 'COLUMN_NOT_OBJECT', message: `Invalid column definition in table "${table}": entry is not an object.`, path, table }); return null; }
+  const name = trimStr(firstPresent(raw, ['name', 'columnName', 'column_name', 'COLUMN_NAME']));
+  const fkObj = isObj(raw.foreign_key) ? raw.foreign_key : isObj(raw.foreignKey) ? raw.foreignKey : null;
+  if (fkObj || 'primary_key' in raw || 'schema_name' in raw) c.notes.push({ rule: 'L5', path, message: `${table}.${name || '?'}: legacy key names mapped to the current format.` });
+  const refsRaw = isObj(raw.references) ? raw.references : fkObj;
+  const refTable = trimStr(refsRaw ? firstPresent(refsRaw, ['table', 'toTable', 'fkTable']) : firstPresent(raw, ['fkTable', 'refTable']));
+  const refCol = trimStr(refsRaw ? firstPresent(refsRaw, ['column', 'toColumn', 'fkColumn']) : firstPresent(raw, ['fkColumn', 'refColumn']));
+  const isFk = bool(firstPresent(raw, ['isForeignKey', 'fk', 'FK']), false) || (raw.foreignKey === true) || !!fkObj || (!!refTable && !!refCol && 'fkTable' in raw);
+  const { decode, unmapped } = normalizeDecode(raw.decode ?? raw.decodes ?? raw.values, `${path}.decode`, table, name || '?', c);
   const col: ColumnDef = {
-    ...Object.fromEntries(Object.entries(raw).filter(([k]) => KNOWN_COLUMN_KEYS.has(k))),
-    name: nameTrim, label: label || nameTrim, type: typeStr, description: toText(desc?.value),
-    nullable: toBool(nullable?.value, true, `${path}.nullable`, 'nullable', issues, notes)
-  } as ColumnDef;
-  if (!nullable) notes.add('Set a missing "nullable" flag to true');
-  // Key flags are only written when present in the source, so normalisation never changes current-format data.
-  if (isPk) col.isPrimaryKey = toBool(isPk.value, false, `${path}.isPrimaryKey`, 'isPrimaryKey', issues, notes); else delete col.isPrimaryKey;
-  if (isFk) col.isForeignKey = toBool(isFk.value, false, `${path}.isForeignKey`, 'isForeignKey', issues, notes); else delete col.isForeignKey;
-  if (refs) col.references = refs; else delete col.references;
-  const len = toOptNumber(raw.length, `${path}.length`, 'length', issues, notes); if (len === undefined) delete col.length; else col.length = len;
-  const prec = toOptNumber(raw.precision, `${path}.precision`, 'precision', issues, notes); if (prec === undefined) delete col.precision; else col.precision = prec;
-  const alias = toText(raw.alias).trim(); if (alias) col.alias = alias; else delete col.alias;
-  const dec = normalizeDecode(raw.decode, `${path}.decode`, issues, notes); if (dec && dec.length) col.decode = dec; else delete col.decode;
-  if (raw.description === null) notes.add('Replaced a null column description with an empty text');
+    name,
+    label: trimStr(raw.label) || name,
+    type: trimStr(firstPresent(raw, ['type', 'dataType', 'data_type', 'DATA_TYPE'])),
+    nullable: bool(raw.nullable, true),
+    description: str(firstPresent(raw, ['description', 'comment', 'comments'])),
+    isPrimaryKey: bool(firstPresent(raw, ['isPrimaryKey', 'primaryKey', 'primary_key', 'pk', 'PK']), false)
+  };
+  const len = num(raw.length); if (len !== undefined) col.length = len;
+  const prec = num(raw.precision); if (prec !== undefined) col.precision = prec;
+  const alias = trimStr(raw.alias); if (alias) col.alias = alias;
+  if (isFk) { col.isForeignKey = true; if (refTable || refCol) col.references = { table: refTable, column: refCol }; }
+  if (decode) col.decode = decode;
+  const prevUnmapped = Array.isArray(raw.unmappedDecodeLabels) ? raw.unmappedDecodeLabels.map(trimStr).filter(Boolean) : [];
+  if (raw.unmappedDecodeLabels !== undefined && !Array.isArray(raw.unmappedDecodeLabels)) c.issues.push({ severity: 'error', code: 'COLUMN_PROPERTY_INVALID', message: `Invalid column definition: Column "${table}.${name}" has "unmappedDecodeLabels" that is not a list.`, path: `${path}.unmappedDecodeLabels`, table, column: name, property: 'unmappedDecodeLabels' });
+  const allUnmapped = Array.from(new Set([...prevUnmapped, ...unmapped]));
+  if (allUnmapped.length) col.unmappedDecodeLabels = allUnmapped;
+  if (isObj(raw.unresolvedReference)) col.unresolvedReference = { table: trimStr(raw.unresolvedReference.table), column: trimStr(raw.unresolvedReference.column) };
   return col;
 }
-function normalizeTable(raw: unknown, path: string, issues: SchemaIssue[], notes: Notes): TableDef | null {
-  if (!isObj(raw)) { issues.push({ severity: 'error', code: 'TABLE_NOT_OBJECT', path, message: `This table entry is not an object (found ${raw === null ? 'null' : typeof raw}).` }); return null; }
-  const name = pick(raw, ['name', 'tableName', 'table_name', 'TABLE_NAME']); if (name && name.key !== 'name') notes.add(`Renamed table property "${name.key}" to "name"`);
-  const nameStr = toText(name?.value); const nameTrim = nameStr.trim(); if (nameStr !== nameTrim) notes.add('Removed leading/trailing spaces from a table name');
-  const moduleStr = toText(raw.module).trim(); if (!moduleStr) notes.add('Set a missing table module to "General"');
-  let objectType: TableDef['objectType'];
-  if (raw.objectType !== undefined && raw.objectType !== null && raw.objectType !== '') {
-    const ot = String(raw.objectType).trim().toUpperCase();
-    if (ot === 'TABLE' || ot === 'VIEW') { objectType = ot; if (raw.objectType !== ot) notes.add('Normalised objectType to upper case'); }
-    else issues.push({ severity: 'error', code: 'OBJECT_TYPE_INVALID', path: `${path}.objectType`, message: `Table "${nameTrim}" has objectType ${JSON.stringify(raw.objectType)}; only "TABLE" or "VIEW" is supported.` });
-  }
-  let colsRaw: unknown[] = [];
-  if (Array.isArray(raw.columns)) colsRaw = raw.columns;
-  else if (isObj(raw.columns)) { notes.add('Converted a column map {NAME: {...}} to a column list'); colsRaw = Object.entries(raw.columns).map(([k, v]) => (isObj(v) && !('name' in v) ? { name: k, ...v } : v)); }
-  else if (raw.columns === undefined || raw.columns === null) notes.add('Added a missing (empty) column list to a table');
-  else issues.push({ severity: 'error', code: 'COLUMNS_INVALID', path: `${path}.columns`, message: `Table "${nameTrim}" has "columns" of type ${typeof raw.columns}; it must be a list.` });
-  const columns = colsRaw.map((c, i) => normalizeColumn(c, `${path}.columns[${i}]`, issues, notes)).filter((c): c is ColumnDef => !!c);
-  const t: TableDef = { name: nameTrim, module: moduleStr || 'General', description: toText(raw.description), columns };
-  if (objectType) t.objectType = objectType;
+
+function normalizeTable(raw: unknown, path: string, c: NormCtx): TableDef | null {
+  if (!isObj(raw)) { c.issues.push({ severity: 'error', code: 'TABLE_NOT_OBJECT', message: 'Invalid table definition: entry is not an object.', path }); return null; }
+  const name = trimStr(firstPresent(raw, ['name', 'tableName', 'table_name', 'TABLE_NAME']));
+  const colsRaw = firstPresent(raw, ['columns', 'cols', 'fields']);
+  const columns: ColumnDef[] = [];
+  if (colsRaw !== undefined && !Array.isArray(colsRaw)) c.issues.push({ severity: 'error', code: 'COLUMNS_NOT_ARRAY', message: `Invalid table definition: "${name}" has columns that are not a list.`, path: `${path}.columns`, table: name, property: 'columns' });
+  else (colsRaw as unknown[] || []).forEach((col, i) => { const n = normalizeColumn(col, `${path}.columns[${i}]`, name || '?', c); if (n) columns.push(n); });
+  const t: TableDef = { name, module: trimStr(raw.module) || 'General', description: str(firstPresent(raw, ['description', 'notes', 'comment'])), columns };
+  const ot = trimStr(raw.objectType).toUpperCase(); if (ot === 'VIEW' || ot === 'TABLE') t.objectType = ot;
   return t;
 }
-function normalizeRelationship(raw: unknown, path: string, index: number, issues: SchemaIssue[], notes: Notes): RelationshipDef | null {
-  if (!isObj(raw)) { issues.push({ severity: 'error', code: 'RELATIONSHIP_INCOMPLETE', path, message: `Relationship #${index + 1} is not an object.` }); return null; }
-  let ft = toText(raw.fromTable).trim(), fc = toText(raw.fromColumn).trim(), tt = toText(raw.toTable).trim(), tc = toText(raw.toColumn).trim();
-  if ((!ft || !fc) && typeof raw.from === 'string' && raw.from.includes('.')) { const i = raw.from.lastIndexOf('.'); ft = raw.from.slice(0, i).trim(); fc = raw.from.slice(i + 1).trim(); notes.add('Converted relationship "from"/"to" text to fromTable/fromColumn/toTable/toColumn'); }
-  if ((!tt || !tc) && typeof raw.to === 'string' && raw.to.includes('.')) { const i = raw.to.lastIndexOf('.'); tt = raw.to.slice(0, i).trim(); tc = raw.to.slice(i + 1).trim(); }
-  let id = toText(raw.id).trim(); if (!id) { id = `rel-${index + 1}-${ft}.${fc}-${tt}.${tc}`; notes.add('Generated a missing relationship id'); }
-  const kinds = ['one-to-many', 'many-to-one', 'one-to-one'];
-  let kind = toText(raw.kind).trim().toLowerCase(); if (!kinds.includes(kind)) { if (kind) notes.add(`Relationship kind "${raw.kind}" is not recognised; treated as many-to-one`); else notes.add('Set a missing relationship kind to many-to-one'); kind = 'many-to-one'; }
-  return { id, fromTable: ft, fromColumn: fc, toTable: tt, toColumn: tc, kind: kind as RelationshipDef['kind'] };
-}
-function slug(s: string): string { return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'schema'; }
-const KNOWN_SCHEMA_KEYS = new Set(['id', 'name', 'version', 'status', 'updatedAt', 'lastSyncedAt', 'tables', 'relationships', 'versionMeta', 'originalFileName']);
-export interface NormalizedSchema { schema: SchemaModel | null; issues: SchemaIssue[]; notes: string[]; }
-export function normalizeSchema(raw: unknown, index = 0, pathPrefix = ''): NormalizedSchema {
-  const issues: SchemaIssue[] = []; const notes = new Notes(); const p = pathPrefix;
-  if (!isObj(raw)) return { schema: null, notes: [], issues: [{ severity: 'error', code: 'NOT_OBJECT', path: p || '$', message: `The schema entry is not an object (found ${raw === null ? 'null' : Array.isArray(raw) ? 'a list' : typeof raw}).` }] };
-  let name = toText(raw.name).trim();
-  let id = toText(raw.id).trim();
-  if (!id) { id = `schema-${slug(name || `imported-${index + 1}`)}`; notes.add(`Generated a missing schema id ("${id}")`); }
-  if (!name) { name = id; issues.push({ severity: 'warning', code: 'SCHEMA_NAME_MISSING', path: `${p}.name`, message: `The schema has no name; "${id}" is used as its name.` }); }
-  let status = toText(raw.status).trim().toLowerCase() as SchemaStatus; if (!['active', 'default', 'inactive'].includes(status)) { if (raw.status !== undefined) notes.add(`Schema status "${raw.status}" is not recognised; treated as inactive`); status = 'inactive'; }
-  let updatedAt = toText(raw.updatedAt); if (!updatedAt || Number.isNaN(Date.parse(updatedAt))) { if (raw.updatedAt !== undefined) notes.add('Replaced an invalid "updatedAt" timestamp'); updatedAt = '1970-01-01T00:00:00.000Z'; }
-  let tablesRaw: unknown[] = [];
-  const tablesVal = raw.tables;
-  if (Array.isArray(tablesVal)) tablesRaw = tablesVal;
-  else if (isObj(tablesVal)) { notes.add('Converted a table map {NAME: {...}} to a table list'); tablesRaw = Object.entries(tablesVal).map(([k, v]) => (isObj(v) && !('name' in v) ? { name: k, ...v } : v)); }
-  else issues.push({ severity: 'error', code: 'TABLES_MISSING', path: `${p}.tables`, message: tablesVal === undefined ? 'The schema has no "tables" list.' : `The schema's "tables" must be a list, but the file contains ${tablesVal === null ? 'null' : typeof tablesVal}.` });
-  const tables = tablesRaw.map((t, i) => normalizeTable(t, `${p}.tables[${i}]`, issues, notes)).filter((t): t is TableDef => !!t);
-  let relationships: RelationshipDef[] = [];
-  if (Array.isArray(raw.relationships)) relationships = raw.relationships.map((r, i) => normalizeRelationship(r, `${p}.relationships[${i}]`, i, issues, notes)).filter((r): r is RelationshipDef => !!r);
-  else if (raw.relationships === undefined || raw.relationships === null) { if (raw.relationships === null || tablesRaw.length) notes.add('Added a missing (empty) relationship list'); }
-  else issues.push({ severity: 'error', code: 'RELATIONSHIPS_INVALID', path: `${p}.relationships`, message: `"relationships" must be a list, but the file contains ${typeof raw.relationships}.` });
-  const schema: SchemaModel = {
-    ...(Object.fromEntries(Object.entries(raw).filter(([k]) => !KNOWN_SCHEMA_KEYS.has(k))) as object),
-    id, name, version: toText(raw.version).trim() || '1.0', status, updatedAt,
-    lastSyncedAt: typeof raw.lastSyncedAt === 'string' && raw.lastSyncedAt ? raw.lastSyncedAt : null,
-    tables, relationships
-  } as SchemaModel;
-  if (isObj(raw.versionMeta) && typeof raw.versionMeta.version === 'string') schema.versionMeta = raw.versionMeta as unknown as SchemaModel['versionMeta'];
-  if (typeof raw.originalFileName === 'string' && raw.originalFileName) schema.originalFileName = raw.originalFileName;
-  return { schema, issues, notes: notes.list() };
+
+function normalizeRelationships(raw: unknown, path: string, c: NormCtx): RelationshipDef[] {
+  if (raw === undefined || raw === null) return [];
+  if (!Array.isArray(raw)) { c.issues.push({ severity: 'error', code: 'RELATIONSHIPS_NOT_ARRAY', message: 'Invalid schema: "relationships" is not a list.', path, property: 'relationships' }); return []; }
+  const out: RelationshipDef[] = [];
+  raw.forEach((r, i) => {
+    if (!isObj(r)) { c.issues.push({ severity: 'error', code: 'REL_INVALID', message: `Invalid relationship #${i + 1}: not an object.`, path: `${path}[${i}]` }); return; }
+    const kind = trimStr(r.kind);
+    out.push({ id: trimStr(r.id) || `rel-${i + 1}`, fromTable: trimStr(r.fromTable), fromColumn: trimStr(r.fromColumn), toTable: trimStr(r.toTable), toColumn: trimStr(r.toColumn), kind: (['one-to-many', 'many-to-one', 'one-to-one'].includes(kind) ? kind : 'many-to-one') as RelationshipDef['kind'] });
+  });
+  return out;
 }
 
-// ---------------------------------------------------------------- validation (single rule set)
-const BAD_CHARS = /[\u0000-\u001f\u007f\u200b-\u200d\u2060\ufeff]/;
-const PLAIN_IDENT = /^[A-Za-z_][A-Za-z0-9_$#]*(\.[A-Za-z_][A-Za-z0-9_$#]*)?$/;
-const U = (s: string | undefined) => String(s ?? '').trim().toUpperCase();
-function loc(ti: number, t: string, ci?: number, c?: string): string { return `tables[${ti}] (${t || '?'})${ci !== undefined ? `.columns[${ci}] (${c || '?'})` : ''}`; }
-export function validateSchemaModel(schema: Pick<SchemaModel, 'tables' | 'relationships'>, pathPrefix = ''): { valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[] } {
-  const issues: SchemaIssue[] = []; const P = (s: string) => (pathPrefix ? `${pathPrefix}.${s}` : s);
-  const tables = Array.isArray(schema.tables) ? schema.tables : [];
-  const byName = new Map<string, TableDef>(); const seenTables = new Map<string, number>();
-  tables.forEach((t, ti) => {
-    const tn = String(t?.name ?? '').trim();
-    if (!tn) { issues.push({ severity: 'error', code: 'TABLE_NAME_MISSING', path: P(loc(ti, tn)), message: `Table #${ti + 1} has no name.` }); return; }
-    if (BAD_CHARS.test(tn)) issues.push({ severity: 'error', code: 'TABLE_NAME_CHARS', path: P(`${loc(ti, tn)}.name`), message: `Table name "${tn.replace(BAD_CHARS, '·')}" contains a control or invisible character (${describeChar(tn.match(BAD_CHARS)![0])}).` });
-    else if (!PLAIN_IDENT.test(tn)) issues.push({ severity: 'warning', code: 'TABLE_NAME_UNUSUAL', path: P(`${loc(ti, tn)}.name`), message: `Table name "${tn}" is not a plain SQL identifier; it will be used verbatim in generated SQL.` });
-    if (seenTables.has(U(tn))) issues.push({ severity: 'error', code: 'DUPLICATE_TABLE', path: P(loc(ti, tn)), message: `Table "${tn}" is defined more than once (also at tables[${seenTables.get(U(tn))}]). Table names must be unique.` });
-    else { seenTables.set(U(tn), ti); byName.set(U(tn), t); }
-  });
-  tables.forEach((t, ti) => {
-    const tn = String(t?.name ?? '').trim(); if (!tn) return;
-    const cols = Array.isArray(t.columns) ? t.columns : [];
-    if (!cols.length) issues.push({ severity: 'warning', code: 'NO_COLUMNS', path: P(loc(ti, tn)), message: `Table "${tn}" has no columns defined.` });
-    const seen = new Map<string, number>(); let pk = 0;
-    cols.forEach((c, ci) => {
-      const cn = String(c?.name ?? '').trim(); const L = P(loc(ti, tn, ci, cn));
-      if (!cn) { issues.push({ severity: 'error', code: 'COLUMN_NAME_MISSING', path: L, message: `Table "${tn}" has a column (#${ci + 1}) with no name.` }); return; }
-      if (BAD_CHARS.test(cn)) issues.push({ severity: 'error', code: 'COLUMN_NAME_CHARS', path: `${L}.name`, message: `Column "${tn}.${cn.replace(BAD_CHARS, '·')}" contains a control or invisible character (${describeChar(cn.match(BAD_CHARS)![0])}).` });
-      else if (!PLAIN_IDENT.test(cn)) issues.push({ severity: 'warning', code: 'COLUMN_NAME_UNUSUAL', path: `${L}.name`, message: `Column name "${tn}.${cn}" is not a plain SQL identifier; it will be used verbatim in generated SQL.` });
-      if (seen.has(U(cn))) issues.push({ severity: 'error', code: 'DUPLICATE_COLUMN', path: L, message: `Duplicate column "${tn}.${cn}" (also at columns[${seen.get(U(cn))}]) — each table/column combination must be unique.`, repairable: JSON.stringify(cols[seen.get(U(cn))!]) === JSON.stringify(c) });
-      else seen.set(U(cn), ci);
-      const type = String(c?.type ?? '').trim();
-      if (!type) issues.push({ severity: 'error', code: 'TYPE_MISSING', path: `${L}.type`, message: `Column "${tn}.${cn}" is missing a Data Type.` });
-      else if (BAD_CHARS.test(type) || type.length > 80) issues.push({ severity: 'error', code: 'TYPE_INVALID', path: `${L}.type`, message: `Column "${tn}.${cn}" has an invalid Data Type ${JSON.stringify(type.slice(0, 40))}.` });
-      (['length', 'precision'] as const).forEach((f) => { const v = (c as ColumnDef)[f]; if (v !== undefined && v !== null) { if (typeof v !== 'number' || !Number.isFinite(v)) issues.push({ severity: 'error', code: 'NUMBER_INVALID', path: `${L}.${f}`, message: `Column "${tn}.${cn}" has a non-numeric ${f} ${JSON.stringify(v)}.` }); else if (v < 0) issues.push({ severity: 'error', code: 'NEGATIVE_NUMBER', path: `${L}.${f}`, message: `Column "${tn}.${cn}" has a negative ${f === 'length' ? 'Length' : 'Precision'}.` }); } });
-      if (c.isPrimaryKey) pk += 1;
-      if (c.isForeignKey) {
-        const rt = String(c.references?.table ?? '').trim(); const rc = String(c.references?.column ?? '').trim();
-        if (!rt || !rc) issues.push({ severity: 'error', code: 'FK_REFERENCE_MISSING', path: `${L}.references`, message: `Column "${tn}.${cn}" is marked as a Foreign Key but has no reference table/column.`, repairable: true });
-        else if (!byName.has(U(rt))) issues.push({ severity: 'error', code: 'FK_TABLE_NOT_FOUND', path: `${L}.references`, message: `Column "${tn}.${cn}" is a foreign key to "${rt}.${rc}", but table "${rt}" does not exist in this schema (it was probably deleted or renamed).`, repairable: true });
-        else if (!byName.get(U(rt))!.columns?.some((x) => U(x?.name) === U(rc))) issues.push({ severity: 'error', code: 'FK_COLUMN_NOT_FOUND', path: `${L}.references`, message: `Column "${tn}.${cn}" is a foreign key to "${rt}.${rc}", but column "${rc}" does not exist in table "${rt}" (it was probably deleted or renamed).`, repairable: true });
+/** L6 — legacy FK targets outside this schema become documentation-only references. */
+function repairLegacyReferences(schema: SchemaModel, basePath: string, c: NormCtx): void {
+  const tables = new Map(schema.tables.map((t) => [U(t.name), t] as [string, TableDef]));
+  schema.tables.forEach((t, ti) => t.columns.forEach((col, ci) => {
+    if (!col.isForeignKey || !col.references?.table || !col.references.column) return;
+    const target = tables.get(U(col.references.table));
+    const ok = !!target && target.columns.some((x) => U(x.name) === U(col.references!.column));
+    if (ok) return;
+    col.unresolvedReference = { ...col.references };
+    delete col.isForeignKey; delete col.references;
+    c.notes.push({ rule: 'L6', warning: true, path: `${basePath}.tables[${ti}].columns[${ci}].foreign_key`, message: `${t.name}.${col.name}: reference to ${col.unresolvedReference.table}.${col.unresolvedReference.column} is outside this schema — kept as documentation (not used for joins).` });
+  }));
+}
+
+export interface NormalizeResult { schema: SchemaModel | null; issues: SchemaIssue[]; notes: MigrationNote[]; }
+export interface NormalizeOptions { index?: number; legacy?: boolean; basePath?: string; }
+
+export function normalizeSchema(raw: unknown, opts: NormalizeOptions | number = {}): NormalizeResult {
+  const o: NormalizeOptions = typeof opts === 'number' ? { index: opts } : opts;
+  const basePath = o.basePath ?? (o.index !== undefined ? `schemas[${o.index}]` : 'schema');
+  const c: NormCtx = { legacy: !!o.legacy, issues: [], notes: [], basePath };
+  if (!isObj(raw)) { c.issues.push({ severity: 'error', code: 'SCHEMA_NOT_OBJECT', message: 'Invalid schema: entry is not an object.', path: basePath }); return { schema: null, issues: c.issues, notes: c.notes }; }
+  const name = trimStr(firstPresent(raw, ['name', 'schemaName', 'schema_name', 'title']));
+  if ('schema_name' in raw && !('name' in raw)) c.notes.push({ rule: 'L5', path: `${basePath}.schema_name`, message: 'Legacy "schema_name" mapped to "name".' });
+  const tablesRaw = firstPresent(raw, ['tables']);
+  const tables: TableDef[] = [];
+  if (tablesRaw !== undefined && !Array.isArray(tablesRaw)) c.issues.push({ severity: 'error', code: 'TABLES_NOT_ARRAY', message: 'Invalid schema: "tables" is not a list.', path: `${basePath}.tables`, property: 'tables' });
+  else (tablesRaw as unknown[] || []).forEach((t, i) => { const n = normalizeTable(t, `${basePath}.tables[${i}]`, c); if (n) tables.push(n); });
+  const status = trimStr(raw.status);
+  const schema: SchemaModel = {
+    ...(raw as object),
+    id: trimStr(raw.id) || `schema-${slug(name)}`,
+    name,
+    version: trimStr(firstPresent(raw, ['version', 'schema_version'])) || '1.0',
+    status: (['active', 'default', 'inactive'].includes(status) ? status : 'inactive') as SchemaModel['status'],
+    updatedAt: trimStr(firstPresent(raw, ['updatedAt', 'last_updated'])) || new Date(0).toISOString(),
+    lastSyncedAt: trimStr(raw.lastSyncedAt) || null,
+    tables,
+    relationships: normalizeRelationships(raw.relationships, `${basePath}.relationships`, c)
+  } as SchemaModel;
+  // drop legacy-only top-level keys that the current model does not use (they stay in the source file)
+  ['schema_name', 'schema_version', 'last_updated', 'tables_count'].forEach((k) => { delete (schema as unknown as Record<string, unknown>)[k]; });
+  if (c.legacy) repairLegacyReferences(schema, basePath, c);
+  return { schema, issues: c.issues, notes: c.notes };
+}
+
+// ───────────────────────────── strict validation (unchanged semantics; recursive) ─────────────────────────────
+export interface ValidationOutcome { valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[]; }
+
+export function validateSchemaModel(schema: Pick<SchemaModel, 'tables' | 'relationships'> & Partial<SchemaModel>, basePath = 'schema'): ValidationOutcome {
+  const errors: SchemaIssue[] = []; const warnings: SchemaIssue[] = [];
+  const E = (i: Omit<SchemaIssue, 'severity'>) => errors.push({ severity: 'error', ...i });
+  const W = (i: Omit<SchemaIssue, 'severity'>) => warnings.push({ severity: 'warning', ...i });
+  if (schema.name !== undefined && !trimStr(schema.name)) E({ code: 'SCHEMA_NAME_EMPTY', message: 'Invalid schema: name is empty.', path: `${basePath}.name`, property: 'name' });
+  if (!Array.isArray(schema.tables)) { E({ code: 'TABLES_NOT_ARRAY', message: 'Invalid schema: "tables" is not a list.', path: `${basePath}.tables` }); return { valid: false, errors, warnings }; }
+  if (!schema.tables.length) E({ code: 'SCHEMA_NO_TABLES', message: 'Invalid schema: it contains no tables.', path: `${basePath}.tables` });
+  const tableNames = new Map<string, number>();
+  schema.tables.forEach((t, ti) => {
+    const tp = `${basePath}.tables[${ti}]`;
+    if (!isObj(t)) { E({ code: 'TABLE_NOT_OBJECT', message: 'Invalid table definition: entry is not an object.', path: tp }); return; }
+    const tn = trimStr(t.name);
+    if (!tn) E({ code: 'TABLE_NAME_EMPTY', message: `Invalid table definition: table #${ti + 1} has an empty name.`, path: `${tp}.name`, property: 'name' });
+    else if (tableNames.has(U(tn))) E({ code: 'TABLE_DUPLICATE', message: `Invalid table definition: table "${tn}" is defined more than once.`, path: `${tp}.name`, table: tn, property: 'name' });
+    else tableNames.set(U(tn), ti);
+    if (!Array.isArray(t.columns)) { E({ code: 'COLUMNS_NOT_ARRAY', message: `Invalid table definition: "${tn}" has columns that are not a list.`, path: `${tp}.columns`, table: tn }); return; }
+    if (!t.columns.length) E({ code: 'TABLE_NO_COLUMNS', message: `Invalid table definition: table "${tn}" has no columns.`, path: `${tp}.columns`, table: tn });
+    const colNames = new Set<string>();
+    let hasPk = false;
+    t.columns.forEach((col, ci) => {
+      const cp = `${tp}.columns[${ci}]`;
+      if (!isObj(col)) { E({ code: 'COLUMN_NOT_OBJECT', message: `Invalid column definition in table "${tn}": entry is not an object.`, path: cp, table: tn }); return; }
+      const cn = trimStr(col.name);
+      if (!cn) E({ code: 'COLUMN_NAME_EMPTY', message: `Invalid column definition: table "${tn}" has a column (#${ci + 1}) with an empty name.`, path: `${cp}.name`, table: tn, property: 'name' });
+      else if (colNames.has(U(cn))) E({ code: 'COLUMN_DUPLICATE', message: `Invalid column definition: Column "${tn}.${cn}" is defined more than once.`, path: `${cp}.name`, table: tn, column: cn, property: 'name' });
+      else colNames.add(U(cn));
+      if (!trimStr(col.type)) E({ code: 'COLUMN_TYPE_EMPTY', message: `Invalid column definition: Column "${tn}.${cn}" has no data type.`, path: `${cp}.type`, table: tn, column: cn, property: 'type' });
+      if (typeof col.nullable !== 'boolean') E({ code: 'COLUMN_PROPERTY_INVALID', message: `Invalid column definition: Column "${tn}.${cn}" has a non-boolean "nullable".`, path: `${cp}.nullable`, table: tn, column: cn, property: 'nullable' });
+      (['length', 'precision'] as const).forEach((k) => { const v = col[k]; if (v !== undefined && v !== null && (typeof v !== 'number' || !Number.isFinite(v) || v < 0)) E({ code: 'COLUMN_PROPERTY_INVALID', message: `Invalid column definition: Column "${tn}.${cn}" has an invalid "${k}".`, path: `${cp}.${k}`, table: tn, column: cn, property: k }); });
+      if (col.isPrimaryKey) hasPk = true;
+      if (col.decode !== undefined) {
+        if (!Array.isArray(col.decode)) E({ code: 'DECODE_NOT_ARRAY', message: `Invalid column definition: Column "${tn}.${cn}" has a decode value that is not a list.`, path: `${cp}.decode`, table: tn, column: cn, property: 'decode' });
+        else {
+          const seen = new Map<string, string>();
+          col.decode.forEach((d, di) => {
+            const dp = `${cp}.decode[${di}]`;
+            if (!isObj(d)) { E({ code: 'DECODE_ENTRY_INVALID', message: `Invalid column definition: Column "${tn}.${cn}" has a decode entry (#${di + 1}) that is not an object.`, path: dp, table: tn, column: cn, property: 'decode' }); return; }
+            const rv = trimStr(d.rawValue);
+            if (!rv) { E({ code: 'DECODE_RAW_EMPTY', message: `Invalid column definition: Column "${tn}.${cn}" has a decode entry (#${di + 1}) with an empty raw value.`, path: `${dp}.rawValue`, table: tn, column: cn, property: 'rawValue' }); return; }
+            if (!trimStr(d.label)) W({ code: 'DECODE_LABEL_EMPTY', message: `Column "${tn}.${cn}" decode "${rv}" has an empty label.`, path: `${dp}.label`, table: tn, column: cn, property: 'label' });
+            if (seen.has(rv) && seen.get(rv) !== trimStr(d.label)) E({ code: 'DECODE_DUPLICATE', message: `Invalid column definition: Column "${tn}.${cn}" maps raw value "${rv}" to two different labels.`, path: `${dp}.rawValue`, table: tn, column: cn, property: 'rawValue' });
+            else if (seen.has(rv)) W({ code: 'DECODE_DUPLICATE', message: `Column "${tn}.${cn}" lists decode "${rv}" twice.`, path: `${dp}.rawValue`, table: tn, column: cn, property: 'rawValue' });
+            seen.set(rv, trimStr(d.label));
+          });
+        }
       }
-      if (Array.isArray(c.decode)) {
-        const raws = new Map<string, string>();
-        c.decode.forEach((d, di) => {
-          const rv = String(d?.rawValue ?? '').trim(); const lb = String(d?.label ?? '').trim();
-          if (!rv) issues.push({ severity: 'error', code: 'DECODE_EMPTY_RAW', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" has a decode entry (#${di + 1}) with an empty raw value.` });
-          else if (raws.has(rv)) issues.push({ severity: 'error', code: 'DECODE_DUPLICATE_RAW', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" has duplicate decode raw value "${rv}".`, repairable: raws.get(rv) === lb });
-          else raws.set(rv, lb);
-          if (rv && !lb) issues.push({ severity: 'warning', code: 'DECODE_EMPTY_LABEL', path: `${L}.decode[${di}]`, message: `Column "${tn}.${cn}" decode value "${rv}" has no label.` });
-        });
+      if (col.unmappedDecodeLabels !== undefined) {
+        if (!Array.isArray(col.unmappedDecodeLabels) || col.unmappedDecodeLabels.some((l) => typeof l !== 'string')) E({ code: 'COLUMN_PROPERTY_INVALID', message: `Invalid column definition: Column "${tn}.${cn}" has invalid "unmappedDecodeLabels".`, path: `${cp}.unmappedDecodeLabels`, table: tn, column: cn, property: 'unmappedDecodeLabels' });
+        else if (col.unmappedDecodeLabels.length) W({ code: 'LEGACY_UNMAPPED_DECODE', message: `Column "${tn}.${cn}" has ${col.unmappedDecodeLabels.length} legacy decode label(s) without a raw code (not used in SQL until restored).`, path: `${cp}.unmappedDecodeLabels`, table: tn, column: cn, property: 'unmappedDecodeLabels' });
       }
+      if (col.unresolvedReference !== undefined && (!isObj(col.unresolvedReference) || !trimStr(col.unresolvedReference.table))) E({ code: 'COLUMN_PROPERTY_INVALID', message: `Invalid column definition: Column "${tn}.${cn}" has an invalid "unresolvedReference".`, path: `${cp}.unresolvedReference`, table: tn, column: cn, property: 'unresolvedReference' });
     });
-    if (pk > 1) issues.push({ severity: 'warning', code: 'PK_COMPOSITE', path: P(loc(ti, tn)), message: `Table "${tn}" has ${pk} primary-key columns (composite key) — confirm this is intentional.` });
-    if (pk === 0 && cols.length > 0 && t.objectType !== 'VIEW') issues.push({ severity: 'warning', code: 'PK_MISSING', path: P(loc(ti, tn)), message: `Table "${tn}" has no primary key defined.` });
+    if (t.columns.length && !hasPk) W({ code: 'PK_MISSING', message: `Table "${tn}" has no primary key.`, path: `${tp}.columns`, table: tn });
   });
-  const rels = Array.isArray(schema.relationships) ? schema.relationships : [];
-  const relIds = new Map<string, number>();
-  const has = (t: string, c: string) => byName.get(U(t))?.columns?.some((x) => U(x?.name) === U(c));
-  rels.forEach((r, ri) => {
-    const L = P(`relationships[${ri}]`); const label = `${r.fromTable}.${r.fromColumn} → ${r.toTable}.${r.toColumn}`;
-    if (!r.fromTable || !r.fromColumn || !r.toTable || !r.toColumn) { issues.push({ severity: 'error', code: 'RELATIONSHIP_INCOMPLETE', path: L, message: `Relationship #${ri + 1} (${label}) is missing a table or column.`, repairable: true }); return; }
-    if (relIds.has(r.id)) issues.push({ severity: 'warning', code: 'RELATIONSHIP_DUPLICATE_ID', path: L, message: `Relationship id "${r.id}" is used more than once.` }); else relIds.set(r.id, ri);
-    if (!has(r.fromTable, r.fromColumn) || !has(r.toTable, r.toColumn)) issues.push({ severity: 'warning', code: 'RELATIONSHIP_DANGLING', path: L, message: `Relationship ${label} points to a ${!has(r.fromTable, r.fromColumn) ? `missing column ${r.fromTable}.${r.fromColumn}` : `missing column ${r.toTable}.${r.toColumn}`}; it is ignored for JOINs until it is removed or the column is restored.`, repairable: true });
-  });
-  const errors = issues.filter((i) => i.severity === 'error'); const warnings = issues.filter((i) => i.severity === 'warning');
+  // foreign keys (need all tables)
+  const findTable = (n: string) => schema.tables.find((x) => isObj(x) && U(trimStr(x.name)) === U(n));
+  schema.tables.forEach((t, ti) => { if (!isObj(t) || !Array.isArray(t.columns)) return; t.columns.forEach((col, ci) => {
+    if (!isObj(col) || !col.isForeignKey) return;
+    const cp = `${basePath}.tables[${ti}].columns[${ci}].references`;
+    const rt = trimStr(col.references?.table); const rc = trimStr(col.references?.column);
+    if (!rt || !rc) { E({ code: 'FK_INCOMPLETE', message: `Invalid column definition: Column "${t.name}.${col.name}" is a foreign key without a complete reference.`, path: cp, table: t.name, column: col.name, property: 'references' }); return; }
+    const target = findTable(rt);
+    if (!target) E({ code: 'FK_TABLE_NOT_FOUND', message: `Invalid column definition: Column "${t.name}.${col.name}" references table "${rt}", which is not in this schema.`, path: `${cp}.table`, table: t.name, column: col.name, property: 'references.table' });
+    else if (!target.columns.some((x) => isObj(x) && U(trimStr(x.name)) === U(rc))) E({ code: 'FK_COLUMN_NOT_FOUND', message: `Invalid column definition: Column "${t.name}.${col.name}" references "${rt}.${rc}", which does not exist.`, path: `${cp}.column`, table: t.name, column: col.name, property: 'references.column' });
+  }); });
+  // relationships
+  if (schema.relationships !== undefined && !Array.isArray(schema.relationships)) E({ code: 'RELATIONSHIPS_NOT_ARRAY', message: 'Invalid schema: "relationships" is not a list.', path: `${basePath}.relationships` });
+  else {
+    const seenRel = new Set<string>();
+    (schema.relationships || []).forEach((r, ri) => {
+      const rp = `${basePath}.relationships[${ri}]`;
+      if (!isObj(r)) { E({ code: 'REL_INVALID', message: `Invalid relationship #${ri + 1}: not an object.`, path: rp }); return; }
+      const k = `${U(trimStr(r.fromTable))}.${U(trimStr(r.fromColumn))}>${U(trimStr(r.toTable))}.${U(trimStr(r.toColumn))}`;
+      if (seenRel.has(k)) W({ code: 'REL_DUPLICATE', message: `Relationship ${r.fromTable}.${r.fromColumn} → ${r.toTable}.${r.toColumn} is listed twice.`, path: rp }); seenRel.add(k);
+      ([['fromTable', 'fromColumn'], ['toTable', 'toColumn']] as const).forEach(([tk, ck]) => {
+        const tbl = findTable(trimStr(r[tk]));
+        if (!tbl) E({ code: 'REL_TABLE_NOT_FOUND', message: `Invalid relationship: table "${r[tk]}" is not in this schema.`, path: `${rp}.${tk}`, table: trimStr(r[tk]), property: tk });
+        else if (!tbl.columns.some((x) => isObj(x) && U(trimStr(x.name)) === U(trimStr(r[ck])))) E({ code: 'REL_COLUMN_NOT_FOUND', message: `Invalid relationship: column "${r[tk]}.${r[ck]}" does not exist.`, path: `${rp}.${ck}`, table: trimStr(r[tk]), column: trimStr(r[ck]), property: ck });
+      });
+    });
+  }
   return { valid: errors.length === 0, errors, warnings };
 }
 
-// ---------------------------------------------------------------- content identity (V17.2, 3-way merge)
-function fnv(str: string): string { let h1 = 0x811c9dc5, h2 = 0x01000193; for (let i = 0; i < str.length; i++) { const c = str.charCodeAt(i); h1 = Math.imul(h1 ^ c, 0x01000193) >>> 0; h2 = Math.imul(h2 ^ c, 0x5bd1e995) >>> 0; } return h1.toString(16).padStart(8, '0') + h2.toString(16).padStart(8, '0'); }
-function canon(v: unknown): unknown { if (Array.isArray(v)) return v.map(canon); if (isObj(v)) return Object.fromEntries(Object.keys(v).sort().filter((k) => v[k] !== undefined).map((k) => [k, canon(v[k])])); return v; }
-/** Hash of the schema CONTENT only (tables + relationships, key-order independent). Metadata and timestamps are ignored. */
-export function contentHash(schema: Pick<SchemaModel, 'tables' | 'relationships'>): string { return fnv(JSON.stringify(canon({ t: schema.tables, r: schema.relationships }))); }
+// ───────────────────────────── registry check (per-schema, independent) ─────────────────────────────
+export type MigrationStatus = 'current' | 'legacy-clean' | 'migrated' | 'migration-failed' | 'invalid';
+export interface SchemaReport {
+  index: number; name: string; id: string;
+  schema: SchemaModel | null;
+  valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[];
+  legacy: boolean; migrationStatus: MigrationStatus; migrationNotes: MigrationNote[];
+}
+export interface RegistryReport {
+  fileProblem: SchemaIssue | null;
+  writer: WriterInfo;
+  schemas: SchemaReport[];
+  validSchemas: SchemaModel[];
+  invalidSchemas: SchemaReport[];
+  migratedSchemas: SchemaReport[];
+  activeSchemaId: string | null;
+  activeSchemaUpdatedAt: string | null;
+}
 
-// ---------------------------------------------------------------- registry
-export function checkRegistry(input: { text?: string; value?: unknown }): RegistryReport {
-  const report: RegistryReport = { fileProblem: null, detectedFormat: 'unknown', formatVersion: null, writtenBy: null, writtenByDevice: null, schemas: [], registryNotes: [], activeSchemaId: null, activeSchemaUpdatedAt: null, validSchemas: [], invalidSchemas: [] };
+export function checkRegistry(input: { text?: string; value?: unknown }, now: () => string = () => new Date().toISOString()): RegistryReport {
+  const empty = (p: SchemaIssue): RegistryReport => ({ fileProblem: p, writer: detectWriter(null), schemas: [], validSchemas: [], invalidSchemas: [], migratedSchemas: [], activeSchemaId: null, activeSchemaUpdatedAt: null });
   let value = input.value;
-  if (input.text !== undefined) { const p = parseRegistryText(input.text); report.registryNotes.push(...p.notes); if (p.problem) { report.fileProblem = p.problem; return report; } value = p.value; }
-  let rawSchemas: unknown[] | null = null;
-  if (Array.isArray(value)) { rawSchemas = value; report.detectedFormat = 'bare schema list (pre-V15)'; report.registryNotes.push('The file is a bare list of schemas (pre-V15 format); it was read as a registry.'); }
-  else if (isObj(value)) {
-    const fv = value.formatVersion;
-    if (fv !== undefined) { report.formatVersion = typeof fv === 'number' ? fv : Number(fv); if (!Number.isFinite(report.formatVersion) || report.formatVersion! > REGISTRY_FORMAT_VERSION) { report.fileProblem = { code: 'UNSUPPORTED_VERSION', message: `The schema file was written by a newer ${APP_NAME} (format ${JSON.stringify(fv)}${typeof value.writtenBy === 'string' ? `, ${value.writtenBy}` : ''}); this version understands format ${REGISTRY_FORMAT_VERSION}. Update this device to the latest version before synchronizing.` }; return report; } }
-    report.writtenBy = typeof value.writtenBy === 'string' ? value.writtenBy : null;
-    report.writtenByDevice = typeof value.writtenByDevice === 'string' ? value.writtenByDevice : null;
-    if (Array.isArray(value.schemas)) { rawSchemas = value.schemas; report.detectedFormat = report.formatVersion ? `registry format ${report.formatVersion}` : 'registry (V15–V17.0)'; }
-    else if (isObj(value.schemas)) { rawSchemas = Object.values(value.schemas); report.detectedFormat = 'registry with schema map'; report.registryNotes.push('"schemas" was a map keyed by id; it was read as a list.'); }
-    else if (isObj(value.registry) && Array.isArray(value.registry.schemas)) { rawSchemas = value.registry.schemas; value = value.registry; report.detectedFormat = 'wrapped registry'; report.registryNotes.push('The registry was wrapped in a "registry" property; it was unwrapped.'); }
-    else if ('tables' in value) { rawSchemas = [value]; report.detectedFormat = 'single schema file'; report.registryNotes.push('The file contains a single schema (exported or pre-V15 format); it was read as a registry with one schema.'); }
-    if (rawSchemas && isObj(value)) {
-      if (typeof value.activeSchemaId === 'string') report.activeSchemaId = value.activeSchemaId;
-      if (typeof value.activeSchemaUpdatedAt === 'string' && !Number.isNaN(Date.parse(value.activeSchemaUpdatedAt))) report.activeSchemaUpdatedAt = value.activeSchemaUpdatedAt;
-    }
+  if (input.text !== undefined) {
+    if (!input.text.trim()) return empty({ severity: 'error', code: 'FILE_EMPTY', message: 'The repository schema file is empty.', path: '$' });
+    try { value = JSON.parse(input.text); } catch (e) { return empty({ severity: 'error', code: 'FILE_NOT_JSON', message: `The repository schema file is not valid JSON (${(e as Error).message}).`, path: '$' }); }
   }
-  if (!rawSchemas) { report.fileProblem = { code: 'NOT_A_REGISTRY', message: `The file is valid JSON but is not a schema registry: expected an object with a "schemas" list (found ${Array.isArray(value) ? 'a list' : isObj(value) ? `an object with keys ${Object.keys(value).slice(0, 8).map((k) => `"${k}"`).join(', ') || '(none)'}` : typeof value}).` }; return report; }
-  const ids = new Map<string, number>();
-  rawSchemas.forEach((raw, i) => {
-    const base = `schemas[${i}]`;
-    const n = normalizeSchema(raw, i, base);
-    const v = n.schema ? validateSchemaModel(n.schema, base) : { valid: false, errors: [], warnings: [] };
+  // Accept a bare schema / bare array as a one-file registry (older exports).
+  let reg: Record<string, unknown>;
+  if (Array.isArray(value)) reg = { schemas: value };
+  else if (isObj(value) && !Array.isArray(value.schemas) && Array.isArray(value.tables)) reg = { schemas: [value] };
+  else if (isObj(value)) reg = value;
+  else return empty({ severity: 'error', code: 'FILE_NOT_REGISTRY', message: 'The repository schema file does not contain a schema registry.', path: '$' });
+  if (!Array.isArray(reg.schemas)) return empty({ severity: 'error', code: 'FILE_NOT_REGISTRY', message: 'The repository schema file has no "schemas" list.', path: '$.schemas' });
+  const writer = detectWriter(reg);
+  if (writer.formatVersion !== null && writer.formatVersion > SCHEMA_FORMAT_VERSION) return { ...empty({ severity: 'error', code: 'FILE_NEWER_FORMAT', message: `The repository schema file uses format ${writer.formatVersion}, written by ${writer.writtenBy || 'a newer version'}. Update this device to the latest SQL Assistant to read it.`, path: '$.formatVersion' }), writer };
+  const schemas: SchemaReport[] = (reg.schemas as unknown[]).map((raw, i) => {
+    const n = normalizeSchema(raw, { index: i, legacy: writer.legacy });
+    const name = n.schema?.name || (isObj(raw) ? trimStr(raw.name) || trimStr(raw.schema_name) : '') || `schema #${i + 1}`;
+    if (!n.schema) return { index: i, name, id: '', schema: null, valid: false, errors: n.issues.filter((x) => x.severity === 'error'), warnings: [], legacy: writer.legacy, migrationStatus: writer.legacy ? 'migration-failed' : 'invalid', migrationNotes: n.notes };
+    const v = validateSchemaModel(n.schema, `schemas[${i}]`);
     const errors = [...n.issues.filter((x) => x.severity === 'error'), ...v.errors];
     const warnings = [...n.issues.filter((x) => x.severity === 'warning'), ...v.warnings];
-    if (n.schema) { if (ids.has(n.schema.id)) errors.push({ severity: 'error', code: 'DUPLICATE_SCHEMA_ID', path: base, message: `Schema id "${n.schema.id}" is used more than once in the file (also schemas[${ids.get(n.schema.id)}]); the second copy cannot be loaded.` }); else ids.set(n.schema.id, i); }
-    const rep: SchemaReport = { index: i, id: n.schema?.id ?? `#${i + 1}`, name: n.schema?.name ?? `Schema #${i + 1}`, valid: !!n.schema && errors.length === 0, errors, warnings, notes: n.notes, schema: n.schema, allErrorsRepairable: errors.length > 0 && errors.every((e) => e.repairable) };
-    report.schemas.push(rep);
-    if (rep.valid && n.schema) report.validSchemas.push(n.schema); else report.invalidSchemas.push(rep);
-  });
-  if (report.activeSchemaId && !report.schemas.some((s) => s.id === report.activeSchemaId)) report.registryNotes.push(`The file's active schema "${report.activeSchemaId}" is not one of its schemas; the active selection was not changed.`);
-  return report;
-}
-/** Version number written in a registry's writtenBy (e.g. "SQL Assistant 17.2.0" → [17,2,0]); null for files from V17.0 or older. */
-export function writerVersion(writtenBy: string | null): number[] | null { const m = String(writtenBy || '').match(/(\d+)\.(\d+)\.(\d+)/); return m ? [+m[1], +m[2], +m[3]] : null; }
-export function compareVersions(a: number[], b: number[]): number { for (let i = 0; i < 3; i++) if ((a[i] || 0) !== (b[i] || 0)) return (a[i] || 0) - (b[i] || 0); return 0; }
-export function serializeRegistry(registry: SchemaRegistry, deviceTag?: string): string {
-  const out: SchemaRegistry = { formatVersion: REGISTRY_FORMAT_VERSION, writtenBy: `${APP_NAME} ${APP_VERSION}`, ...(deviceTag ? { writtenByDevice: deviceTag } : {}), activeSchemaId: registry.activeSchemaId, activeSchemaUpdatedAt: registry.activeSchemaUpdatedAt ?? null, schemas: registry.schemas };
-  return JSON.stringify(out, null, 2);
-}
-
-// ---------------------------------------------------------------- explicit repair
-export interface RepairResult { schema: SchemaModel; changes: string[]; remainingErrors: SchemaIssue[]; }
-export function repairSchema(input: SchemaModel): RepairResult {
-  const s: SchemaModel = JSON.parse(JSON.stringify(input)); const changes: string[] = [];
-  const byName = new Map(s.tables.map((t) => [U(t.name), t] as const));
-  s.tables.forEach((t) => {
-    const kept: ColumnDef[] = [];
-    t.columns.forEach((c) => { const dup = kept.find((k) => U(k.name) === U(c.name)); if (dup && JSON.stringify(dup) === JSON.stringify(c)) { changes.push(`Removed an exact duplicate copy of column ${t.name}.${c.name}.`); return; } kept.push(c); });
-    t.columns = kept;
-  });
-  s.tables.forEach((t) => t.columns.forEach((c) => {
-    if (c.isForeignKey) {
-      const rt = c.references?.table ?? ''; const rc = c.references?.column ?? '';
-      const target = byName.get(U(rt));
-      if (!rt || !rc || !target || !target.columns.some((x) => U(x.name) === U(rc))) { c.isForeignKey = false; delete c.references; changes.push(`Unlinked foreign key ${t.name}.${c.name}${rt ? ` → ${rt}.${rc}` : ''} (target does not exist); the column itself was kept.`); }
+    const valid = errors.length === 0;
+    let status: MigrationStatus = valid ? 'current' : 'invalid';
+    if (writer.legacy) status = !valid ? 'migration-failed' : n.notes.length ? 'migrated' : 'legacy-clean';
+    if (valid && status === 'migrated') {
+      const info: SchemaMigrationInfo = { fromFormat: writer.label, migratedAt: now(), migratedBy: WRITER_LABEL, changes: n.notes.length, warnings: summarizeNoteWarnings(n.notes) };
+      n.schema.migration = info;
     }
-    if (Array.isArray(c.decode)) { const seen = new Map<string, string>(); const out: DecodeEntry[] = []; c.decode.forEach((d) => { const k = String(d.rawValue).trim(); if (seen.has(k) && seen.get(k) === d.label.trim()) { changes.push(`Removed a repeated decode entry "${d.rawValue}=${d.label}" from ${t.name}.${c.name}.`); return; } seen.set(k, d.label.trim()); out.push(d); }); c.decode = out; }
-  }));
-  const has = (tb: string, col: string) => byName.get(U(tb))?.columns.some((x) => U(x.name) === U(col));
-  s.relationships = s.relationships.filter((r) => { if (r.fromTable && r.fromColumn && r.toTable && r.toColumn && has(r.fromTable, r.fromColumn) && has(r.toTable, r.toColumn)) return true; changes.push(`Removed relationship ${r.fromTable}.${r.fromColumn} → ${r.toTable}.${r.toColumn} (it points to a column that does not exist).`); return false; });
-  return { schema: s, changes, remainingErrors: validateSchemaModel(s).errors };
+    return { index: i, name, id: n.schema.id, schema: n.schema, valid, errors, warnings, legacy: writer.legacy, migrationStatus: status, migrationNotes: n.notes };
+  });
+  return {
+    fileProblem: null, writer, schemas,
+    validSchemas: schemas.filter((s) => s.valid && s.schema).map((s) => s.schema!),
+    invalidSchemas: schemas.filter((s) => !s.valid),
+    migratedSchemas: schemas.filter((s) => s.migrationStatus === 'migrated'),
+    activeSchemaId: trimStr(reg.activeSchemaId) || null,
+    activeSchemaUpdatedAt: trimStr(reg.activeSchemaUpdatedAt) || null
+  };
 }
 
-// ---------------------------------------------------------------- presentation helpers
-export function describeIssue(i: SchemaIssue): string { return `${i.message} [${i.path}]`; }
-export function describeIssueWithStage(i: SchemaIssue): string { return `${stageOf(i)}: ${describeIssue(i)}`; }
-export function summarizeSchemaReport(r: SchemaReport, max = 5): string { const shown = r.errors.slice(0, max).map(describeIssue); return `"${r.name}": ${r.errors.length} error(s) — ${shown.join(' ')}${r.errors.length > max ? ` …and ${r.errors.length - max} more.` : ''}`; }
-export function formatRegistryReport(r: RegistryReport): string[] {
-  if (r.fileProblem) return [`${fileProblemStage(r.fileProblem.code)} (${r.fileProblem.code}): ${r.fileProblem.message}`];
-  const out = [`Format detected: ${r.detectedFormat}${r.writtenBy ? ` — written by ${r.writtenBy}` : ' — written by V17.0 or older (no writer stamp)'}${r.writtenByDevice ? ` on ${r.writtenByDevice}` : ''}. ${r.schemas.length} schema(s): ${r.validSchemas.length} valid, ${r.invalidSchemas.length} invalid.`];
-  r.registryNotes.forEach((n) => out.push(`Note: ${n}`));
-  r.schemas.forEach((s) => { out.push(`${s.valid ? '✔' : '✖'} "${s.name}" (${s.id}) — ${s.errors.length} error(s), ${s.warnings.length} warning(s)${s.notes.length ? `, ${s.notes.length} legacy conversion(s)` : ''}`); s.errors.forEach((e) => out.push(`    ERROR ${describeIssueWithStage(e)}${e.repairable ? ' (repairable)' : ''}`)); s.warnings.slice(0, 10).forEach((w) => out.push(`    warning ${describeIssue(w)}`)); s.notes.forEach((n) => out.push(`    converted: ${n}`)); });
+function summarizeNoteWarnings(notes: MigrationNote[]): string[] {
+  const unmapped = notes.filter((n) => n.rule === 'L3'); const refs = notes.filter((n) => n.rule === 'L6');
+  const out: string[] = [];
+  if (unmapped.length) out.push(`${unmapped.length} decode label(s) had no raw code (lost by an older version) and are preserved as unmapped labels.`);
+  if (refs.length) out.push(`${refs.length} reference(s) point outside this schema and are kept as documentation only.`);
   return out;
+}
+
+/** Rule counts for display, e.g. "437 decode codes recovered from legacy keys". */
+export function summarizeMigration(notes: MigrationNote[]): string[] {
+  const count = (r: MigrationNote['rule']) => notes.filter((n) => n.rule === r).length;
+  const out: string[] = [];
+  if (count('L1')) out.push(`${count('L1')} decode raw value(s) read from legacy keys (e.g. "code").`);
+  if (count('L5')) out.push(`${count('L5')} legacy property name(s) mapped to the current format.`);
+  if (count('L2')) out.push(`${count('L2')} empty placeholder decode entr(y/ies) removed.`);
+  if (count('L4')) out.push(`${count('L4')} exact duplicate decode entr(y/ies) removed.`);
+  if (count('L3')) out.push(`${count('L3')} decode label(s) without a raw code preserved as unmapped labels.`);
+  if (count('L6')) out.push(`${count('L6')} reference(s) outside this schema kept as documentation.`);
+  return out;
+}
+
+// ───────────────────────────── serialization (publish) ─────────────────────────────
+export interface SerializeResult { ok: boolean; text: string; problems: SchemaReport[]; }
+/** Publish protection: validates every schema, then stamps writer/format metadata. Never emits an invalid schema. */
+export function serializeRegistry(reg: SchemaRegistry, device = '', now: () => string = () => new Date().toISOString()): SerializeResult {
+  const problems: SchemaReport[] = [];
+  reg.schemas.forEach((s, i) => { const v = validateSchemaModel(s, `schemas[${i}]`); if (!v.valid) problems.push({ index: i, name: s.name, id: s.id, schema: s, valid: false, errors: v.errors, warnings: v.warnings, legacy: false, migrationStatus: 'invalid', migrationNotes: [] }); });
+  if (problems.length) return { ok: false, text: '', problems };
+  const out: SchemaRegistry = { ...reg, formatVersion: SCHEMA_FORMAT_VERSION, writtenBy: WRITER_LABEL, writtenByDevice: device || reg.writtenByDevice || '', writtenAt: now() };
+  return { ok: true, text: JSON.stringify(out, null, 2), problems };
+}
+
+// ───────────────────────────── recovery from an original source file ─────────────────────────────
+export interface SourceRecoveryResult { schema: SchemaModel; restored: number; stillUnmapped: number; columnsTouched: string[]; }
+/**
+ * Restores decode codes for `unmappedDecodeLabels` from an original schema file (e.g. the
+ * Alusta DB Description export the schema was first imported from). Matches table → column →
+ * label (case-insensitive). Only fills codes that are missing; never overwrites existing entries.
+ */
+export function recoverDecodeFromSource(target: SchemaModel, sourceRaw: unknown): SourceRecoveryResult {
+  const src = normalizeSchema(Array.isArray((sourceRaw as { schemas?: unknown[] })?.schemas) ? (sourceRaw as { schemas: unknown[] }).schemas[0] : sourceRaw, { legacy: true });
+  const next: SchemaModel = JSON.parse(JSON.stringify(target));
+  let restored = 0; let stillUnmapped = 0; const touched: string[] = [];
+  next.tables.forEach((t) => t.columns.forEach((c) => {
+    if (!c.unmappedDecodeLabels?.length) return;
+    const st = src.schema?.tables.find((x) => U(x.name) === U(t.name));
+    const sc = st?.columns.find((x) => U(x.name) === U(c.name));
+    const remaining: string[] = [];
+    c.unmappedDecodeLabels.forEach((label) => {
+      const hit = sc?.decode?.find((d) => U(d.label) === U(label) && d.rawValue);
+      if (hit && !(c.decode || []).some((d) => d.rawValue === hit.rawValue)) { (c.decode = c.decode || []).push({ rawValue: hit.rawValue, label: hit.label }); restored += 1; }
+      else if (!hit) remaining.push(label);
+    });
+    if (remaining.length !== c.unmappedDecodeLabels.length) touched.push(`${t.name}.${c.name}`);
+    if (remaining.length) { c.unmappedDecodeLabels = remaining; stillUnmapped += remaining.length; } else delete c.unmappedDecodeLabels;
+  }));
+  return { schema: next, restored, stillUnmapped, columnsTouched: touched };
+}
+
+/** Counts used by the Schema Management UI. */
+export function legacyLeftovers(schema: SchemaModel): { unmappedLabels: number; unresolvedRefs: number } {
+  let unmappedLabels = 0; let unresolvedRefs = 0;
+  schema.tables.forEach((t) => t.columns.forEach((c) => { unmappedLabels += c.unmappedDecodeLabels?.length || 0; if (c.unresolvedReference) unresolvedRefs += 1; }));
+  return { unmappedLabels, unresolvedRefs };
 }

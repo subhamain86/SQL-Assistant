@@ -1,7 +1,3 @@
-/**
- * Automatic vs manual Advanced Options. Any Advanced Option the user set by hand is authoritative and never
- * overwritten by the description engine (manual always wins).
- */
 import type { ReadOnlyQueryState, SelectedColumnSpec, FilterCondition, SortSpec, ValidationIssue } from '../../types';
 import type { V17Requirement } from './nluEngine';
 export type ManualOptionKey = 'distinct' | 'groupBy' | 'having' | 'limit' | 'sorts' | 'recursive' | 'ctes' | 'columns' | 'tableAliases' | 'joinType';

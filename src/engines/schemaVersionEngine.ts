@@ -19,7 +19,6 @@ export function detectConflict(local: SchemaModel, remote: SchemaModel): SchemaC
   return { hasConflict: changed.length > 0, localVersion: lv, remoteVersion: rv, changedPaths: changed };
 }
 export function sameLogicalSchema(a: Pick<SchemaModel, 'name'>, b: Pick<SchemaModel, 'name'>): boolean { return a.name.trim().toLowerCase() === b.name.trim().toLowerCase(); }
-/** V16.4/V16.5: last-write-wins for the Active Schema pointer across devices. */
 export function shouldApplyRemoteActiveSchema(localAt: string | null | undefined, remoteAt: string | null | undefined, remoteId: string | null | undefined, localId: string): boolean {
   if (!remoteId || remoteId === localId || !remoteAt) return false;
   const r = new Date(remoteAt).getTime(); if (!Number.isFinite(r)) return false;

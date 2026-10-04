@@ -1,4 +1,3 @@
-/** ISO 3166-1 alpha-2 codes for common country names (deterministic offline mapping for ISO-coded country columns). */
 const MAP: Record<string, string> = {
   afghanistan: 'AF', albania: 'AL', algeria: 'DZ', argentina: 'AR', australia: 'AU', austria: 'AT', bangladesh: 'BD', belgium: 'BE', brazil: 'BR', bulgaria: 'BG', canada: 'CA', chile: 'CL', china: 'CN', colombia: 'CO', croatia: 'HR', cyprus: 'CY',
   'czech republic': 'CZ', czechia: 'CZ', denmark: 'DK', egypt: 'EG', estonia: 'EE', finland: 'FI', france: 'FR', germany: 'DE', greece: 'GR', 'hong kong': 'HK', hungary: 'HU', iceland: 'IS', india: 'IN', indonesia: 'ID', ireland: 'IE', israel: 'IL', italy: 'IT',

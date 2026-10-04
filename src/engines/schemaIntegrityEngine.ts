@@ -1,8 +1,4 @@
-/**
- * Schema integrity API (V16.1+ signatures). Since V17.1 every function delegates to the single shared
- * rule set in v17/sync/schemaFormat.ts, so local import, Manual Schema Update, push and pull can never
- * disagree about what a valid schema is.
- */
+/** Schema integrity API (V16.1+ signatures) — delegates to the single shared rule set in v17/sync/schemaFormat.ts. */
 import type { SchemaModel, TableDef, SchemaIntegrityResult, SchemaIntegrityIssue } from '../types';
 import { safeTrim, safeUpperTrim } from '../utils/validation';
 import { validateSchemaModel, normalizeSchema, checkRegistry, describeIssue, type SchemaIssue } from '../v17/sync/schemaFormat';

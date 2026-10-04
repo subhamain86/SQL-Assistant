@@ -1,16 +1,7 @@
-/**
- * Settings → Manual Schema Update: safe, single-record (row-wise) edit / delete. Pure functions: they return
- * a NEW schema or errors and never mutate the input.
- *  - Edit/delete touches exactly one record (plus explicitly reported relationship/FK updates on rename).
- *  - Deleting a referenced column is blocked unless cascade is explicitly requested.
- *  - The result is checked with the SAME validator used for repository synchronisation; only errors the change
- *    INTRODUCES block it, so legacy problems elsewhere never prevent unrelated edits.
- *  - Identifier/type format rules apply only to values the user actually changes.
- */
+/** Settings → Manual Schema Update: safe, single-record (row-wise) edit / delete. Pure functions (never mutate input). */
 import type { SchemaModel, SchemaEditorRow, ColumnDef, DecodeEntry, RelationshipDef } from '../../types';
 import { validateSchemaModel, type SchemaIssue } from '../sync/schemaFormat';
 import { makeError, type AppError } from '../errors/appErrors';
-
 export interface RecordChangeResult { ok: boolean; schema?: SchemaModel; changes: string[]; errors: AppError[]; }
 export interface Dependency { kind: 'relationship' | 'foreign-key'; description: string; relationshipId?: string; table?: string; column?: string; }
 export interface FieldChange { field: string; label: string; from: string; to: string; scope: 'row' | 'table'; }
@@ -31,7 +22,6 @@ const FIELD_LABELS: [keyof SchemaEditorRow, string, 'row' | 'table'][] = [
   ['isPrimaryKey', 'Primary Key', 'row'], ['isForeignKey', 'Foreign Key', 'row'], ['fkTable', 'References Table', 'row'], ['fkColumn', 'References Column', 'row']
 ];
 const show = (v: unknown) => (v === null || v === undefined || v === '' ? '(empty)' : typeof v === 'boolean' ? (v ? 'Yes' : 'No') : String(v).replace(/\n/g, '; '));
-/** V17.2 — field-by-field difference between the selected row and the edited values (shown before saving). */
 export function diffRows(original: SchemaEditorRow, edited: SchemaEditorRow): FieldChange[] {
   return FIELD_LABELS.filter(([k]) => show(original[k]) !== show(edited[k]) && !(k === 'module' && !String(edited.module || '').trim())).map(([k, label, scope]) => ({ field: String(k), label, from: show(original[k]), to: show(edited[k]), scope }));
 }
@@ -63,8 +53,10 @@ function buildColumn(row: SchemaEditorRow, decode: DecodeEntry[], previous?: Col
   if (row.length !== null && row.length !== undefined) col.length = row.length; else delete col.length;
   if (row.precision !== null && row.precision !== undefined) col.precision = row.precision; else delete col.precision;
   if (row.alias?.trim()) col.alias = row.alias.trim(); else delete col.alias;
-  if (row.isForeignKey && row.fkTable && row.fkColumn) col.references = { table: row.fkTable.trim(), column: row.fkColumn.trim() }; else delete col.references;
+  if (row.isForeignKey && row.fkTable && row.fkColumn) { col.references = { table: row.fkTable.trim(), column: row.fkColumn.trim() }; delete col.unresolvedReference; } else delete col.references;
   if (decode.length) col.decode = decode; else delete col.decode;
+  // V17.2.1: a legacy label without a code is resolved once the user supplies "CODE=Label" for it.
+  if (col.unmappedDecodeLabels?.length) { const have = new Set(decode.map((d) => d.label.trim().toUpperCase())); col.unmappedDecodeLabels = col.unmappedDecodeLabels.filter((l) => !have.has(l.trim().toUpperCase())); if (!col.unmappedDecodeLabels.length) delete col.unmappedDecodeLabels; }
   return col;
 }
 const issueKey = (i: SchemaIssue) => `${i.code}|${i.message}`;

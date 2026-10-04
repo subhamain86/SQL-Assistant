@@ -1,7 +1,3 @@
-/**
- * Active-schema context for the offline NLU. Derived ONLY from the schema object passed in and cached by
- * a content fingerprint, so any edit, deletion, import or sync rebuilds it automatically.
- */
 import type { SchemaModel, TableDef, ColumnDef } from '../../types';
 import { deriveFkRelationships, isResolvableRelationship } from './joinGraph';
 export interface ColumnEntry { table: string; column: ColumnDef; phrases: string[]; tokens: Set<string>; }
@@ -27,9 +23,20 @@ export function schemaFingerprint(schema: SchemaModel): string {
 }
 function singular(w: string): string { return w.endsWith('ies') ? `${w.slice(0, -3)}y` : w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w; }
 function plural(w: string): string { return w.endsWith('y') ? `${w.slice(0, -1)}ies` : w.endsWith('s') ? w : `${w}s`; }
-function buildTableEntry(t: TableDef): TableEntry {
-  const spaced = normalizeWords(t.name); const words = spaced.split(' ');
+const PHRASE_STOP = new Set(['for', 'to', 'by', 'of', 'in', 'on', 'at', 'and', 'or', 'the', 'with', 'from', 'per', 'all', 'any', 'is', 'as', 'if', 'it', 'no', 'not', 'type', 'value', 'values', 'data', 'info']);
+/** Module prefixes such as IA_, PP_, ADM_ (a short first word shared by several tables or equal to the module). */
+export function detectTablePrefixes(tables: TableDef[]): Set<string> {
+  const counts = new Map<string, number>();
+  tables.forEach((t) => { const w = normalizeWords(t.name).split(' '); if (w.length > 1 && w[0].length <= 4) counts.set(w[0], (counts.get(w[0]) || 0) + 1); });
+  const out = new Set<string>();
+  counts.forEach((n, w) => { if (n >= 3 || tables.some((t) => normalizeWords(t.module) === w)) out.add(w); });
+  return out;
+}
+function buildTableEntry(t: TableDef, prefixes: Set<string> = new Set()): TableEntry {
+  const spaced = normalizeWords(t.name); const allWords = spaced.split(' ');
+  const words = allWords.length > 1 && prefixes.has(allWords[0]) ? allWords.slice(1) : allWords;
   const phrases = new Set<string>([spaced, singular(spaced), plural(spaced)]);
+  if (words !== allWords) { const unp = words.join(' '); phrases.add(unp); phrases.add(singular(unp)); phrases.add(plural(unp)); }
   const meaningful = words.filter((w) => !GENERIC.has(w));
   if (meaningful.length && meaningful.length < words.length) { const core = meaningful.join(' '); phrases.add(core); phrases.add(plural(core)); phrases.add(singular(core)); }
   (EXTRA_TABLE_SYNONYMS[t.name.toUpperCase()] || []).forEach((p) => phrases.add(p));
@@ -40,12 +47,12 @@ function buildTableEntry(t: TableDef): TableEntry {
   const core = (meaningful.length ? meaningful : words).join('_').toUpperCase();
   return { table: t, phrases: Array.from(phrases).filter((p) => p.length > 1), tokens, displayColumn, nameColumn, pk, core };
 }
-function buildColumnEntry(table: string, c: ColumnDef): ColumnEntry {
+function buildColumnEntry(table: string, c: ColumnDef, prefixes: Set<string> = new Set()): ColumnEntry {
   const nameSpaced = normalizeWords(c.name); const label = normalizeWords(c.label || c.name);
   const phrases = new Set<string>([nameSpaced, label]);
-  const tableWords = new Set(wordTokens(table));
+  const tableWords = new Set(wordTokens(table).filter((w) => !prefixes.has(w)));
   const stripped = nameSpaced.split(' ').filter((w) => !tableWords.has(w)).join(' ');
-  if (stripped && stripped !== nameSpaced && stripped.length > 2) phrases.add(stripped);
+  if (stripped && stripped !== nameSpaced && stripped.length > 2 && !PHRASE_STOP.has(stripped)) phrases.add(stripped);
   Array.from(phrases).forEach((p) => { const parts = p.split(' '); const last = parts.pop() || ''; if (last.length > 2 && !/^(id|no)$/.test(last)) phrases.add([...parts, plural(last)].join(' ')); });
   return { table, column: c, phrases: Array.from(phrases).filter((p) => p.length > 1), tokens: new Set([...wordTokens(c.name), ...wordTokens(c.label || ''), ...wordTokens(c.description || '')]) };
 }
@@ -55,8 +62,9 @@ export function getSchemaContext(schema: SchemaModel): SchemaContext {
   const fp = schemaFingerprint(schema);
   const hit = cache.get(schema.id);
   if (hit && hit.fingerprint === fp) return hit;
-  const tables = schema.tables.map(buildTableEntry);
-  const columns = schema.tables.flatMap((t) => t.columns.map((c) => buildColumnEntry(t.name, c)));
+  const prefixes = detectTablePrefixes(schema.tables);
+  const tables = schema.tables.map((t) => buildTableEntry(t, prefixes));
+  const columns = schema.tables.flatMap((t) => t.columns.map((c) => buildColumnEntry(t.name, c, prefixes)));
   const tableUpper = new Map(tables.map((e) => [e.table.name.toUpperCase(), e] as [string, TableEntry]));
   const adjacency = new Map<string, Set<string>>();
   const link = (a: string, b: string) => { if (!adjacency.has(a)) adjacency.set(a, new Set()); adjacency.get(a)!.add(b); };

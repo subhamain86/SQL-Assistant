@@ -10,7 +10,6 @@ export type CaseWhenClause = { whenExpr: string; thenValue: string };
 export interface CaseExpressionSpec { id: string; alias: string; whens: CaseWhenClause[]; elseValue: string; }
 export interface DecodeExpressionSpec { id: string; alias: string; sourceExpr: string; pairs: { rawValue: string; label: string }[]; elseValue: string; }
 export interface CteSpec { id: string; name: string; body: string; }
-/** V17.2: tableAliases / joinType are optional so saved V17.1 state stays compatible. */
 export interface AdvancedOptions { distinct: boolean; groupByColumns: string[]; havingClause: string; limit: number | null; recursive: boolean; saveAsView: string | null; caseExpressions: CaseExpressionSpec[]; decodeExpressions: DecodeExpressionSpec[]; ctes: CteSpec[]; tableAliases?: boolean; joinType?: JoinType; }
 export interface ReadOnlyQueryState { dialect: Dialect; naturalLanguageText: string; selectedTables: string[]; selectedColumns: SelectedColumnSpec[]; joins: JoinSpec[]; filters: FilterCondition[]; sorts: SortSpec[]; advanced: AdvancedOptions; generatedSql: string; lastGeneratedAt: string | null; joinPathChoices: Record<string, string>; }
 export type CrQueryType = 'INSERT' | 'UPDATE' | 'DELETE';

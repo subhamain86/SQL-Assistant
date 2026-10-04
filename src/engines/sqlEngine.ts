@@ -17,7 +17,6 @@ function buildWhereClauseFromFilters(state: ReadOnlyQueryState): string {
   return state.filters.map((f, idx) => { const clause = renderFilterClause(f.table, f.column, f.operator, f.value, f.value2); return idx === 0 ? clause : `${f.combinator} ${clause}`; }).join('\n  ');
 }
 const ALIAS_RESERVED = new Set(['as', 'at', 'by', 'do', 'go', 'if', 'in', 'is', 'of', 'on', 'or', 'to', 'and', 'end', 'for', 'not', 'set', 'all', 'any', 'asc', 'top', 'use', 'add', 'key', 'row', 'desc', 'from', 'into', 'join', 'case', 'else', 'null', 'then', 'when', 'with', 'left', 'full', 'over', 'user', 'view']);
-/** V17.2 — short, unique, non-reserved table aliases (INVOICE_HEADER → ih, VENDOR → v). */
 export function buildTableAliases(tables: string[]): Record<string, string> {
   const out: Record<string, string> = {}; const used = new Set<string>();
   tables.forEach((t) => {
@@ -29,7 +28,6 @@ export function buildTableAliases(tables: string[]): Record<string, string> {
   });
   return out;
 }
-/** Rewrites fully qualified references (TABLE.col) and FROM/JOIN clauses to use aliases, never touching string literals. */
 export function applyTableAliases(sql: string, aliases: Record<string, string>): string {
   const names = Object.keys(aliases).sort((a, b) => b.length - a.length); if (!names.length) return sql;
   const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

@@ -1,9 +1,6 @@
 /**
  * Offline, self-training NLU engine for "Describe What You Need" (primary engine; no network needed).
- * Grounded exclusively in the schema object passed in (the Active Schema at call time). It never invents
- * identifiers; explicitly named tables/columns that are not in the Active Schema are reported as schema
- * gaps. The V16 rule-based parser runs first; confirmed learned patterns are applied as hints only and
- * are always re-checked against the Active Schema (the Active Schema always has priority).
+ * Grounded exclusively in the Active Schema passed in; learned patterns are hints only and re-checked.
  */
 import type { SchemaModel, QueryRequirement, SelectedColumnSpec, FilterCondition, SortSpec, Dialect, ColumnDef, ClarificationQuestion, FilterOperator, JoinType } from '../../types';
 import { parseRequirement } from '../../engines/nlpEngine';
@@ -54,7 +51,8 @@ function detectMentions(soft: string, ctx: SchemaContext): { tables: TableHit[];
   const cands: Cand[] = [];
   ctx.tables.forEach((entry) => entry.phrases.forEach((p) => findPhrase(soft, p).forEach((span) => cands.push({ kind: 't', entry, span }))));
   ctx.columns.forEach((entry) => entry.phrases.forEach((p) => { if (p.length < 2 || /^(id|no|name|code)$/.test(p)) return; findPhrase(soft, p).forEach((span) => cands.push({ kind: 'c', entry, span })); }));
-  cands.sort((a, b) => (b.span.end - b.span.start) - (a.span.end - a.span.start) || (a.kind === 'c' ? -1 : 1));
+  // Longest phrase wins; on equal length an entity (table) beats a same-named column (e.g. "invoices" → IA_INVOICE, not PP_RE_APPROVAL_SETTING.INVOICES).
+  cands.sort((a, b) => (b.span.end - b.span.start) - (a.span.end - a.span.start) || (a.kind === b.kind ? 0 : a.kind === 't' ? -1 : 1));
   const accepted: Cand[] = [];
   for (const c of cands) {
     const clash = accepted.find((a) => overlaps(a.span, c.span));
@@ -78,11 +76,12 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   const auto: AutoOption[] = []; const notes: string[] = []; const plan: string[] = []; const clarifications: ClarificationQuestion[] = []; const dateLogic: string[] = [];
   const add = (kind: AutoOptionKind, description: string, confidence: number) => { auto.push({ kind, description, confidence, applied: confidence >= AUTO_APPLY_THRESHOLD }); return confidence >= AUTO_APPLY_THRESHOLD; };
 
-  // ---------- 1. Tables & columns (Active Schema only) ----------
   const knownIds = new Set([...schema.tables.map((t) => t.name.toUpperCase()), ...schema.tables.flatMap((t) => t.columns.map((c) => c.name.toUpperCase()))]);
   const unknownIdentifiers = (text.match(/\b[A-Za-z][A-Za-z0-9]*_[A-Za-z0-9_]+\b/g) || []).filter((id) => !knownIds.has(id.toUpperCase()));
   let maskedSoft = soft; unknownIdentifiers.forEach((id) => { const p = softNormalize(id); maskedSoft = maskedSoft.split(p).join(' '.repeat(p.length)); });
   const mentions = detectMentions(maskedSoft, ctx);
+  // "root document type is Invoice": a word that is a decode label of the column just mentioned is a value, not a table.
+  mentions.tables = mentions.tables.filter((t) => { const word = soft.slice(t.span.start, t.span.end); return !mentions.columns.some((h) => h.span.end <= t.span.start && t.span.start - h.span.end <= 14 && (h.entry.column.decode || []).some((d) => { const l = softNormalize(d.label || ''); return l === word || `${l}s` === word; })); });
   const tableOrder: { name: string; pos: number }[] = [];
   const pushTable = (name: string, pos: number) => { const ex = tableOrder.find((t) => t.name === name); if (!ex) tableOrder.push({ name, pos }); else if (pos < ex.pos) ex.pos = pos; };
   mentions.tables.forEach((h) => pushTable(h.entry.table.name, h.span.start));
@@ -117,10 +116,9 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     const key = `${h.span.start}:${h.span.end}`; if (seenSpan.has(key)) return; seenSpan.add(key);
     const same = explicitColumnHits.filter((o) => o.span.start === h.span.start && o.span.end === h.span.end).map((o) => o.entry);
     const best = pickColumn(same, soft.slice(h.span.start, h.span.end));
-    // A single word that is a business value (decode label) of an in-scope column is a condition, not a column of another table ("active contracts").
     const word = soft.slice(h.span.start, h.span.end);
     if (best && !inScope(best.table) && !/\s/.test(word) && ctx.columns.some((c) => inScope(c.table) && c.column.decode?.some((d) => softNormalize(d.label || '') === word))) return;
-    if (best && (inScope(best.table) || same.length === 1)) { ensureTable(best.table, `column ${best.column.name} was mentioned`); resolvedHits.push({ entry: best, span: h.span }); }
+    if (best && (inScope(best.table) || (same.length === 1 && (/\s/.test(word) || !tableOrder.length)))) { ensureTable(best.table, `column ${best.column.name} was mentioned`); resolvedHits.push({ entry: best, span: h.span }); }
   });
   const colEntry = (table: string, column: string) => ctx.columns.find((c) => c.table === table && c.column.name === column) || null;
   const findColumnByWords = (words: string, predicate: (c: ColumnDef) => boolean, allowOutOfScope = false): ColumnEntry | null => {
@@ -132,7 +130,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   };
   const tableByWords = (words: string): TableEntry | null => { const w = softNormalize(words).trim(); return ctx.tables.find((t) => t.phrases.includes(w)) || ctx.tables.find((t) => t.phrases.some((p) => findPhrase(w, p).length > 0)) || null; };
 
-  // ---------- 2. Decode (business value) filters, negation, IN-merge ----------
   const filters: FilterCondition[] = [];
   const decodeHits: { entry: ColumnEntry; raw: string; label: string; neg: boolean; pos: number }[] = [];
   ctx.columns.filter((c) => inScope(c.table) && c.column.decode?.length).forEach((entry) => {
@@ -163,7 +160,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     else { filters.push({ id: makeId('filt'), table, column, operator: neg ? 'NOT IN' : 'IN', value: hits.map((h) => h.raw).join(','), combinator: 'AND' }); add('filter', `${q(table, column)} ${neg ? 'NOT IN' : 'IN'} (${hits.map((h) => h.label).join(', ')}) — multiple values for one column combined into a list.`, 0.85); }
   });
 
-  // ---------- 3. Aggregation ----------
   let aggregateMode = false;
   const aggregates: { agg: Agg; entry: ColumnEntry | null; distinct: boolean; alias: string; expr: string }[] = [];
   const aggPatterns: { agg: Agg; re: RegExp }[] = [
@@ -179,6 +175,7 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     while ((m = re.exec(soft))) {
       const span = { start: m.index, end: m.index + m[0].length };
       if (takenAggSpans.some((s) => overlaps(s, span))) continue;
+      if (resolvedHits.some((h) => h.span.start <= m!.index && m!.index < h.span.end && !/^(total|sum|count|number|average|avg|max|min)\b/.test(soft.slice(h.span.start, h.span.end)))) continue;
       const tail = (agg === 'COUNT' ? m[2] : m[1]) || '';
       const phrase = tail.split(new RegExp(`\\s${STOP_AFTER}\\s|\\s${STOP_AFTER}$`))[0].trim();
       if (agg === 'COUNT') {
@@ -207,9 +204,13 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       takenAggSpans.push(span); aggregateMode = true;
     }
   });
+  const havingNoun = soft.match(new RegExp(`\\bhaving\\s+(?:more than|over|at least|fewer than|less than|under|at most)\\s+${NUM}\\s+([a-z ]{2,30})`));
+  if (!aggregateMode && havingNoun && primary()) {
+    const nounTbl = tableByWords(havingNoun[1].trim().split(' ').slice(0, 2).join(' ')) || tableByWords(havingNoun[1].trim().split(' ')[0]);
+    if (nounTbl && nounTbl.table.name !== primary()) { ensureTable(nounTbl.table.name, 'HAVING count'); const pk = nounTbl.pk || nounTbl.table.columns[0]; const ce = colEntry(nounTbl.table.name, pk.name); aggregates.push({ agg: 'COUNT', entry: ce, distinct: true, alias: aliasFor(nounTbl.core, 'COUNT'), expr: `COUNT(DISTINCT ${q(nounTbl.table.name, pk.name)})` }); aggregateMode = true; }
+  }
   if (aggregateMode) aggregates.forEach((a) => add('aggregation', `${a.expr} AS ${a.alias}`, a.entry || a.agg === 'COUNT' ? 0.85 : 0.5));
 
-  // ---------- 4. GROUP BY ----------
   const groupBy: string[] = []; const groupSelect: SelectedColumnSpec[] = [];
   function pickDateColumn(hintText: string): ColumnEntry | null {
     const dateCols = ctx.columns.filter((c) => isDateType(c.column.type) && inScope(c.table));
@@ -218,7 +219,9 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     const kw: [RegExp, RegExp][] = [[/\bdue\b/, /DUE/i], [/\bpost(ed|ing)?\b/, /POST/i], [/\bapprov(ed|al)\b/, /APPROV/i], [/\b(created|raised|issued|invoice date|invoiced)\b/, /INVOICE_DATE|CREAT|PO_DATE/i], [/\bpaid|payment\b/, /PAY/i], [/\b(start|starting)\b/, /START/i], [/\b(end|ending|expir)/, /END|EXPIR/i]];
     for (const [re, colRe] of kw) if (re.test(h)) { const hit = dateCols.find((c) => colRe.test(c.column.name) && c.table === primary()) || dateCols.find((c) => colRe.test(c.column.name)); if (hit) return hit; }
     const named = resolvedHits.find((r) => isDateType(r.entry.column.type)); if (named) return named.entry;
-    return dateCols.find((c) => c.table === primary() && /INVOICE_DATE|CREAT|_DATE$|^DATE$/i.test(c.column.name)) || dateCols.find((c) => c.table === primary()) || dateCols[0];
+    const live = dateCols.filter((c) => !/^\s*obsolete/i.test(c.column.description || ''));
+    for (const re of [/INVOICE_DATE/i, /^(CREATION_TIME|CREATED(_DATE|_AT|_TIME)?|CREATION_DATE)$/i, /^(DOCUMENT_)?DATE$|_DATE$/i]) { const hit = live.find((c) => c.table === primary() && re.test(c.column.name)); if (hit) return hit; }
+    return live.find((c) => c.table === primary()) || live[0] || dateCols[0];
   }
   const groupRe = new RegExp(`\\b(?:grouped by|group by|broken down by|split by|for each|for every|per|by)\\s+(?:each\\s+|the\\s+)?([a-z0-9 ]{2,40}?)(?=\\s${STOP_AFTER}\\b|[,.;]|$)`, 'g');
   if (aggregateMode || /\b(per|for each|for every|group(?:ed)? by|broken down by)\b/.test(soft)) {
@@ -245,6 +248,10 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       if (!groupBy.includes(ref)) { groupBy.push(ref); groupSelect.push({ id: makeId('col'), table: target.table, column: target.column, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' }); add('group-by', `GROUP BY ${ref}`, aggregateMode ? 0.85 : 0.6); }
     }
   }
+  if (aggregateMode && !groupBy.length && havingNoun) {
+    const pt = ctx.tableUpper.get(primary().toUpperCase()); const dc = pt ? (pt.nameColumn || pt.displayColumn || pt.pk) : null;
+    if (pt && dc) { const ref = q(pt.table.name, dc.name); groupBy.push(ref); groupSelect.push({ id: makeId('col'), table: pt.table.name, column: dc.name, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' }); add('group-by', `GROUP BY ${ref}`, 0.8); }
+  }
   if (aggregateMode && !groupBy.length) {
     const te = soft.match(/\b(?:top|bottom|highest|lowest|first|best|worst|biggest|largest|smallest)\s+(?:\d{1,6}\s+)?([a-z ]{2,30}?)\s+by\b/);
     const tbl = te ? tableByWords(te[1].trim()) : null;
@@ -252,7 +259,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     if (tbl && dc) { ensureTable(tbl.table.name, 'ranked entity'); const ref = q(tbl.table.name, dc.name); groupBy.push(ref); groupSelect.push({ id: makeId('col'), table: tbl.table.name, column: dc.name, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' }); add('group-by', `GROUP BY ${ref} (ranking ${tbl.table.name})`, 0.8); }
   }
 
-  // ---------- 5. Numeric / string / null conditions ----------
   const numericColsInText = resolvedHits.filter((h) => isNumericType(h.entry.column.type));
   const aggregatedCols = new Set(aggregates.filter((a) => a.entry && a.agg !== 'COUNT').map((a) => q(a.entry!.table, a.entry!.column.name)));
   let having = '';
@@ -290,7 +296,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       having = `${expr} ${op} ${n}`; add('having', `HAVING ${having}`, 0.75);
     }
   }
-  /** V17.2 — ISO-coded country columns accept country names ("Finland" → 'FI'). */
   const mapCountry = (col: ColumnDef, v: string): string => {
     if (!/country/i.test(`${col.name} ${col.label}`) || !(Number(col.length) <= 3 || /\biso\b/i.test(col.description || ''))) return v;
     const iso = countryNameToIso2(v); if (iso) { notes.push(`"${v}" was mapped to the ISO country code '${iso}' used by ${col.name}.`); return iso; } return v;
@@ -314,6 +319,15 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     if ((m = after.match(/^(?:is\s+not|not|<>|!=|other than)\s+/))) { const v = valueAt(m[0].length); if (v) { const mv = mapCountry(h.entry.column, v); push('<>', mv, `<> '${mv}'`); } return; }
     if ((m = after.match(/^(?:is|=|equals?|equal to|named|called|:)\s*/))) { const v = valueAt(m[0].length); if (v && !/^(the|a|an|not|null|empty|in|of)$/i.test(v) && !tableByWords(v.toLowerCase())) { const mv = mapCountry(h.entry.column, v); push('=', mv, `= '${mv}'`); } }
   });
+  // Bare country names ("vendors in Germany or France") → ISO code filter on the in-scope country column.
+  const countryCol = ctx.columns.find((c) => inScope(c.table) && /country/i.test(`${c.column.name} ${c.column.label}`) && isStringType(c.column.type) && (Number(c.column.length) <= 3 || /\biso\b/i.test(c.column.description || '')));
+  if (countryCol && !filters.some((f) => f.table === countryCol.table && f.column === countryCol.column.name)) {
+    const words = soft.replace(/[^a-z ]/g, ' ').split(/\s+/).filter(Boolean); const found: { iso: string; neg: boolean }[] = [];
+    for (let i = 0; i < words.length; i++) {
+      for (const n of [3, 2, 1]) { const ph = words.slice(i, i + n).join(' '); if (n > 1 && words.length < i + n) continue; const iso = n === 1 && ph.length < 4 && ph !== 'uk' && ph !== 'usa' && ph !== 'uae' ? null : countryNameToIso2(ph); if (iso && !found.some((f) => f.iso === iso)) { found.push({ iso, neg: /\b(not|excluding|except|outside)\s*(in\s*)?$/.test(words.slice(Math.max(0, i - 2), i).join(' ')) }); i += n - 1; break; } }
+    }
+    if (found.length) { const neg = found.every((f) => f.neg); const vals = found.map((f) => f.iso); filters.push({ id: makeId('filt'), table: countryCol.table, column: countryCol.column.name, operator: vals.length > 1 ? (neg ? 'NOT IN' : 'IN') : (neg ? '<>' : '='), value: vals.join(','), combinator: 'AND' }); add('filter', `${q(countryCol.table, countryCol.column.name)} ${vals.length > 1 ? 'IN' : '='} (${vals.join(', ')}) — country name(s) mapped to ISO codes`, 0.8); }
+  }
   mentions.tables.forEach((th) => {
     const m = soft.slice(th.span.end, th.span.end + 30).match(/^\s*(?:#|no\.?|number|num)?\s*(\d{1,18})\b(?!\s*(?:days?|weeks?|months?|years?|rows?|records?|results?|%))/);
     const pk = th.entry.pk;
@@ -326,7 +340,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     if (m && dc && !filters.some((f) => f.table === th.entry.table.name && f.column === dc.name)) { ensureTable(th.entry.table.name, 'named entity'); filters.push({ id: makeId('filt'), table: th.entry.table.name, column: dc.name, operator: '=', value: m[1], combinator: 'AND' }); add('filter', `${q(th.entry.table.name, dc.name)} = '${m[1]}'`, 0.8); }
   });
 
-  // ---------- 6. Date filtering ----------
   const dateFilters: FilterCondition[] = [];
   const dcol = /\b(today|yesterday|this|current|last|past|previous|since|before|after|until|between|during|in|on|from)\b/.test(soft) ? pickDateColumn('') : null;
   if (dcol) {
@@ -365,7 +378,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     }
   }
 
-  // ---------- 7. Sorting, limit, distinct ----------
   const sorts: SortSpec[] = [];
   let limit: number | null = null;
   let m2: RegExpMatchArray | null;
@@ -393,13 +405,11 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   if (!sorts.length && base.matchedSorts.length) base.matchedSorts.filter((s) => inScope(s.table)).forEach((s) => sorts.push(s));
   const distinct = !aggregateMode && /\b(distinct|unique|different|without duplicates|de-?duplicated?)\b/.test(soft);
   if (distinct) add('distinct', 'SELECT DISTINCT', 0.85);
-  // V17.2: table aliases and join type
   const tableAliases = /\b(?:with|using|use)\s+(?:short\s+)?(?:table\s+)?alias(?:es)?\b/.test(soft) ? true : undefined;
   if (tableAliases) add('alias', 'Table aliases (e.g. INVOICE_HEADER ih)', 0.85);
   const joinType: JoinType | undefined = /\b(left join|left outer join|including (?:those|ones|records|rows|items|entries) (?:without|with no)|even (?:if|when) (?:there (?:is|are) )?no|with or without)\b/.test(soft) ? 'LEFT JOIN' : undefined;
   if (joinType) add('join', 'LEFT JOIN (keep rows without a match)', 0.8);
 
-  // ---------- 8. Learned query patterns (hints only; Active Schema always wins) ----------
   const learnedIds: string[] = [];
   (opts.hints || []).filter((h) => h.similarity >= 0.6).sort((a, b) => b.weight * b.similarity - a.weight * a.similarity).slice(0, 1).forEach((h) => {
     const validTables = h.tables.filter((t) => ctx.tableUpper.has(t.toUpperCase()));
@@ -414,10 +424,8 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
     if (used) { learnedIds.push(h.patternId); add('learned', `Applied learned pattern (${h.status}, similarity ${(h.similarity * 100).toFixed(0)}%).`, Math.min(0.95, 0.6 + h.similarity * 0.3)); }
   });
 
-  // ---------- 9. Joins ----------
   if (tables.length > 1) tables.slice(1).forEach((t) => { const d = relationshipDistance(ctx, primary(), t); if (d === Infinity) { add('join', `No relationship path from ${primary()} to ${t} in the Active Schema — no JOIN can be generated for it.`, 0.3); notes.push(`No relationship path was found between ${primary()} and ${t} in the Active Schema; add the relationship in Settings → Manual Schema Update or remove the table.`); } else add('join', `JOIN ${t} (${d === 1 ? 'direct relationship' : `${d}-step relationship path`})`, d <= 2 ? 0.85 : 0.6); });
 
-  // ---------- 10. Schema gaps ----------
   const gaps: SchemaGap[] = [];
   const allTableNames = new Set(schema.tables.map((t) => t.name.toUpperCase()));
   const allColNames = new Set(schema.tables.flatMap((t) => t.columns.map((c) => c.name.toUpperCase())));
@@ -427,7 +435,6 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
   const vocab = new Set<string>([...ctx.tables.flatMap((t) => t.phrases.flatMap((p) => p.split(' '))), ...ctx.columns.flatMap((c) => c.phrases.flatMap((p) => p.split(' ')))]);
   base.unresolvedTerms.forEach((t) => { const words = softNormalize(t).split(' ').filter((w) => w.length > 2); if (/_/.test(t) || gaps.some((g) => g.term.toLowerCase() === t.toLowerCase()) || words.some((w) => vocab.has(w) || vocab.has(w.replace(/s$/, '')) || (/^un/.test(w) && vocab.has(w.slice(2))))) return; gaps.push({ kind: 'term', term: t }); });
 
-  // ---------- 11. Selected columns ----------
   let matchedColumns: SelectedColumnSpec[];
   if (aggregateMode) {
     matchedColumns = [...groupSelect, ...aggregates.map((a) => (a.entry && !a.distinct)
@@ -444,15 +451,11 @@ export function runOfflineNlu(rawText: string, schema: SchemaModel, opts: NluOpt
       [pt?.pk, pt?.nameColumn].filter((c): c is ColumnDef => !!c).forEach((c) => matchedColumns.unshift({ id: makeId('col'), table: primary(), column: c.name, alias: '', useDecode: false, aggregate: null, displayMode: 'raw' }));
     }
   }
-
-  // ---------- 11b. Same column compared to several values → IN / NOT IN ----------
   (['=', '<>'] as FilterOperator[]).forEach((op) => {
     const groups = new Map<string, FilterCondition[]>();
     filters.filter((f) => f.operator === op).forEach((f) => { const k = q(f.table, f.column); const l = groups.get(k) || []; l.push(f); groups.set(k, l); });
     groups.forEach((list) => { const values = Array.from(new Set(list.map((f) => f.value))); if (values.length < 2) return; const first = list[0]; list.slice(1).forEach((f) => filters.splice(filters.indexOf(f), 1)); first.operator = op === '=' ? 'IN' : 'NOT IN'; first.value = values.join(','); add('filter', `${q(first.table, first.column)} ${first.operator} (${values.join(', ')}) — values for one column combined into a list.`, 0.8); });
   });
-
-  // ---------- 12. Combinator, plan, confidence ----------
   const orBetween = /\bor\b/.test(soft) && !/\band\b/.test(soft) && filters.length > 1 && new Set(filters.map((f) => q(f.table, f.column))).size > 1;
   if (orBetween) filters.forEach((f, i) => { if (i > 0) f.combinator = 'OR'; });
   if (tables.length) plan.push(`Identified table(s) in Active Schema "${schema.name}": ${tables.join(', ')}.`);

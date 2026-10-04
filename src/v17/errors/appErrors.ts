@@ -1,7 +1,3 @@
-/**
- * Typed, specific application errors. Messages pass through redactSecrets() so a token / API key
- * never reaches the UI, logs, console, SQL or error text.
- */
 export type AppErrorCode =
   | 'ACTIVE_SCHEMA_UNAVAILABLE' | 'TABLE_NOT_FOUND' | 'COLUMN_NOT_FOUND' | 'INVALID_SCHEMA_RECORD'
   | 'SCHEMA_UPDATE_FAILED' | 'SCHEMA_DEPENDENCY_BLOCKED' | 'SCHEMA_SYNC_FAILED' | 'REPOSITORY_SYNC_FAILED'
@@ -38,7 +34,6 @@ export function toAppError(e: unknown, fallbackCode: AppErrorCode, context: stri
   return makeError(fallbackCode, `${context}: ${raw && raw !== 'undefined' ? raw : 'no further detail was returned'}`, undefined, knownSecrets);
 }
 export function formatAppError(err: AppError): string { return `${ERROR_TITLES[err.code]} — ${err.message}`; }
-/** Renders nothing when there is no error (V16.2 empty-container pattern preserved). */
 export function renderErrorListHtml(errors: AppError[], escape: (s: string) => string): string {
   if (!errors.length) return '';
   return `<div class="issue-box mini" data-v17-errors><ul>${errors.map((e) => `<li><strong>${escape(ERROR_TITLES[e.code])}:</strong> ${escape(e.message)}${e.details?.length ? `<ul>${e.details.map((d) => `<li>${escape(d)}</li>`).join('')}</ul>` : ''}</li>`).join('')}</ul></div>`;

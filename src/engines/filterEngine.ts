@@ -8,7 +8,7 @@ function quoteIfNeeded(v: string): string {
   if (trimmed === '') return "''";
   if (/^-?\d+(\.\d+)?$/.test(trimmed)) return trimmed;
   if (/^(sysdate|getdate\(\)|now\(\)|current_date|current_timestamp)$/i.test(trimmed)) return trimmed.toUpperCase();
-  if (isSafeDateExpression(trimmed)) return trimmed; // V17: exact generated date expressions only
+  if (isSafeDateExpression(trimmed)) return trimmed;
   return `'${trimmed.replace(/'/g, "''")}'`;
 }
 export function renderFilterClause(table: string, column: string, operator: FilterOperator, value: string, value2?: string): string {
