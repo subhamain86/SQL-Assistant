@@ -1,3 +1,0 @@
-{ "name": "sql-assistant-v17.2.1-upgrade", "version": "17.2.1", "private": true,
-  "scripts": { "build": "tsc -p .", "test": "tsc -p . && node --test test/migration.test.cjs", "apply": "node tools/apply-v1721.mjs" },
-  "devDependencies": { "typescript": "^5.4.0" } }
