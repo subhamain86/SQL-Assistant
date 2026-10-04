@@ -1,15 +1,19 @@
 /**
- * Schema file format, legacy migration and strict validation (single source of truth for load, import, pull, push).
- * Rules (see docs/V17.3-ROOT-CAUSE.md):
- *   L1 decode code/value/raw/key → rawValue: first NON-empty alias wins. Lossless → applied to every file.
- *   Legacy files only (no writer stamp = V17.0 or older):
- *   L2 empty raw + empty label → removed     L3 empty raw + label → kept in unmappedDecodeLabels (never invented)
- *   L4 exact duplicate decode → de-duplicated L5 primary_key/foreign_key/schema_name → current names
+ * Single schema format authority: parse → detect writer → normalise/migrate → validate → serialise.
+ * Used by import, local load, Manual Schema Update, pull and push (publish gate).
+ *
+ * Migration rules (docs/ROOT_CAUSE_V17.3.1.md):
+ *   L1 decode raw value = first NON-EMPTY of rawValue/raw/value/code/key/id. Lossless → applied to every file.
+ *      (V17.0 exports use {code,label}; some devices wrote rawValue:"" next to code. Reading the first *present* key
+ *       produced "decode entry (#n) with an empty raw value … and 434 more".)
+ *   Files without a writer stamp (V17.0 or older) additionally:
+ *   L2 empty raw + empty label → removed (placeholder)        L3 empty raw + label → kept in unmappedDecodeLabels (never invented)
+ *   L4 exact duplicate decode entries → de-duplicated         L5 primary_key / foreign_key / schema_name → current names
  *   L6 FK to a table/column outside the schema → unresolvedReference (documentation, not used for joins)
- * Anything else stays an error with an exact path; validation is never relaxed.
+ * Everything else stays a validation error with an exact path. Validation is never relaxed.
  */
 import type { SchemaModel, SchemaRegistry, TableDef, ColumnDef, DecodeEntry, RelationshipDef, SchemaMigrationInfo } from '../../types';
-export const APP_VERSION = '17.3.0';
+export const APP_VERSION = '17.3.1';
 export const APP_NAME = 'SQL Assistant';
 export const SCHEMA_FORMAT_VERSION = 2;
 export const WRITER_LABEL = `${APP_NAME} ${APP_VERSION}`;
@@ -25,8 +29,8 @@ function firstNonEmpty(o: Record<string, unknown>, k: string[]): { key: string |
 function bool(v: unknown, fb = false): boolean { if (typeof v === 'boolean') return v; if ([1, '1', 'true', 'Y', 'y', 'yes'].includes(v as never)) return true; if ([0, '0', 'false', 'N', 'n', 'no'].includes(v as never)) return false; return fb; }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && /^\d+$/.test(v.trim()) ? +v : undefined);
 const U = (s: string) => s.trim().toUpperCase();
-export interface WriterInfo { stamped: boolean; formatVersion: number | null; writtenBy: string | null; legacy: boolean; label: string; }
-export function detectWriter(reg: unknown): WriterInfo { const o = isObj(reg) ? reg : {}; const wb = ts(o.writtenBy) || null; const fv = typeof o.formatVersion === 'number' ? o.formatVersion : null; const st = !!wb || fv !== null; return { stamped: st, formatVersion: fv, writtenBy: wb, legacy: !st, label: st ? wb || `format ${fv}` : LEGACY_FORMAT_LABEL }; }
+export interface WriterInfo { stamped: boolean; formatVersion: number | null; writtenBy: string | null; device: string | null; legacy: boolean; label: string; }
+export function detectWriter(reg: unknown): WriterInfo { const o = isObj(reg) ? reg : {}; const wb = ts(o.writtenBy) || null; const fv = typeof o.formatVersion === 'number' ? o.formatVersion : null; const st = !!wb || fv !== null; return { stamped: st, formatVersion: fv, writtenBy: wb, device: ts(o.writtenByDevice) || null, legacy: !st, label: st ? `${wb || `format ${fv}`}${ts(o.writtenByDevice) ? ` on ${ts(o.writtenByDevice)}` : ''}` : LEGACY_FORMAT_LABEL }; }
 interface Ctx { legacy: boolean; issues: SchemaIssue[]; notes: MigrationNote[]; }
 function normDecode(raw: unknown, path: string, t: string, col: string, c: Ctx): { decode?: DecodeEntry[]; unmapped: string[] } {
   const um: string[] = []; if (raw === undefined || raw === null) return { unmapped: um };
@@ -60,7 +64,8 @@ function normColumn(raw: unknown, path: string, t: string, c: Ctx): ColumnDef | 
 export function normalizeSchema(raw: unknown, o: { index?: number; legacy?: boolean; basePath?: string } = {}): { schema: SchemaModel | null; issues: SchemaIssue[]; notes: MigrationNote[] } {
   const bp = o.basePath ?? (o.index !== undefined ? `schemas[${o.index}]` : 'schema'); const c: Ctx = { legacy: !!o.legacy, issues: [], notes: [] };
   if (!isObj(raw)) { c.issues.push({ severity: 'error', code: 'SCHEMA_NOT_OBJECT', message: 'Invalid schema: entry is not an object.', path: bp }); return { schema: null, ...c }; }
-  const name = ts(first(raw, ['name', 'schemaName', 'schema_name'])); const tables: TableDef[] = [];
+  const name = ts(first(raw, ['name', 'schemaName', 'schema_name'])); if ('schema_name' in raw && !('name' in raw)) c.notes.push({ rule: 'L5', path: `${bp}.schema_name`, message: 'Legacy "schema_name" mapped to "name".' });
+  const tables: TableDef[] = [];
   if (raw.tables !== undefined && !Array.isArray(raw.tables)) c.issues.push({ severity: 'error', code: 'TABLES_NOT_ARRAY', message: 'Invalid schema: "tables" is not a list.', path: `${bp}.tables` });
   else ((raw.tables as unknown[]) || []).forEach((t, i) => { const p = `${bp}.tables[${i}]`; if (!isObj(t)) { c.issues.push({ severity: 'error', code: 'TABLE_NOT_OBJECT', message: 'Invalid table definition: entry is not an object.', path: p }); return; }
     const tn = ts(first(t, ['name', 'tableName', 'table_name'])); const cols: ColumnDef[] = [];
@@ -106,15 +111,15 @@ export function validateSchemaModel(s: Pick<SchemaModel, 'tables' | 'relationshi
 }
 export type MigrationStatus = 'current' | 'legacy-clean' | 'migrated' | 'migration-failed' | 'invalid';
 export interface SchemaReport { index: number; name: string; id: string; schema: SchemaModel | null; valid: boolean; errors: SchemaIssue[]; warnings: SchemaIssue[]; legacy: boolean; migrationStatus: MigrationStatus; migrationNotes: MigrationNote[]; }
-export interface RegistryReport { fileProblem: SchemaIssue | null; writer: WriterInfo; schemas: SchemaReport[]; validSchemas: SchemaModel[]; invalidSchemas: SchemaReport[]; migratedSchemas: SchemaReport[]; activeSchemaId: string | null; activeSchemaUpdatedAt: string | null; }
+export interface RegistryReport { fileProblem: SchemaIssue | null; stage: 'parse' | 'format' | null; writer: WriterInfo; schemas: SchemaReport[]; validSchemas: SchemaModel[]; invalidSchemas: SchemaReport[]; migratedSchemas: SchemaReport[]; activeSchemaId: string | null; activeSchemaUpdatedAt: string | null; }
 export function checkRegistry(input: { text?: string; value?: unknown }, now: () => string = () => new Date().toISOString()): RegistryReport {
-  const bad = (p: SchemaIssue, w = detectWriter(null)): RegistryReport => ({ fileProblem: p, writer: w, schemas: [], validSchemas: [], invalidSchemas: [], migratedSchemas: [], activeSchemaId: null, activeSchemaUpdatedAt: null });
+  const bad = (p: SchemaIssue, stage: 'parse' | 'format', w = detectWriter(null)): RegistryReport => ({ fileProblem: p, stage, writer: w, schemas: [], validSchemas: [], invalidSchemas: [], migratedSchemas: [], activeSchemaId: null, activeSchemaUpdatedAt: null });
   let v = input.value; let text = input.text;
-  if (text !== undefined) { if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); if (!text.trim()) return bad({ severity: 'error', code: 'FILE_EMPTY', message: 'The schema file is empty.', path: '$' }); if (/^\s*</.test(text)) return bad({ severity: 'error', code: 'FILE_HTML', message: 'The repository returned an HTML page instead of the schema file (wrong path, sign-in or proxy page).', path: '$' }); try { v = JSON.parse(text); } catch (e) { return bad({ severity: 'error', code: 'FILE_NOT_JSON', message: `The schema file is not valid JSON (${(e as Error).message}).`, path: '$' }); } }
+  if (text !== undefined) { if (text.charCodeAt(0) === 0xfeff) text = text.slice(1); if (!text.trim()) return bad({ severity: 'error', code: 'FILE_EMPTY', message: 'The schema file is empty.', path: '$' }, 'parse'); if (/^\s*</.test(text)) return bad({ severity: 'error', code: 'FILE_HTML', message: 'The repository returned an HTML page instead of the schema file (wrong path, sign-in or proxy page).', path: '$' }, 'parse'); try { v = JSON.parse(text); } catch (e) { return bad({ severity: 'error', code: 'FILE_NOT_JSON', message: `The schema file is not valid JSON (${(e as Error).message}).`, path: '$' }, 'parse'); } }
   const reg: Record<string, unknown> = Array.isArray(v) ? { schemas: v } : isObj(v) && !Array.isArray(v.schemas) && Array.isArray(v.tables) ? { schemas: [v] } : isObj(v) && isObj(v.registry) && Array.isArray(v.registry.schemas) ? v.registry : isObj(v) ? v : {};
-  if (!Array.isArray(reg.schemas)) return bad({ severity: 'error', code: 'FILE_NOT_REGISTRY', message: 'The schema file has no "schemas" list.', path: '$.schemas' });
+  if (!Array.isArray(reg.schemas)) return bad({ severity: 'error', code: 'FILE_NOT_REGISTRY', message: 'The schema file has no "schemas" list.', path: '$.schemas' }, 'format');
   const w = detectWriter(isObj(v) ? v : reg);
-  if (w.formatVersion !== null && w.formatVersion > SCHEMA_FORMAT_VERSION) return bad({ severity: 'error', code: 'FILE_NEWER_FORMAT', message: `The schema file uses format ${w.formatVersion} (${w.writtenBy || 'a newer version'}). Update SQL Assistant to read it.`, path: '$.formatVersion' }, w);
+  if (w.formatVersion !== null && w.formatVersion > SCHEMA_FORMAT_VERSION) return bad({ severity: 'error', code: 'FILE_NEWER_FORMAT', message: `The schema file uses format ${w.formatVersion} (${w.writtenBy || 'a newer version'}). Update SQL Assistant on this device to read it.`, path: '$.formatVersion' }, 'format', w);
   const schemas = (reg.schemas as unknown[]).map((raw, i): SchemaReport => {
     const n = normalizeSchema(raw, { index: i, legacy: w.legacy }); const name = n.schema?.name || `schema #${i + 1}`;
     if (!n.schema) return { index: i, name, id: '', schema: null, valid: false, errors: n.issues, warnings: [], legacy: w.legacy, migrationStatus: w.legacy ? 'migration-failed' : 'invalid', migrationNotes: n.notes };
@@ -123,13 +128,14 @@ export function checkRegistry(input: { text?: string; value?: unknown }, now: ()
     if (st === 'migrated' && !n.schema.migration) n.schema.migration = { fromFormat: w.label, migratedAt: now(), migratedBy: WRITER_LABEL, changes: n.notes.length, warnings: n.notes.some((x) => x.rule === 'L3') ? [`${n.notes.filter((x) => x.rule === 'L3').length} decode label(s) had no raw code and are kept as unmapped labels.`] : [] };
     return { index: i, name, id: n.schema.id, schema: n.schema, valid, errors, warnings: val.warnings, legacy: w.legacy, migrationStatus: st, migrationNotes: n.notes };
   });
-  return { fileProblem: null, writer: w, schemas, validSchemas: schemas.filter((s) => s.valid).map((s) => s.schema!), invalidSchemas: schemas.filter((s) => !s.valid), migratedSchemas: schemas.filter((s) => s.migrationStatus === 'migrated'), activeSchemaId: ts(reg.activeSchemaId) || null, activeSchemaUpdatedAt: ts(reg.activeSchemaUpdatedAt) || null };
+  return { fileProblem: null, stage: null, writer: w, schemas, validSchemas: schemas.filter((s) => s.valid).map((s) => s.schema!), invalidSchemas: schemas.filter((s) => !s.valid), migratedSchemas: schemas.filter((s) => s.migrationStatus === 'migrated'), activeSchemaId: ts(reg.activeSchemaId) || null, activeSchemaUpdatedAt: ts(reg.activeSchemaUpdatedAt) || null };
 }
 export function summarizeMigration(notes: MigrationNote[]): string[] {
   const n = (r: MigrationNote['rule']) => notes.filter((x) => x.rule === r).length; const o: string[] = [];
   if (n('L1')) o.push(`${n('L1')} decode raw value(s) read from legacy keys (e.g. "code").`); if (n('L5')) o.push(`${n('L5')} legacy property name(s) mapped.`); if (n('L2')) o.push(`${n('L2')} empty placeholder decode entries removed.`);
   if (n('L4')) o.push(`${n('L4')} exact duplicate decode entries removed.`); if (n('L3')) o.push(`${n('L3')} decode label(s) without a raw code preserved as unmapped labels.`); if (n('L6')) o.push(`${n('L6')} reference(s) outside this schema kept as documentation.`); return o;
 }
+/** Publish gate: never emits an invalid schema; always stamps writer/format metadata. */
 export function serializeRegistry(reg: SchemaRegistry, device = '', now: () => string = () => new Date().toISOString()): { ok: boolean; text: string; problems: { name: string; errors: SchemaIssue[] }[] } {
   const problems = reg.schemas.map((s, i) => ({ name: s.name, errors: validateSchemaModel(s, `schemas[${i}]`).errors })).filter((p) => p.errors.length);
   if (problems.length) return { ok: false, text: '', problems };

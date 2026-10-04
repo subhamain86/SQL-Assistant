@@ -1,4 +1,5 @@
 export interface AppError { code: string; message: string; details?: string[]; }
-const PAT: RegExp[] = [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, /\bsk-[A-Za-z0-9_\-]{16,}\b/g, /(Bearer|token)\s+[A-Za-z0-9._\-]{16,}/gi];
-export function redactSecrets(t: string, known: (string | null | undefined)[] = []): string { let o = String(t ?? ''); known.filter((s): s is string => !!s && s.length >= 6).forEach((s) => { o = o.split(s).join('••••••'); }); PAT.forEach((re) => { o = o.replace(re, (_m, p1) => (typeof p1 === 'string' && /^(Bearer|token)/i.test(p1) ? `${p1} ••••••` : '••••••')); }); return o; }
+const PAT: RegExp[] = [/\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, /\bgithub_pat_[A-Za-z0-9_]{20,}\b/g, /\bsk-[A-Za-z0-9_\-]{16,}\b/g, /(Bearer|token)\s+[A-Za-z0-9._\-]{16,}/gi, /(api[-_]?key["'\s:=]+)[A-Za-z0-9._\-]{12,}/gi];
+export function redactSecrets(t: string, known: (string | null | undefined)[] = []): string { let o = String(t ?? ''); known.filter((s): s is string => !!s && s.length >= 6).forEach((s) => { o = o.split(s).join('••••••'); }); PAT.forEach((re) => { o = o.replace(re, (_m, p1) => (typeof p1 === 'string' && /^(Bearer|token|api)/i.test(p1) ? `${p1} ••••••` : '••••••')); }); return o; }
+export const containsSecret = (t: string) => PAT.some((re) => { re.lastIndex = 0; const r = re.test(t); re.lastIndex = 0; return r; });
 export const makeError = (code: string, message: string, details?: string[]): AppError => ({ code, message: redactSecrets(message), details: details?.map((d) => redactSecrets(d)) });

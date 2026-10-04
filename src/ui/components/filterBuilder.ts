@@ -1,0 +1,18 @@
+import type { SchemaModel, FilterCondition, FilterOperator } from '../../types'; import { icon } from './icons'; import { FILTER_OPERATORS, requiresValue } from '../../engines/filterEngine'; import { makeId } from '../../utils/id'; import { e } from '../dom';
+export function renderFilterBuilder(container: HTMLElement, schema: SchemaModel, selectedTables: string[], filters: FilterCondition[], onChange: (next: FilterCondition[]) => void): void {
+  const current = filters.map((f) => ({ ...f }));
+  const cols = () => selectedTables.flatMap((t) => (schema.tables.find((x) => x.name === t)?.columns || []).map((c) => ({ table: t, column: c.name, label: `${t}.${c.name}` })));
+  function draw(): void {
+    const cs = cols(); if (!selectedTables.length) { container.innerHTML = '<p class="hint">Select one or more tables first.</p>'; return; }
+    container.innerHTML = `<div class="filter-rows">${current.map((f, i) => `<div class="filter-row" data-idx="${i}">${i > 0 ? `<select class="combinator-select" aria-label="Combinator" style="flex:0 0 72px"><option ${f.combinator === 'AND' ? 'selected' : ''}>AND</option><option ${f.combinator === 'OR' ? 'selected' : ''}>OR</option></select>` : '<span class="filter-where-label">WHERE</span>'}<select class="col-select" aria-label="Column">${cs.map((c) => `<option value="${e(`${c.table}::${c.column}`)}" ${c.table === f.table && c.column === f.column ? 'selected' : ''}>${e(c.label)}</option>`).join('')}</select><select class="op-select" aria-label="Operator">${FILTER_OPERATORS.map((o) => `<option value="${e(o.op)}" ${o.op === f.operator ? 'selected' : ''}>${e(o.op)}</option>`).join('')}</select>${requiresValue(f.operator) ? `<input type="text" class="val-input" value="${e(f.value)}" placeholder="${f.operator.includes('IN') ? 'a, b, c' : 'value'}" aria-label="Value">` : ''}${f.operator === 'BETWEEN' ? `<span>and</span><input type="text" class="val2-input" value="${e(f.value2 || '')}" aria-label="Second value">` : ''}<button type="button" class="icon-btn remove-btn" aria-label="Remove filter">${icon('trash', 14)}</button></div>`).join('')}</div><button type="button" class="btn btn-outline btn-sm add-filter-btn">${icon('plus', 14)} Add filter</button>`;
+    container.querySelectorAll<HTMLElement>('.filter-row').forEach((row) => { const i = parseInt(row.dataset.idx || '0', 10);
+      row.querySelector('.combinator-select')?.addEventListener('change', (ev) => { current[i].combinator = (ev.target as HTMLSelectElement).value as 'AND' | 'OR'; onChange([...current]); });
+      row.querySelector('.col-select')?.addEventListener('change', (ev) => { const [t, c] = (ev.target as HTMLSelectElement).value.split('::'); current[i].table = t; current[i].column = c; onChange([...current]); });
+      row.querySelector('.op-select')?.addEventListener('change', (ev) => { current[i].operator = (ev.target as HTMLSelectElement).value as FilterOperator; onChange([...current]); draw(); });
+      row.querySelector('.val-input')?.addEventListener('input', (ev) => { current[i].value = (ev.target as HTMLInputElement).value; onChange([...current]); });
+      row.querySelector('.val2-input')?.addEventListener('input', (ev) => { current[i].value2 = (ev.target as HTMLInputElement).value; onChange([...current]); });
+      row.querySelector('.remove-btn')?.addEventListener('click', () => { current.splice(i, 1); onChange([...current]); draw(); }); });
+    container.querySelector('.add-filter-btn')?.addEventListener('click', () => { if (!cs.length) return; current.push({ id: makeId('filt'), table: cs[0].table, column: cs[0].column, operator: '=', value: '', combinator: 'AND' }); onChange([...current]); draw(); });
+  }
+  draw();
+}

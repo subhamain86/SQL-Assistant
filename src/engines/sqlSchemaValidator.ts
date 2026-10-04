@@ -1,5 +1,5 @@
 import type { SchemaModel, SqlSchemaValidationResult } from '../types';
-const KW = new Set(['select','from','where','group','by','having','order','join','inner','left','right','full','outer','on','and','or','not','null','as','distinct','case','when','then','else','end','with','recursive','union','all','top','limit','fetch','first','rows','only','is','in','between','like','asc','desc','count','sum','avg','min','max','current_date','sysdate','interval','day','week','month','year','trunc','add_months','date_trunc']);
+const KW = new Set(['select','from','where','group','by','having','order','join','inner','left','right','full','outer','on','and','or','not','null','as','distinct','case','when','then','else','end','with','recursive','union','all','top','limit','fetch','first','rows','only','is','in','between','like','asc','desc','count','sum','avg','min','max','current_date','sysdate','interval','day','week','month','year','trunc','add_months','date_trunc','cast','varchar']);
 const clean = (s: string) => s.replace(/--.*$/gm, ' ').replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/'(?:[^']|'')*'/g, "''");
 export function validateSqlAgainstSchema(sql: string, s: SchemaModel): SqlSchemaValidationResult {
   const t = sql.trim(); if (!t || t.startsWith('--')) return { valid: true, unknownTables: [], unknownColumnRefs: [], warnings: [] };

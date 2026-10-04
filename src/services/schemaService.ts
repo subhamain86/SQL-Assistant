@@ -1,7 +1,7 @@
-/** Centralized saved schema data + Active Schema. Every write is validated first; load never prevents start-up. */
+/** Centralized saved schema data + Active Schema. Every write is validated; loading never prevents start-up. */
 import type { SchemaModel, SchemaRegistry, SchemaEditorRow } from '../types';
 import { DEFAULT_SCHEMAS, DEFAULT_ACTIVE_SCHEMA_ID } from '../data/defaultSchemas';
-import { KEYS, type KeyValueStore } from './storage';
+import { KEYS, deviceTag, type KeyValueStore } from './storage';
 import { checkRegistry, validateSchemaModel, normalizeSchema, recoverDecodeFromSource, describeIssue, summarizeMigration, WRITER_LABEL, SCHEMA_FORMAT_VERSION, type SchemaReport } from '../v17/sync/schemaFormat';
 import { upsertSchemaRecord, deleteSchemaRecord, type RecordChangeResult, type Dependency } from '../v17/engines/schemaRecordEngine';
 import { invalidateSchemaContext } from '../v17/engines/schemaContext';
@@ -11,26 +11,27 @@ const defaults = (): SchemaRegistry => ({ schemas: JSON.parse(JSON.stringify(DEF
 type R = { ok: boolean; errors: AppError[] };
 export class SchemaService {
   private reg: SchemaRegistry; private listeners = new Set<() => void>();
-  readonly loadDiagnostics: { migrated: SchemaReport[]; rejected: SchemaReport[]; unreadable: string | null; recoveredFrom: string[] } = { migrated: [], rejected: [], unreadable: null, recoveredFrom: [] };
+  readonly loadDiagnostics: { migrated: SchemaReport[]; rejected: SchemaReport[]; unreadable: string | null; recoveredFrom: string[]; backupKey: string | null } = { migrated: [], rejected: [], unreadable: null, recoveredFrom: [], backupKey: null };
   constructor(private store: KeyValueStore) { this.reg = this.load(); }
   private load(): SchemaRegistry {
-    const sources = [KEYS.registry, KEYS.registryAlt].map((k) => ({ k, text: this.store.get(k) })).filter((x) => !!x.text) as { k: string; text: string }[];
+    const sources = ([KEYS.registry, KEYS.registryAlt] as string[]).map((k) => ({ k, text: this.store.get(k) })).filter((x): x is { k: string; text: string } => !!x.text);
     if (!sources.length) return defaults();
-    const merged: SchemaModel[] = []; let active: string | null = null; let activeAt: string | null = null; let legacySeen = false;
+    const merged: SchemaModel[] = []; let active: string | null = null; let activeAt: string | null = null; let rewrite = false;
     for (const s of sources) {
-      let r; try { r = checkRegistry({ text: s.text }); } catch (e) { this.loadDiagnostics.unreadable = (e as Error).message; continue; }
-      if (r.fileProblem || !r.validSchemas.length) { this.loadDiagnostics.unreadable = r.fileProblem?.message || 'No valid schema in stored data.'; this.store.set(`${s.k}.backup`, s.text); this.loadDiagnostics.rejected.push(...r.invalidSchemas); continue; }
-      this.loadDiagnostics.migrated.push(...r.migratedSchemas); this.loadDiagnostics.rejected.push(...r.invalidSchemas); legacySeen = legacySeen || r.writer.legacy || s.k !== KEYS.registry;
+      let r; try { r = checkRegistry({ text: s.text }); } catch (e) { r = null; this.loadDiagnostics.unreadable = (e as Error).message; }
+      if (!r || r.fileProblem || !r.validSchemas.length) { this.loadDiagnostics.unreadable = this.loadDiagnostics.unreadable || r?.fileProblem?.message || 'No valid schema in stored data.'; const bk = `${KEYS.registry}.corrupt-${Date.now()}`; this.store.set(bk, s.text); this.loadDiagnostics.backupKey = bk; this.loadDiagnostics.rejected.push(...(r?.invalidSchemas || [])); continue; }
+      this.loadDiagnostics.migrated.push(...r.migratedSchemas); this.loadDiagnostics.rejected.push(...r.invalidSchemas); rewrite = rewrite || r.writer.legacy || r.migratedSchemas.length > 0 || s.k !== KEYS.registry;
       if (s.k !== KEYS.registry) this.loadDiagnostics.recoveredFrom.push(s.k);
+      if (r.invalidSchemas.length) writeQuarantine(this.store, r.invalidSchemas);
       r.validSchemas.forEach((v) => { const i = merged.findIndex((m) => m.name.trim().toLowerCase() === v.name.trim().toLowerCase()); if (i < 0) merged.push(v); else if ((v.updatedAt || '') > (merged[i].updatedAt || '')) merged[i] = { ...v, id: merged[i].id }; });
       if (!active && r.activeSchemaId) { active = r.activeSchemaId; activeAt = r.activeSchemaUpdatedAt; }
     }
     if (!merged.length) return defaults();
     const reg: SchemaRegistry = { schemas: merged, activeSchemaId: active && merged.some((m) => m.id === active) ? active : merged[0].id, activeSchemaUpdatedAt: activeAt };
-    if (legacySeen || this.loadDiagnostics.migrated.length) { this.persist(reg, true); if (this.loadDiagnostics.recoveredFrom.length) this.store.remove(KEYS.registryAlt); }
+    if (rewrite) { this.persist(reg, true); if (this.loadDiagnostics.recoveredFrom.length) this.store.remove(KEYS.registryAlt); }
     return reg;
   }
-  private persist(reg: SchemaRegistry, silent = false): boolean { const ok = this.store.set(KEYS.registry, JSON.stringify({ ...reg, formatVersion: SCHEMA_FORMAT_VERSION, writtenBy: WRITER_LABEL })); if (ok && !silent) { invalidateSchemaContext(); this.listeners.forEach((l) => l()); } return ok; }
+  private persist(reg: SchemaRegistry, silent = false): boolean { const ok = this.store.set(KEYS.registry, JSON.stringify({ ...reg, formatVersion: SCHEMA_FORMAT_VERSION, writtenBy: WRITER_LABEL, writtenByDevice: deviceTag(this.store) })); if (ok && !silent) { invalidateSchemaContext(); this.listeners.forEach((l) => l()); } return ok; }
   subscribe(l: () => void): () => void { this.listeners.add(l); return () => this.listeners.delete(l); }
   registry(): SchemaRegistry { return this.reg; } schemas(): SchemaModel[] { return this.reg.schemas; }
   active(): SchemaModel { return this.reg.schemas.find((s) => s.id === this.reg.activeSchemaId) || this.reg.schemas[0]; }
@@ -38,7 +39,7 @@ export class SchemaService {
   replaceRegistry(next: SchemaRegistry): R {
     const bad = next.schemas.map((s) => ({ s, v: validateSchemaModel(s) })).filter((x) => !x.v.valid);
     if (bad.length) return { ok: false, errors: bad.map((b) => makeError('INVALID_SCHEMA_RECORD', `Schema "${b.s.name}" failed validation and was not saved.`, b.v.errors.slice(0, 10).map(describeIssue))) };
-    const prev = this.reg; this.reg = next; if (!this.persist(next)) { this.reg = prev; return { ok: false, errors: [makeError('SCHEMA_UPDATE_FAILED', 'Browser storage rejected the schema write; the previous schemas were kept.')] }; } return { ok: true, errors: [] };
+    const prev = this.reg; this.reg = next; if (!this.persist(next)) { this.reg = prev; return { ok: false, errors: [makeError('SCHEMA_PERSISTENCE_FAILED', 'Schema persistence failed: browser storage rejected the write. The previous schemas were kept.')] }; } return { ok: true, errors: [] };
   }
   saveSchema(s: SchemaModel): R { const u = { ...s, updatedAt: new Date().toISOString() }; return this.replaceRegistry({ ...this.reg, schemas: this.reg.schemas.some((x) => x.id === s.id) ? this.reg.schemas.map((x) => (x.id === s.id ? u : x)) : [...this.reg.schemas, u] }); }
   setActive(id: string): boolean { return !!this.byId(id) && this.replaceRegistry({ ...this.reg, activeSchemaId: id, activeSchemaUpdatedAt: new Date().toISOString() }).ok; }
@@ -63,3 +64,4 @@ export class SchemaService {
   }
   exportRegistryJson(): string { return JSON.stringify(this.reg, null, 2); }
 }
+function writeQuarantine(store: KeyValueStore, bad: SchemaReport[]): void { try { const q = JSON.parse(store.get('sqla.registry.quarantine.v17') || '[]'); bad.forEach((b) => q.push({ name: b.name, at: new Date().toISOString(), errors: b.errors.slice(0, 20).map(describeIssue) })); store.set('sqla.registry.quarantine.v17', JSON.stringify(q.slice(-50))); } catch { /* */ } }

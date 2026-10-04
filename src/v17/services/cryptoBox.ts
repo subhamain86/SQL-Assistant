@@ -1,4 +1,4 @@
-/** AES-256-GCM authenticated encryption. Repository copy: PBKDF2-SHA-256 (310 000 it.) key from the Vault Sync Passphrase. Device copy: non-extractable key in IndexedDB. */
+/** AES-256-GCM authenticated encryption. Repository copy: PBKDF2-SHA-256 (310 000 it.) key derived from the Vault Sync Passphrase (never stored). Device copy: non-extractable key in IndexedDB. */
 export const PBKDF2_ITERATIONS = 310_000;
 const AAD = new TextEncoder().encode('sql-assistant/secret-vault/v1');
 export interface VaultEnvelope { v: number; alg: 'AES-256-GCM'; kdf: 'PBKDF2-SHA256' | 'DEVICE-KEY'; iter?: number; salt?: string; iv: string; ct: string; }

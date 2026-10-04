@@ -37,6 +37,7 @@ export function getSchemaContext(s: SchemaModel): SchemaContext {
   [...s.relationships.filter((r) => isResolvableRelationship(s, r)), ...deriveFkRelationships(s)].forEach((r) => { link(r.fromTable, r.toTable); link(r.toTable, r.fromTable); });
   const ctx = { fingerprint: fp, tables, columns, tableUpper: new Map(tables.map((e) => [e.table.name.toUpperCase(), e] as [string, TableEntry])), adjacency }; cache.set(s.id, ctx); return ctx;
 }
+export function relationshipDistance(ctx: SchemaContext, a: string, b: string): number { if (a === b) return 0; const seen = new Set([a]); let f = [a]; let d = 0; while (f.length && d < 6) { d++; const nx: string[] = []; for (const n of f) for (const m of ctx.adjacency.get(n) || []) { if (m === b) return d; if (!seen.has(m)) { seen.add(m); nx.push(m); } } f = nx; } return Infinity; }
 export function findPhrase(soft: string, phrase: string): { start: number; end: number }[] {
   if (!phrase) return []; const re = new RegExp(`(^|[^a-z0-9])(${phrase.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')})(?=[^a-z0-9]|$)`, 'g'); const o: { start: number; end: number }[] = []; let m: RegExpExecArray | null;
   while ((m = re.exec(soft))) { const s = m.index + m[1].length; o.push({ start: s, end: s + m[2].length }); if (re.lastIndex === m.index) re.lastIndex++; } return o;
