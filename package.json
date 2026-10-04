@@ -1,21 +1,22 @@
 {
   "name": "sql-assistant",
   "productName": "SQL Assistant",
-  "version": "17.3.0",
+  "version": "17.3.1",
   "private": true,
   "type": "module",
-  "description": "SQL Assistant — offline natural-language SQL builder with schema management, legacy schema migration and repository synchronization.",
+  "description": "SQL Assistant — schema-aware read-only and Change Request SQL generator with an offline self-training NLU, schema synchronization and an optional AI/LLM Model.",
   "scripts": {
-    "clean": "node -e \"for (const d of ['build','dist','release']) require('fs').rmSync(d,{recursive:true,force:true})\"",
+    "clean": "node -e \"for (const d of ['build','dist','dev-dist','release','test-results']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node scripts/lint.mjs",
     "build": "node scripts/build.mjs",
     "build:dev": "node scripts/build.mjs --dev",
+    "dev": "node scripts/dev.mjs",
+    "serve": "node scripts/serve.mjs",
     "test": "node scripts/build.mjs && node --test test/*.test.mjs",
     "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py",
     "diagnose": "node scripts/diagnose.mjs",
-    "serve": "python3 -m http.server 8080 --directory release",
-    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run test:browser"
+    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run build:dev && npm run build && npm run test:browser"
   },
   "devDependencies": { "typescript": "^5.8.3" },
   "engines": { "node": ">=20" }

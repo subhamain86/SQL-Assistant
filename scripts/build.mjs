@@ -1,11 +1,13 @@
 /**
- * V17.3 build. The ONLY entry point is generated: the app is bundled into a single self-contained page.
- *   dist/index.html   – the application (inline classic script; works from file://, any web server, any base path)
- *   index.html        – identical copy at the project root, so opening/publishing the project root shows the app
- *   release/          – deployable folder: index.html, 404.html (SPA fallback), .nojekyll, version.json, web.config, staticwebapp.config.json
- * Root cause of the "index page not working" in V17.2.1: the root index.html loaded /src/main.ts (TypeScript cannot run in
- * a browser) and dist/ used a module script (blocked on file://). No page produced by this build references src/ or a module.
- * Also emits build/esm (ES modules) for the Node tests.
+ * SQL Assistant build (V17.2 deployment model restored): ONE self-contained page.
+ *   dist/index.html  – production app (deploy / open this; works from disk, any web server, any base path)
+ *   index.html       – identical copy at the project root. V17.2.1 shipped a root index.html that loaded /src/main.ts
+ *                      (TypeScript cannot run in a browser → blank page); the root page is now always the built app.
+ *   release/         – GitHub Pages / IIS / Azure SWA folder: index.html, 404.html, .nojekyll, version.json, web.config, staticwebapp.config.json
+ *   dev-dist/        – development build (`--dev`): inline source maps, comments kept
+ *   build/esm        – ES modules for the Node test suite
+ * The V17.2 stylesheet, inline SVG icons and the app are inlined; no CDN, no module scripts, no external requests.
+ * The build refuses to write output that references src/, a module script, or contains a credential.
  */
 import { execFileSync } from 'node:child_process';
 import { rmSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
@@ -15,44 +17,50 @@ import { createRequire } from 'node:module';
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..'); const require = createRequire(import.meta.url);
 let tsc; try { tsc = require.resolve('typescript/bin/tsc'); } catch { tsc = '/opt/oai-docgen/node_modules/typescript/bin/tsc'; }
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); const dev = process.argv.includes('--dev');
-for (const d of ['build', 'dist', 'release']) rmSync(join(root, d), { recursive: true, force: true });
-execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--module', 'AMD', '--outFile', join(root, 'build/bundle.js'), ...(dev ? [] : ['--removeComments'])], { stdio: 'inherit' });
+const outDir = join(root, dev ? 'dev-dist' : 'dist');
+rmSync(join(root, 'build'), { recursive: true, force: true }); rmSync(outDir, { recursive: true, force: true }); if (!dev) rmSync(join(root, 'release'), { recursive: true, force: true });
+execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--module', 'AMD', '--outFile', join(root, 'build/bundle.js'), ...(dev ? ['--inlineSourceMap', '--inlineSources'] : ['--removeComments'])], { stdio: 'inherit' });
 const loader = `(function(){var d={},c={};window.define=function(id,deps,f){d[id]={deps:deps,f:f};};function r(id){if(c[id])return c[id].exports;var m=d[id];if(!m)throw new Error('Module not found: '+id);var mod={exports:{}};c[id]=mod;var a=m.deps.map(function(x){return x==='require'?r:x==='exports'?mod.exports:r(x);});var v=m.f.apply(null,a);if(v!==undefined)mod.exports=v;return mod.exports;}window.__sqlaRequire=r;})();`;
 const fail = `function __sqlaFail(e){try{var a=document.getElementById('app');var m=(e&&(e.message||(e.reason&&e.reason.message)))||String(e);a.innerHTML='<div class="boot boot-error"><h2>SQL Assistant could not start</h2><p>Reload the page. If it persists, clear this site\\'s stored data and reload, or use another browser.</p><pre></pre></div>';a.querySelector('pre').textContent=m;}catch(_){}}`;
 const start = `window.addEventListener('error',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.error||ev.message);});window.addEventListener('unhandledrejection',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.reason);});function __sqlaStart(){try{var p=window.__sqlaRequire('main').boot();if(p&&p.catch)p.catch(__sqlaFail);}catch(e){__sqlaFail(e);}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',__sqlaStart);else __sqlaStart();`;
-const js = `${fail}\n${loader}\n${readFileSync(join(root, 'build/bundle.js'), 'utf8')}\n${start}`.replace(/<\/script/gi, '<\\/script');
-const hash = createHash('sha256').update(js, 'utf8').digest('base64');
+const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
+const appJs = safe(`${fail}\n${loader}\n${readFileSync(join(root, 'build/bundle.js'), 'utf8')}\n${start}`);
+const sha = (s) => `'sha256-${createHash('sha256').update(s, 'utf8').digest('base64')}'`;
+const css = readFileSync(join(root, 'public/styles.css'), 'utf8');
 const icon = readFileSync(join(root, 'public/favicon.svg')).toString('base64');
-const csp = `default-src 'self'; script-src 'sha256-${hash}'; style-src 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; object-src 'none'; base-uri 'none'`;
-const html = `<!doctype html>
-<!-- GENERATED by scripts/build.mjs — SQL Assistant ${pkg.version}. Do not edit; edit src/ and run npm run build. -->
-<html lang="en">
+const csp = `default-src 'self'; script-src ${sha(appJs)}; style-src 'unsafe-inline'; connect-src https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; object-src 'none'; base-uri 'none'`;
+const html = `<!DOCTYPE html>
+<!-- GENERATED by scripts/build.mjs — SQL Assistant ${pkg.version}${dev ? ' (development build)' : ''}. Edit src/ and run npm run build. -->
+<html lang="en" data-theme="light">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<meta name="application-name" content="SQL Assistant"/>
-<meta name="generator" content="SQL Assistant ${pkg.version}"/>
-<meta http-equiv="Content-Security-Policy" content="${csp}"/>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="application-name" content="SQL Assistant">
+<meta name="generator" content="SQL Assistant ${pkg.version}">
+<meta name="description" content="SQL Assistant — schema-aware read-only and Change Request SQL generator with an offline natural-language model.">
+<meta http-equiv="Content-Security-Policy" content="${csp}">
 <title>SQL Assistant</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,${icon}"/>
-<style>${readFileSync(join(root, 'public/styles.css'), 'utf8')}</style>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,${icon}">
+<style>${css}</style>
 </head>
 <body>
 <div id="app"><div class="boot" id="bootMessage">Loading SQL Assistant ${pkg.version}…</div></div>
 <noscript><div class="boot boot-error">SQL Assistant requires JavaScript. Enable JavaScript for this page and reload.</div></noscript>
-<div id="toasts" aria-live="polite"></div>
-<script>${js}</script>
+<script>${appJs}</script>
 </body>
 </html>
 `;
-if (/type="module"|<script[^>]+src=|src\/main\.ts/.test(html)) throw new Error('Built page must be self-contained (no module script, external script or src/main.ts).');
-mkdirSync(join(root, 'dist'), { recursive: true }); writeFileSync(join(root, 'dist/index.html'), html); writeFileSync(join(root, 'index.html'), html);
-mkdirSync(join(root, 'release'), { recursive: true });
-for (const f of ['index.html', '404.html']) writeFileSync(join(root, 'release', f), html);
-writeFileSync(join(root, 'release/.nojekyll'), ''); writeFileSync(join(root, 'release/version.json'), JSON.stringify({ name: 'SQL Assistant', version: pkg.version, builtAt: new Date().toISOString() }, null, 2));
-writeFileSync(join(root, 'release/staticwebapp.config.json'), JSON.stringify({ navigationFallback: { rewrite: '/index.html' } }, null, 2));
-writeFileSync(join(root, 'release/web.config'), '<?xml version="1.0"?><configuration><system.webServer><defaultDocument><files><clear/><add value="index.html"/></files></defaultDocument><httpErrors errorMode="Custom" existingResponse="Replace"><remove statusCode="404"/><error statusCode="404" path="/index.html" responseMode="ExecuteURL"/></httpErrors></system.webServer></configuration>\n');
+if (/type="module"|<script[^>]+src=|src\/main\.ts|<link[^>]+stylesheet[^>]+href=/i.test(html)) throw new Error('Build check failed: the page must be self-contained (no module/external script, no src/main.ts, no external stylesheet).');
+if (/\bghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9]{20,}/.test(html)) throw new Error('Build check failed: output contains something that looks like a credential.');
+mkdirSync(outDir, { recursive: true }); writeFileSync(join(outDir, 'index.html'), html);
+if (!dev) {
+  writeFileSync(join(root, 'index.html'), html); mkdirSync(join(root, 'release'), { recursive: true });
+  for (const f of ['index.html', '404.html']) writeFileSync(join(root, 'release', f), html);
+  writeFileSync(join(root, 'release/.nojekyll'), ''); writeFileSync(join(root, 'release/version.json'), JSON.stringify({ name: 'SQL Assistant', version: pkg.version, builtAt: new Date().toISOString() }, null, 2));
+  writeFileSync(join(root, 'release/staticwebapp.config.json'), JSON.stringify({ navigationFallback: { rewrite: '/index.html' } }, null, 2));
+  writeFileSync(join(root, 'release/web.config'), '<?xml version="1.0"?><configuration><system.webServer><defaultDocument><files><clear/><add value="index.html"/></files></defaultDocument><httpErrors errorMode="Custom" existingResponse="Replace"><remove statusCode="404"/><error statusCode="404" path="/index.html" responseMode="ExecuteURL"/></httpErrors></system.webServer></configuration>\n');
+}
 execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--outDir', join(root, 'build/esm')], { stdio: 'inherit' });
 (function fix(d) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { fix(p); continue; } if (!p.endsWith('.js')) continue; writeFileSync(p, readFileSync(p, 'utf8').replace(/(from\s+|import\s+)(['"])(\.{1,2}\/[^'"]+)\2/g, (m, pre, q, s) => (s.endsWith('.js') ? m : `${pre}${q}${existsSync(`${resolve(dirname(p), s)}.js`) ? `${s}.js` : `${s}/index.js`}${q}`))); } })(join(root, 'build/esm'));
 writeFileSync(join(root, 'build/esm/package.json'), '{"type":"module"}');
-console.log(`Build complete (${dev ? 'development' : 'production'}) → dist/index.html, index.html, release/ (${(html.length / 1024).toFixed(0)} KB, version ${pkg.version})`);
+console.log(`Build complete (${dev ? 'development → dev-dist/index.html' : 'production → dist/index.html, index.html, release/'}) — ${(html.length / 1024).toFixed(0)} KB, SQL Assistant ${pkg.version}`);

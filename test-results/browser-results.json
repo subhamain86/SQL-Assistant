@@ -1,102 +1,170 @@
 [
   {
-    "check": "Production build produced dist/index.html",
+    "check": "Build output exists: dist/index.html",
     "pass": true
   },
   {
-    "check": "Production build produced index.html",
+    "check": "Build output exists: index.html",
     "pass": true
   },
   {
-    "check": "Production build produced release/index.html",
+    "check": "Build output exists: release/index.html",
     "pass": true
   },
   {
-    "check": "Production build produced release/404.html",
+    "check": "Build output exists: release/404.html",
     "pass": true
   },
   {
-    "check": "Production build produced release/.nojekyll",
+    "check": "Build output exists: release/.nojekyll",
     "pass": true
   },
   {
-    "check": "Entry pages are self-contained (no module script, no src/main.ts)",
+    "check": "Entry page is self-contained (no src/main.ts, no module script, no CDN)",
     "pass": true
   },
   {
-    "check": "Root cause reproduced: V17.2.1-style index.html (src/main.ts) renders a blank page",
+    "check": "Root cause reproduced: V17.2.1 root index.html (src/main.ts) is blank",
     "pass": true
   },
   {
-    "check": "project root index.html via http /: index loads, SQL Assistant shown, Quick Start is default",
+    "check": "GitHub Pages sub-path /SQL-Assistant/: index loads with the V17.2 UI",
     "pass": true
   },
   {
-    "check": "project root index.html via http /: refresh on #about keeps the page",
+    "check": "GitHub Pages sub-path /SQL-Assistant/: every route renders and survives refresh",
     "pass": true
   },
   {
-    "check": "project root index.html via http /: return to index",
+    "check": "project root via http: index loads with the V17.2 UI",
     "pass": true
   },
   {
-    "check": "project root index.html via file://: index loads, SQL Assistant shown, Quick Start is default",
+    "check": "project root via http: every route renders and survives refresh",
     "pass": true
   },
   {
-    "check": "project root index.html via file://: refresh on #about keeps the page",
+    "check": "dist/index.html via file://: index loads with the V17.2 UI",
     "pass": true
   },
   {
-    "check": "project root index.html via file://: return to index",
+    "check": "dist/index.html via file://: every route renders and survives refresh",
     "pass": true
   },
   {
-    "check": "dist/index.html via file://: index loads, SQL Assistant shown, Quick Start is default",
+    "check": "root index.html via file://: index loads with the V17.2 UI",
     "pass": true
   },
   {
-    "check": "dist/index.html via file://: refresh on #about keeps the page",
+    "check": "root index.html via file://: every route renders and survives refresh",
     "pass": true
   },
   {
-    "check": "dist/index.html via file://: return to index",
+    "check": "Version 17.3.1 in footer; no old product name",
     "pass": true
   },
   {
-    "check": "GitHub Pages sub-path /SQL-Assistant/: index loads, SQL Assistant shown, Quick Start is default",
+    "check": "Hamburger navigation works",
     "pass": true
   },
   {
-    "check": "GitHub Pages sub-path /SQL-Assistant/: refresh on #about keeps the page",
+    "check": "V17.2 layout: two equal top cards (Describe / Generated SQL)",
     "pass": true
   },
   {
-    "check": "GitHub Pages sub-path /SQL-Assistant/: return to index",
+    "check": "Offline NLU: aggregation, grouping, date range, limit",
     "pass": true
   },
   {
-    "check": "Direct navigation to #settings",
+    "check": "Offline NLU badge + Active Schema audit line",
     "pass": true
   },
   {
-    "check": "Unknown route falls back to the index",
+    "check": "Manual Selectors: table + column",
     "pass": true
   },
   {
-    "check": "404.html fallback page is the full app (GitHub Pages deep links)",
+    "check": "Advanced Options: DISTINCT + limit",
     "pass": true
   },
   {
-    "check": "Sync failure: UI stays available and reports the exact stage",
+    "check": "Generated SQL validates",
     "pass": true
   },
   {
-    "check": "Offline NLU works while sync is failing",
+    "check": "Query Builder for CR",
     "pass": true
   },
   {
-    "check": "Manual Selectors + Advanced Options",
+    "check": "Settings locked: password screen shown, tabs hidden",
+    "pass": true
+  },
+  {
+    "check": "Wrong password rejected; Settings stay locked",
+    "pass": true
+  },
+  {
+    "check": "Default password unlocks; V17.2 Settings tabs",
+    "pass": true
+  },
+  {
+    "check": "Default-password warning shown",
+    "pass": true
+  },
+  {
+    "check": "Navbar lock badge shows unlocked",
+    "pass": true
+  },
+  {
+    "check": "Change password: mismatch rejected",
+    "pass": true
+  },
+  {
+    "check": "Change password: wrong current password rejected",
+    "pass": true
+  },
+  {
+    "check": "Change password: success",
+    "pass": true
+  },
+  {
+    "check": "Password never stored in plain text",
+    "pass": true
+  },
+  {
+    "check": "Lock Settings returns to the lock screen",
+    "pass": true
+  },
+  {
+    "check": "Old default password no longer works",
+    "pass": true
+  },
+  {
+    "check": "Settings locked again after restart",
+    "pass": true
+  },
+  {
+    "check": "New password unlocks after restart",
+    "pass": true
+  },
+  {
+    "check": "Row selection identified",
+    "pass": true
+  },
+  {
+    "check": "Save disabled until a change",
+    "pass": true
+  },
+  {
+    "check": "Row edit saved; other rows unchanged",
+    "pass": true
+  },
+  {
+    "check": "Row delete: wrong password refused",
+    "pass": true
+  },
+  {
+    "check": "Row delete with the Admin Password removes only that row",
     "pass": true
   },
   {
@@ -104,47 +172,23 @@
     "pass": true
   },
   {
-    "check": "Republished with writer stamp 17.3.0 and all 437 decode entries",
+    "check": "Republished: writer 17.3.1, all 437 decode entries",
     "pass": true
   },
   {
-    "check": "Sync #2: success, no migration repeated",
+    "check": "Sync #2: success, no re-migration",
     "pass": true
   },
   {
-    "check": "Sync #3: success, no migration repeated",
+    "check": "Sync #3: success, no re-migration",
     "pass": true
   },
   {
-    "check": "Active schema refreshed",
+    "check": "Restart + sync: still clean",
     "pass": true
   },
   {
-    "check": "SQL generation uses the migrated active schema",
-    "pass": true
-  },
-  {
-    "check": "Restart: AP schema 77 still active",
-    "pass": true
-  },
-  {
-    "check": "Sync after restart: success",
-    "pass": true
-  },
-  {
-    "check": "Row delete persisted",
-    "pass": true
-  },
-  {
-    "check": "Row edit persisted across restart",
-    "pass": true
-  },
-  {
-    "check": "Schema path defaults to sql-assistant-data/schemas/registry.json",
-    "pass": true
-  },
-  {
-    "check": "Vault encrypted at rest (token not in storage)",
+    "check": "Token masked; not in browser storage",
     "pass": true
   },
   {
@@ -152,39 +196,27 @@
     "pass": true
   },
   {
-    "check": "Wrong passphrase rejected",
+    "check": "AI/LLM Model tab present (offline stays primary)",
     "pass": true
   },
   {
-    "check": "Retrieve \u2192 decrypt \u2192 validate",
+    "check": "Danger Zone asks for the Admin Password",
     "pass": true
   },
   {
-    "check": "Token never rendered",
+    "check": "Danger Zone: wrong password refused",
     "pass": true
   },
   {
-    "check": "AI/LLM validation",
+    "check": "Reset Admin Password to default locks Settings",
     "pass": true
   },
   {
-    "check": "AI/LLM saved and loaded",
+    "check": "Default password works again after reset",
     "pass": true
   },
   {
-    "check": "AI/LLM unavailable \u2192 offline fallback",
-    "pass": true
-  },
-  {
-    "check": "Upgrade: schemas saved by V17.2.1/V17.2.2 are recovered and active",
-    "pass": true
-  },
-  {
-    "check": "Corrupt stored data: index still loads",
-    "pass": true
-  },
-  {
-    "check": "Blocked storage: index still loads",
+    "check": "Blocked storage: app still starts",
     "pass": true
   },
   {

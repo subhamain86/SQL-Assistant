@@ -1,20 +1,34 @@
-# SQL Assistant V17.3
+# SQL Assistant — V17.3.1
 
-Open **`index.html`** (project root) or **`dist/index.html`**: double-click it, or host the **`release/`** folder (GitHub Pages, IIS, Azure Static Web Apps).
-GitHub Pages: `.github/workflows/deploy-pages.yml` builds, tests and deploys `release/` on every push to `main` (Settings → Pages → Source: GitHub Actions).
+SQL Assistant writes read-only and Change Request SQL from your **Active Schema**.
+Its primary engine is an **offline, self-training natural-language model**. An AI/LLM Model can optionally be added.
 
+## Run it
+| Where | Use |
+|---|---|
+| Your own computer | Double-click **`index.html`** (project root) or **`dist/index.html`**. Each is one self-contained file. |
+| GitHub Pages | Push to `main`. `.github/workflows/deploy-pages.yml` type-checks, tests, builds and publishes `release/`. In the repository, set Settings → Pages → Source to **GitHub Actions**. |
+| IIS, Azure Static Web Apps or another web server | Copy the contents of `release/` to the server. The folder includes `index.html`, `404.html`, `web.config`, `staticwebapp.config.json` and `.nojekyll`. |
+
+## Develop
 ```
 npm install
-npm run verify          # clean → typecheck → lint → 20 Node tests → production build → 48 real-browser checks
-npm run build:dev       # development build (comments kept)
-npm run diagnose -- path/to/registry.json   # check a repository schema file without the app
+npm run dev            # development build at http://localhost:5173, rebuilt when files change
+npm run verify         # clean → typecheck → lint → 23 Node tests → dev build → production build → 81 real-browser checks
+npm run serve          # serve release/ like GitHub Pages (BASE=/SQL-Assistant/ PORT=8080)
+npm run diagnose -- path/to/registry.json   # check a repository schema file without opening the app
 ```
-Browser tests need `pip install playwright && playwright install chromium`, or `CHROME_PATH=...`.
+The browser tests need `pip install playwright && playwright install chromium`. Alternatively, set `CHROME_PATH` to an installed Chrome or Chromium.
 
-Root cause and fixes: `docs/V17.3-ROOT-CAUSE.md`. Change log: `CHANGELOG.md`.
+## Settings and the Admin Password
+Settings are locked behind the **Admin Password**. The default is `admin`; change it under **Settings → Security**. Settings lock again after 5 minutes of inactivity. The password is also required for deleting schema rows and schemas, and for every Danger Zone action.
 
-## After upgrading
-1. Open Settings → Secret Vault. Check that the schema file path is `sql-assistant-data/schemas/registry.json`. Corrected V17.2.1 paths are fixed automatically.
-2. On the device with the most complete schemas, press **Synchronize now**. A legacy AP schema 77 is migrated and published in the current format.
-3. Press **Synchronize now** on the other devices.
-4. Retire any V17.0 copy. It publishes without validation.
+## Documents
+| File | Contents |
+|---|---|
+| `docs/ROOT_CAUSE_V17.3.1.md` | Why sync kept failing and why the page was blank, and the fixes |
+| `docs/CHANGELOG_V17.3.1.md` | Everything that changed |
+| `docs/DEPLOYMENT.md` | Steps to take after upgrading, per hosting option |
+| `docs/SECURITY.md` | The Secret Vault security model |
+| `docs/TEST_REPORT_V17.3.1.md` | Test results |
+| `docs/SOURCE_PROVENANCE.md` | Which reference material was used and what could not be accessed |
