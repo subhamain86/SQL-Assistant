@@ -1,0 +1,19 @@
+# 17.3.0
+- Fixed: synchronization regressions in the V17.2.1/V17.2.2 packages:
+  - local storage key restored and data recovered;
+  - repository path restored and wrong paths detected;
+  - lossless decode rule applied to all files;
+  - parseable writer stamp;
+  - no-store and large-file reads.
+- Fixed: index page.
+  - A single self-contained app is now written to `index.html`, `dist/` and `release/`.
+  - The root page no longer loads `src/main.ts`.
+  - Start-up no longer depends on services or sync.
+  - `404.html` and `.nojekyll` are included for GitHub Pages, with a GitHub Pages workflow.
+- Added:
+  - the failing stage is shown in sync diagnostics;
+  - a sync log;
+  - `npm run diagnose`;
+  - a development build;
+  - tests for both critical issues (20 Node tests, 48 browser checks).
+- Unchanged: offline NLU, Manual Selectors, Advanced Options, Manual Schema Update, Secret Vault, AI/LLM Model.

@@ -1,0 +1,194 @@
+[
+  {
+    "check": "Production build produced dist/index.html",
+    "pass": true
+  },
+  {
+    "check": "Production build produced index.html",
+    "pass": true
+  },
+  {
+    "check": "Production build produced release/index.html",
+    "pass": true
+  },
+  {
+    "check": "Production build produced release/404.html",
+    "pass": true
+  },
+  {
+    "check": "Production build produced release/.nojekyll",
+    "pass": true
+  },
+  {
+    "check": "Entry pages are self-contained (no module script, no src/main.ts)",
+    "pass": true
+  },
+  {
+    "check": "Root cause reproduced: V17.2.1-style index.html (src/main.ts) renders a blank page",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via http /: index loads, SQL Assistant shown, Quick Start is default",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via http /: refresh on #about keeps the page",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via http /: return to index",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via file://: index loads, SQL Assistant shown, Quick Start is default",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via file://: refresh on #about keeps the page",
+    "pass": true
+  },
+  {
+    "check": "project root index.html via file://: return to index",
+    "pass": true
+  },
+  {
+    "check": "dist/index.html via file://: index loads, SQL Assistant shown, Quick Start is default",
+    "pass": true
+  },
+  {
+    "check": "dist/index.html via file://: refresh on #about keeps the page",
+    "pass": true
+  },
+  {
+    "check": "dist/index.html via file://: return to index",
+    "pass": true
+  },
+  {
+    "check": "GitHub Pages sub-path /SQL-Assistant/: index loads, SQL Assistant shown, Quick Start is default",
+    "pass": true
+  },
+  {
+    "check": "GitHub Pages sub-path /SQL-Assistant/: refresh on #about keeps the page",
+    "pass": true
+  },
+  {
+    "check": "GitHub Pages sub-path /SQL-Assistant/: return to index",
+    "pass": true
+  },
+  {
+    "check": "Direct navigation to #settings",
+    "pass": true
+  },
+  {
+    "check": "Unknown route falls back to the index",
+    "pass": true
+  },
+  {
+    "check": "404.html fallback page is the full app (GitHub Pages deep links)",
+    "pass": true
+  },
+  {
+    "check": "Sync failure: UI stays available and reports the exact stage",
+    "pass": true
+  },
+  {
+    "check": "Offline NLU works while sync is failing",
+    "pass": true
+  },
+  {
+    "check": "Manual Selectors + Advanced Options",
+    "pass": true
+  },
+  {
+    "check": "Sync #1: legacy AP schema 77 migrated, nothing rejected",
+    "pass": true
+  },
+  {
+    "check": "Republished with writer stamp 17.3.0 and all 437 decode entries",
+    "pass": true
+  },
+  {
+    "check": "Sync #2: success, no migration repeated",
+    "pass": true
+  },
+  {
+    "check": "Sync #3: success, no migration repeated",
+    "pass": true
+  },
+  {
+    "check": "Active schema refreshed",
+    "pass": true
+  },
+  {
+    "check": "SQL generation uses the migrated active schema",
+    "pass": true
+  },
+  {
+    "check": "Restart: AP schema 77 still active",
+    "pass": true
+  },
+  {
+    "check": "Sync after restart: success",
+    "pass": true
+  },
+  {
+    "check": "Row delete persisted",
+    "pass": true
+  },
+  {
+    "check": "Row edit persisted across restart",
+    "pass": true
+  },
+  {
+    "check": "Schema path defaults to sql-assistant-data/schemas/registry.json",
+    "pass": true
+  },
+  {
+    "check": "Vault encrypted at rest (token not in storage)",
+    "pass": true
+  },
+  {
+    "check": "Push Secret Vault: encrypted, token not in repository",
+    "pass": true
+  },
+  {
+    "check": "Wrong passphrase rejected",
+    "pass": true
+  },
+  {
+    "check": "Retrieve \u2192 decrypt \u2192 validate",
+    "pass": true
+  },
+  {
+    "check": "Token never rendered",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM validation",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM saved and loaded",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM unavailable \u2192 offline fallback",
+    "pass": true
+  },
+  {
+    "check": "Upgrade: schemas saved by V17.2.1/V17.2.2 are recovered and active",
+    "pass": true
+  },
+  {
+    "check": "Corrupt stored data: index still loads",
+    "pass": true
+  },
+  {
+    "check": "Blocked storage: index still loads",
+    "pass": true
+  },
+  {
+    "check": "No console errors or uncaught exceptions",
+    "pass": true
+  }
+]
