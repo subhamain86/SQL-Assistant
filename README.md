@@ -1,30 +1,39 @@
-# SQL Assistant — V17.2 (complete project)
+# SQL Assistant V17.2.1
 
-SQL Assistant generates read-only and change-request SQL from the **Active Schema**. Its primary engine is an **offline self-training NLU**; an optional AI/LLM Model can be added.
+Offline natural-language SQL builder with schema management, legacy-schema migration, encrypted
+repository synchronization and an optional AI/LLM Model.
 
-- **Run it:** open or host **`dist/index.html`**. It is one self-contained file and also works from disk.
-- **Develop:** `npm install`, then `npm run dev`. The server runs on http://localhost:5173 and rebuilds on change.
-- **Verify:** `npm run verify` (clean → typecheck → lint → tests → production + development builds), then `npm run smoke`.
-- **After upgrading:** read `docs/DEPLOYMENT.md`. Replace every old copy of the app, because V17.0-or-older copies publish schemas without validation.
+## Quick start
+```bash
+npm install          # TypeScript only (no runtime dependencies)
+npm run build        # clean production build → dist/
+npm run serve        # http://localhost:8080
+```
 
-| Document | Contents |
-|---|---|
-| `docs/ROOT_CAUSE_V17.2.md` | Why the synchronization error kept coming back, and the fixes |
-| `docs/CHANGELOG_V17.2.md` | Everything new in V17.2 |
-| `docs/SECURITY.md` | Secret Vault and repository-sync security model, including limitations |
-| `docs/TEST_REPORT_V17.2.md` | Clean-build verification, 70 tests, 76 browser checks × 3 configurations |
-| `docs/DEPLOYMENT.md` | Deploy, build and post-upgrade steps |
-| `docs/ROOT_CAUSE_V17.1.md`, `docs/CHANGELOG_V17.1.md`, `docs/CHANGELOG_V17.0.md` | Earlier releases |
-| `docs/SOURCE_PROVENANCE.md` | How the baseline was obtained |
+## Verify (clean → typecheck → lint → unit tests → real-browser tests)
+```bash
+npm run verify
+```
+* Unit/regression tests: `npm test` (Node ≥ 20, `node:test`), 31 tests.
+* Browser tests: `npm run test:browser` (Python 3 + `pip install playwright` + `playwright install chromium`;
+  or set `CHROME_PATH` to an existing Chrome/Chromium). They run the production build in Chromium (51 checks).
+  Results are written to `test-results/browser-results.json`.
 
+## Project layout
 | Path | Purpose |
 |---|---|
-| `dist/index.html` | The application (deploy this) |
-| `src/` | TypeScript source (84 files) |
-| `src/services/syncService.ts` | Repository sync: one location, 3-way merge, stale-copy guard, serialised operations, self-recovery |
-| `src/v17/sync/schemaFormat.ts` | Single schema format authority (parse → normalise → validate → repair) |
-| `src/v17/engines/nluEngine.ts` | Offline NLU (primary engine) |
-| `src/v17/services/learningStore.ts` | Centralized learned query knowledge |
-| `src/v17/engines/schemaRecordEngine.ts` | Row-wise Manual Schema Update |
-| `scripts/` | build, dev server, tests, browser test, lint, diagnostics |
-| `test/` | V16, V17.0, V17.1 and V17.2 test suites |
+| `src/v17/sync/schemaFormat.ts` | Schema format detection, **legacy migration rules**, strict recursive validator, writer stamp, source recovery |
+| `src/v17/sync/syncService.ts` | Synchronization pipeline (download → migrate → validate → merge → persist → publish) |
+| `src/services/schemaService.ts` | Centralized saved schema data, Active Schema, Manual Schema Update, import |
+| `src/v17/engines/nluEngine.ts` | Offline self-training NLU for *Describe What You Need* |
+| `src/v17/services/learningStore.ts` | Controlled, schema-scoped learning from accepted/corrected SQL |
+| `src/v17/engines/advancedOptionsResolver.ts` | Automatic inference + manual precedence for Advanced Options |
+| `src/v17/engines/schemaRecordEngine.ts` | Row-wise edit/delete with dependency protection |
+| `src/v17/services/cryptoBox.ts`, `secretVault.ts` | AES-256-GCM vault (PBKDF2 passphrase for the repository copy, non-extractable device key locally) |
+| `src/v17/services/aiLlmService.ts` | Optional AI/LLM Model (OpenAI, Azure OpenAI, Anthropic, custom) |
+| `src/ui/**` | Pages: Quick Start, Read Only Query Builder, Query Builder for CR, Schema Used, Error Rectifier, Settings, About |
+| `test/` | Regression tests incl. the real AP schema 77 fixture |
+| `scripts/` | build, lint, browser test |
+| `docs/` | Root-cause analysis, migration rules, test matrix |
+
+See `docs/V17.2.1-SCHEMA-MIGRATION.md` for the root cause and the migration rules, and `CHANGELOG.md`.

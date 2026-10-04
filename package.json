@@ -1,22 +1,20 @@
 {
   "name": "sql-assistant",
-  "version": "17.2.0",
+  "productName": "SQL Assistant",
+  "version": "17.2.1",
   "private": true,
+  "description": "SQL Assistant — offline natural-language SQL builder with schema management, legacy schema migration and repository synchronization.",
   "type": "module",
-  "description": "SQL Assistant — schema-grounded SQL generation (read-only and change request) with an offline self-training NLU. Builds to one self-contained dist/index.html.",
-  "engines": { "node": ">=18" },
   "scripts": {
-    "clean": "node scripts/clean.mjs",
-    "typecheck": "tsc --noEmit -p .",
+    "clean": "node -e \"for (const d of ['build','dist']) require('fs').rmSync(d,{recursive:true,force:true})\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "node scripts/lint.mjs",
     "build": "node scripts/build.mjs",
-    "build:dev": "node scripts/build.mjs --dev",
-    "dev": "node scripts/dev.mjs",
-    "test": "node scripts/run-tests.mjs",
-    "smoke": "python3 scripts/smoke_test.py",
-    "smoke:http": "python3 scripts/smoke_test.py --http",
-    "diagnose": "node scripts/diagnose-registry.mjs",
-    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run build && npm run build:dev"
+    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
+    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py",
+    "serve": "python3 -m http.server 8080 --directory dist",
+    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run test:browser"
   },
-  "devDependencies": { "typescript": "^5.4.0" }
+  "devDependencies": { "typescript": "^5.8.3" },
+  "engines": { "node": ">=20" }
 }

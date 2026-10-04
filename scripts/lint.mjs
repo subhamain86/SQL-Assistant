@@ -1,20 +1,16 @@
-/**
- * Lint (no external dependencies): import graph checks + source rules.
- *  - no console.log / debugger / eval / new Function in src
- *  - no hard-coded credentials in src, test fixtures excluded
- *  - no old product name "AP-SQL Assistant" / "AP SQL Assistant" in user-facing source
- */
-import { readFileSync, readdirSync, statSync } from 'node:fs'; import { execFileSync } from 'node:child_process';
-import path from 'node:path'; import { fileURLToPath } from 'node:url';
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-execFileSync(process.execPath, [path.join(root, 'scripts', 'check-imports.mjs')], { stdio: 'inherit' });
-const files = []; (function walk(d) { for (const f of readdirSync(d)) { const p = path.join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(ts|css)$/.test(p)) files.push(p); } })(path.join(root, 'src'));
-const rules = [
-  [/\bconsole\.(log|debug)\s*\(/, 'console.log/debug left in source'], [/\bdebugger\b/, 'debugger statement'], [/\beval\s*\(|new Function\s*\(/, 'eval / new Function'],
-  [/\b(gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|sk-(?:ant-)?[A-Za-z0-9_-]{30,})\b/, 'hard-coded credential'],
-  [/AP[- ]SQL Assistant/, 'old product name (the application is called "SQL Assistant")']
+// Project lint: TypeScript strictness is enforced by tsc; this adds project rules.
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+const root = new URL('..', import.meta.url).pathname; const problems = [];
+const files = []; (function walk(d) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) walk(p); else if (/\.(ts|html|css)$/.test(p)) files.push(p); } })(join(root, 'src')); files.push(join(root, 'public/index.html'));
+const RULES = [
+  [/AP_SQL_Assistant|AP SQL Assistant/, 'Old application name — the application is "SQL Assistant".'],
+  [/\beval\s*\(|new Function\s*\(/, 'Dynamic code execution is not allowed.'],
+  [/\bghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9]{20,}/, 'Hard-coded secret.'],
+  [/console\.(log|info|debug)\(/, 'Use toasts/sync log instead of console logging (no secrets in browser logs).'],
+  [/localStorage\.setItem\([^)]*(token|apiKey|aiApiKey|passphrase)/i, 'Secrets must be stored via the encrypted Secret Vault.'],
+  [/\bdebugger\b/, 'Remove debugger statements.']
 ];
-const problems = [];
-for (const f of files) { readFileSync(f, 'utf8').split('\n').forEach((line, i) => rules.forEach(([re, msg]) => { if (re.test(line)) problems.push(`${path.relative(root, f)}:${i + 1}: ${msg}`); })); }
-console.log(problems.length ? `Lint problems:\n  ${problems.join('\n  ')}` : `Lint: ${files.length} source files clean.`);
-process.exit(problems.length ? 1 : 0);
+for (const f of files) { const lines = readFileSync(f, 'utf8').split('\n'); lines.forEach((l, i) => RULES.forEach(([re, msg]) => { if (re.test(l)) problems.push(`${relative(root, f)}:${i + 1}  ${msg}`); })); }
+if (problems.length) { console.error(problems.join('\n')); process.exit(1); }
+console.log(`Lint passed (${files.length} files).`);

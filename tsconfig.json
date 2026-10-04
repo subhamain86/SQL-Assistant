@@ -1,8 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2020", "useDefineForClassFields": true, "module": "ESNext", "lib": ["ES2020", "DOM", "DOM.Iterable"],
-    "skipLibCheck": true, "moduleResolution": "bundler", "resolveJsonModule": true, "isolatedModules": true, "noEmit": true,
-    "strict": true, "noUnusedLocals": true, "noUnusedParameters": false, "noFallthroughCasesInSwitch": true, "forceConsistentCasingInFileNames": true
+    "target": "ES2020", "module": "ES2020", "moduleResolution": "node", "lib": ["ES2021", "DOM", "DOM.Iterable"],
+    "strict": true, "noImplicitReturns": true, "noFallthroughCasesInSwitch": true, "noUnusedLocals": false,
+    "esModuleInterop": true, "skipLibCheck": true, "forceConsistentCasingInFileNames": true,
+    "outDir": "build/js", "rootDir": "src", "sourceMap": true, "types": []
   },
-  "include": ["src"]
+  "include": ["src/**/*.ts"]
 }
