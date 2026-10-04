@@ -1,4 +1,4 @@
-/* V17.0 feature suite (carried forward unchanged in intent) — offline NLU, Advanced Options, learning, schema records, vault sync, AI/LLM. */
+/* V17.0 feature suite — offline NLU, Advanced Options, learning, schema records, vault sync, AI/LLM. */
 const test = require('node:test'); const assert = require('node:assert/strict');
 const { B, emptyState: empty } = require('./helpers.cjs');
 const R = (p) => require(`${B}/${p}`);

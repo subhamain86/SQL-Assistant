@@ -2,8 +2,7 @@
 /**
  * Diagnoses a schema registry file with EXACTLY the validator the app uses.
  *   npm run diagnose -- path/to/registry.json
- *   npm run diagnose -- https://raw.githubusercontent.com/<owner>/<repo>/main/sql-assistant-data/schemas/registry.json
- *   (private repo: set GITHUB_TOKEN in the environment)
+ *   npm run diagnose -- https://raw.githubusercontent.com/<owner>/<repo>/main/sql-assistant-data/schemas/registry.json   (private repo: GITHUB_TOKEN=…)
  *   add --repair-out fixed.json to write an explicitly repaired copy (dangling FKs unlinked, dangling relationships removed).
  */
 import { readFileSync, writeFileSync, rmSync } from 'node:fs';
@@ -21,13 +20,13 @@ const program = ts.createProgram([src], { module: ts.ModuleKind.CommonJS, target
 program.emit(); writeFileSync(path.join(out, 'package.json'), '{"type":"commonjs"}');
 const fmt = require(path.join(out, 'v17', 'sync', 'schemaFormat.js'));
 let text;
-if (/^https?:\/\//.test(target)) { const headers = process.env.GITHUB_TOKEN ? { Authorization: `token ${process.env.GITHUB_TOKEN}` } : {}; const res = await fetch(target, { headers }); if (!res.ok) { console.error(`HTTP ${res.status} fetching ${target}`); process.exit(1); } text = await res.text(); }
+if (/^https?:\/\//.test(target)) { const headers = process.env.GITHUB_TOKEN ? { Authorization: `token ${process.env.GITHUB_TOKEN}` } : {}; const res = await fetch(target, { headers, cache: 'no-store' }); if (!res.ok) { console.error(`HTTP ${res.status} fetching ${target}`); process.exit(1); } text = await res.text(); }
 else text = readFileSync(target, 'utf8');
 const report = fmt.checkRegistry({ text });
 for (const line of fmt.formatRegistryReport(report)) console.log(line);
 if (repairOut && !report.fileProblem) {
   const schemas = report.schemas.filter((s) => s.schema).map((s) => { const r = fmt.repairSchema(s.schema); r.changes.forEach((c) => console.log(`  repaired "${s.name}": ${c}`)); return r.schema; });
-  writeFileSync(repairOut, fmt.serializeRegistry({ schemas, activeSchemaId: report.activeSchemaId || schemas[0]?.id || '', activeSchemaUpdatedAt: report.activeSchemaUpdatedAt }));
+  writeFileSync(repairOut, fmt.serializeRegistry({ schemas, activeSchemaId: report.activeSchemaId || schemas[0]?.id || '', activeSchemaUpdatedAt: report.activeSchemaUpdatedAt }, 'diagnose-cli'));
   console.log(`Repaired copy written to ${repairOut} — review it, then publish it from the app (Push All Schemas) or commit it.`);
 }
 process.exit(report.fileProblem || report.invalidSchemas.length ? 1 : 0);
