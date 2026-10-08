@@ -6,10 +6,16 @@ import { indexedDbKeyProvider } from '../v17/services/cryptoBox';
 import { githubRepository, type SchemaRepository } from '../v17/services/githubClient';
 import { SyncService } from '../v17/sync/syncService';
 import { LearningStore } from '../v17/services/learningStore';
+import { AdminQueryLibrary } from '../v17/services/adminLibrary';
+import { KnowledgeSync, knowledgePathFor } from '../v17/services/knowledgeSync';
+import { runMigrations, type MigrationState } from '../v17/services/migrations';
+import { SchemaPassphraseStore } from '../v17/services/schemaPassphrase';
+import { encryptedPathFor } from '../v17/services/schemaCrypto';
+import { AdminMessageService, adminMessagePathFor } from '../v17/services/adminMessage';
 import { loadAiConfig, DEFAULT_AI_CONFIG, type AiLlmConfig } from '../v17/services/aiLlmService';
 import { APP_NAME, APP_VERSION } from '../v17/sync/schemaFormat';
 export const APP = { name: APP_NAME, version: APP_VERSION };
-export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; sync: SyncService; }
+export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; admin: AdminQueryLibrary; knowledge: KnowledgeSync; migrations: MigrationState; sync: SyncService; /** V17.5: the passphrase saved on this device for the synchronized (encrypted) schema */ passphrase: SchemaPassphraseStore; /** V17.5.1: the short cross-device administrator message shown in the navbar */ adminMessage: AdminMessageService; }
 let svc: Services | null = null;
 export let secrets: VaultSecrets = { ...EMPTY_SECRETS };
 export let aiConfig: AiLlmConfig = { ...DEFAULT_AI_CONFIG };
@@ -20,8 +26,9 @@ export const setAiConfig = (c: AiLlmConfig) => { aiConfig = c; };
 export const setRepositoryOverride = (r: SchemaRepository | null) => { override = r; };
 export function repository(): SchemaRepository | null { if (override) return override; if (!secrets.githubToken || !secrets.githubOwner || !secrets.githubRepo) return null; return githubRepository({ owner: secrets.githubOwner, repo: secrets.githubRepo, branch: secrets.githubBranch || 'main', token: secrets.githubToken }); }
 export function initServices(): Services {
-  if (svc) return svc; const store = browserStore(); const schemas = new SchemaService(store); const vault = new SecretVault(store, indexedDbKeyProvider);
-  svc = { store, schemas, vault, learning: new LearningStore(store), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => vault.knownSecrets()) };
+  if (svc) return svc; const store = browserStore(); const migrations = runMigrations(store); const schemas = new SchemaService(store); const vault = new SecretVault(store, indexedDbKeyProvider);
+  const passphrase = new SchemaPassphraseStore(store, indexedDbKeyProvider); const learning = new LearningStore(store); const admin = new AdminQueryLibrary(store, () => store.get('sqla.adminname.v174') || 'Administrator');
+  svc = { store, schemas, vault, learning, admin, migrations, knowledge: new KnowledgeSync(learning, admin, repository, store, () => knowledgePathFor(secrets.schemaPath), () => vault.knownSecrets()), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => [...vault.knownSecrets(), ...passphrase.known()], { passphrase: () => passphrase.get(), path: () => encryptedPathFor(secrets.schemaPath) }), passphrase, adminMessage: new AdminMessageService(store, repository, () => adminMessagePathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]) };
   aiConfig = loadAiConfig(store); return svc;
 }
 export function services(): Services { if (!svc) throw new Error('Services are not initialised yet.'); return svc; }

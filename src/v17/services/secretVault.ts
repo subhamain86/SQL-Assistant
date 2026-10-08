@@ -1,6 +1,8 @@
 import { KEYS, readJson, writeJson, type KeyValueStore } from '../../services/storage';
 import { decryptWithSecret } from '../../services/cryptoService';
 import { encryptWithKey, decryptWithKey, encryptWithPassphrase, decryptWithPassphrase, type DeviceKeyProvider, type VaultEnvelope } from './cryptoBox';
+import { utf8ToBase64 } from '../../utils/base64';
+export const KEY_MISSING_MESSAGE = 'This device cannot open its saved Secret Vault: the device key that encrypted it is not available (browser data was cleared, the browser profile changed, or the vault was copied from another device). The saved data was kept, not deleted. Enter the Vault Sync Passphrase and use "Retrieve from Repository" (or "Import encrypted file"), or re-enter the configuration under Secret Vault.';
 export interface VaultSecrets { githubOwner: string; githubRepo: string; githubBranch: string; schemaPath: string; vaultPath: string; githubToken: string; aiApiKey: string; }
 /** Repository location used by V17.0–V17.2 (confirmed by the V17.1 provenance notes). */
 export const CANONICAL_SCHEMA_PATH = 'sql-assistant-data/schemas/registry.json';
@@ -21,12 +23,33 @@ export class SecretVault {
   constructor(private store: KeyValueStore, private keys: DeviceKeyProvider) {}
   private remembered(): Record<string, string> | null { const r = readJson<Record<string, string> | null>(this.store, KEYS.syncLocation, null); return r ? { owner: r.owner || r.githubOwner || '', repo: r.repo || r.githubRepo || '', branch: r.branch || r.githubBranch || '', path: r.path || r.schemaPath || r.githubPath || '' } : null; }
   async load(): Promise<VaultSecrets> { if (this.cache) return this.cache; const env = readJson<VaultEnvelope | null>(this.store, KEYS.vaultLocal, null);
-    const base = env ? JSON.parse(await decryptWithKey(env, await this.keys.getKey())) : {}; this.cache = normalizeLocation(base, this.remembered()); return this.cache; }
-  async save(s: VaultSecrets): Promise<void> { const c = normalizeLocation(Object.fromEntries(Object.entries(s).map(([k, v]) => [k, String(v ?? '').trim()])) as Record<string, string>, null);
+    let base: Record<string, unknown> = {}; if (env) { try { base = JSON.parse(await decryptWithKey(env, await this.keys.getKey())); } catch { throw new Error(KEY_MISSING_MESSAGE); } } this.cache = normalizeLocation(base, this.remembered()); return this.cache; }
+  /** Before a new envelope replaces an unreadable one, the old one is kept under a backup key (never silently deleted). */
+  private async backupIfUnreadable(): Promise<void> { const env = readJson<VaultEnvelope | null>(this.store, KEYS.vaultLocal, null); if (!env) return; try { await decryptWithKey(env, await this.keys.getKey()); } catch { this.store.set(`${KEYS.vaultLocal}.unreadable-${Date.now()}`, JSON.stringify(env)); } }
+  async save(s: VaultSecrets): Promise<void> { await this.backupIfUnreadable(); const c = normalizeLocation(Object.fromEntries(Object.entries(s).map(([k, v]) => [k, String(v ?? '').trim()])) as Record<string, string>, null);
     if (!writeJson(this.store, KEYS.vaultLocal, await encryptWithKey(JSON.stringify(c), await this.keys.getKey()))) throw new Error('Browser storage rejected the encrypted vault write.');
     writeJson(this.store, KEYS.syncLocation, { owner: c.githubOwner, repo: c.githubRepo, branch: c.githubBranch, path: c.schemaPath }); this.cache = c; }
   knownSecrets(): string[] { return this.cache ? [this.cache.githubToken, this.cache.aiApiKey].filter(Boolean) : []; }
-  async exportEncrypted(pass: string): Promise<string> { return JSON.stringify(await encryptWithPassphrase(JSON.stringify(await this.load()), pass), null, 2); }
+  /** Step 1 of "Push Secret Vault to Repository": validates the configuration. Returns every problem found (empty = ready). */
+  async validateForPush(passphrase: string, confirm: string): Promise<string[]> {
+    const p: string[] = []; const c = await this.load();
+    if (!c.githubToken && !c.aiApiKey) p.push('There is no secret to protect: save a GitHub access token (or an AI/LLM API key) on this device first.');
+    const hasO = !!c.githubOwner; const hasR = !!c.githubRepo; if ((hasO !== hasR) || (hasO && (!/^[\w.-]+$/.test(c.githubOwner) || !/^[\w.-]+$/.test(c.githubRepo)))) p.push('The repository must be set as owner/repo under "GitHub repository" (or left empty).');
+    if (!c.githubBranch.trim()) p.push('Branch is required.');
+    for (const [n, v] of [['Schema file path', c.schemaPath], ['Vault file path', c.vaultPath]] as const) if (!v.trim() || v.startsWith('/') || v.includes('..') || /[\\:*?"<>|]/.test(v)) p.push(`${n} is not a valid repository path.`);
+    if (c.githubToken && /\s/.test(c.githubToken)) p.push('The saved GitHub token contains spaces — re-enter it.');
+    if (!passphrase || passphrase.length < 10) p.push('The Vault Sync Passphrase must be at least 10 characters.'); else if (passphrase !== confirm) p.push('The passphrases do not match.');
+    if (/^(password|passphrase|1234567890|qwertyuiop)/i.test(passphrase)) p.push('Choose a less guessable Vault Sync Passphrase.');
+    return p;
+  }
+  /** Encrypts for the repository. The result is asserted to contain NO plaintext (or plain base64) copy of any secret before it is returned. */
+  async exportEncrypted(pass: string): Promise<string> {
+    const cur = await this.load(); const text = JSON.stringify(await encryptWithPassphrase(JSON.stringify(cur), pass), null, 2);
+    [cur.githubToken, cur.aiApiKey].filter((x) => x && x.length >= 6).forEach((sec) => { if (text.includes(sec) || text.includes(utf8ToBase64(sec)) || text.includes(encodeURIComponent(sec))) throw new Error('Safety check failed: the repository representation would contain a secret in readable form. Nothing was written.'); });
+    return text;
+  }
+  /** Verifies a pushed file: decrypts it with the passphrase and compares it with this device's configuration (nothing is saved). */
+  async verifyEncrypted(text: string, pass: string): Promise<boolean> { try { const dec = JSON.parse(await decryptWithPassphrase(JSON.parse(text) as VaultEnvelope, pass)); const cur = await this.load(); return dec.githubToken === cur.githubToken && dec.githubRepo === cur.githubRepo && dec.githubOwner === cur.githubOwner && (dec.aiApiKey || '') === (cur.aiApiKey || ''); } catch { return false; } }
   /** V17.2 local vault (sqla.secretvault.v15, encrypted with the Admin Password): imported once after Settings is unlocked, so tokens saved in V17.2 keep working. */
   async migrateFromV172(adminPassword: string): Promise<boolean> {
     const cur = await this.load(); if (cur.githubToken) return false;

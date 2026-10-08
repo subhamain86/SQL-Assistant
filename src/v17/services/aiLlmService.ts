@@ -1,11 +1,11 @@
 /** Optional AI/LLM Model. The offline NLU stays primary/default; every failure falls back to the offline result. */
 import { KEYS, readJson, writeJson, type KeyValueStore } from '../../services/storage';
 import { redactSecrets, makeError, type AppError } from '../errors/appErrors';
-export type AiProvider = 'openai' | 'azure-openai' | 'anthropic' | 'custom';
+export type AiProvider = 'openai' | 'azure-openai' | 'anthropic' | 'local' | 'custom';
 export type AiAuth = 'bearer' | 'api-key-header' | 'none';
 export interface AiLlmConfig { enabled: boolean; provider: AiProvider; model: string; endpoint: string; authType: AiAuth; apiVersion: string; timeoutMs: number; extraJson: string; }
 export const DEFAULT_AI_CONFIG: AiLlmConfig = { enabled: false, provider: 'openai', model: '', endpoint: '', authType: 'bearer', apiVersion: '', timeoutMs: 20000, extraJson: '' };
-export const PROVIDER_DEFAULTS: Record<AiProvider, { label: string; endpoint: string; authType: AiAuth }> = { openai: { label: 'OpenAI-compatible', endpoint: 'https://api.openai.com/v1/chat/completions', authType: 'bearer' }, 'azure-openai': { label: 'Azure OpenAI', endpoint: 'https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions', authType: 'api-key-header' }, anthropic: { label: 'Anthropic', endpoint: 'https://api.anthropic.com/v1/messages', authType: 'api-key-header' }, custom: { label: 'Custom', endpoint: '', authType: 'bearer' } };
+export const PROVIDER_DEFAULTS: Record<AiProvider, { label: string; endpoint: string; authType: AiAuth }> = { openai: { label: 'OpenAI-compatible', endpoint: 'https://api.openai.com/v1/chat/completions', authType: 'bearer' }, 'azure-openai': { label: 'Azure OpenAI', endpoint: 'https://{resource}.openai.azure.com/openai/deployments/{deployment}/chat/completions', authType: 'api-key-header' }, anthropic: { label: 'Anthropic', endpoint: 'https://api.anthropic.com/v1/messages', authType: 'api-key-header' }, local: { label: 'Local model on this computer (Ollama / LM Studio / llama.cpp — OpenAI-compatible)', endpoint: 'http://localhost:11434/v1/chat/completions', authType: 'none' }, custom: { label: 'Custom', endpoint: '', authType: 'bearer' } };
 export function loadAiConfig(s: KeyValueStore): AiLlmConfig { const c = readJson<Partial<AiLlmConfig> | null>(s, KEYS.aiConfig, null); const old = readJson<Record<string, unknown> | null>(s, KEYS.aiConfigV172, null);
   return { ...DEFAULT_AI_CONFIG, ...(old && !c ? { enabled: !!old.enabled, model: String(old.model || ''), endpoint: String(old.endpoint || ''), provider: (['openai', 'azure-openai', 'anthropic'].includes(String(old.provider)) ? old.provider : 'custom') as AiProvider } : {}), ...(c || {}) }; }
 export const saveAiConfig = (c: AiLlmConfig, s: KeyValueStore) => writeJson(s, KEYS.aiConfig, c);
@@ -24,4 +24,11 @@ export async function requestSqlFromModel(c: AiLlmConfig, key: string, prompt: s
   try { const r = await fetch(url, { method: 'POST', headers: h, body: JSON.stringify(body), signal: ctl.signal }); if (!r.ok) return { error: makeError('AI_LLM_REQUEST_FAILED', `The AI/LLM Model returned HTTP ${r.status}.`) };
     const j = (await r.json()) as Record<string, any>; const sql = String(j?.choices?.[0]?.message?.content ?? j?.content?.[0]?.text ?? '').replace(/^```(?:sql)?\s*/i, '').replace(/```\s*$/, '').trim(); return sql ? { sql } : { error: makeError('AI_LLM_REQUEST_FAILED', 'The AI/LLM Model returned no SQL.') };
   } catch (e) { return { error: makeError('AI_LLM_REQUEST_FAILED', redactSecrets(`The AI/LLM Model is unavailable (${(e as Error).name === 'AbortError' ? 'timed out' : (e as Error).message}).`, [key])) }; } finally { clearTimeout(tm); }
+}
+
+/** Settings → AI/LLM Model → "Test connection". Never throws; the SQL result is discarded — only reachability matters. */
+export async function pingModel(c: AiLlmConfig, key: string): Promise<{ ok: boolean; message: string }> {
+  const probs = validateAiConfig({ ...c, enabled: true }, key); if (probs.length) return { ok: false, message: probs.join(' ') };
+  const r = await requestSqlFromModel({ ...c, enabled: true, timeoutMs: Math.min(c.timeoutMs || 8000, 8000) }, key, 'Reply with the single word OK.', 'T(ID)');
+  return 'error' in r ? { ok: false, message: `${r.error.message} SQL generation keeps working offline.` } : { ok: true, message: 'The model answered. It will be consulted only when the offline result is uncertain, and its SQL must pass the same validation.' };
 }

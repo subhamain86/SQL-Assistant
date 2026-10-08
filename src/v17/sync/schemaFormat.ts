@@ -13,7 +13,7 @@
  * Everything else stays a validation error with an exact path. Validation is never relaxed.
  */
 import type { SchemaModel, SchemaRegistry, TableDef, ColumnDef, DecodeEntry, RelationshipDef, SchemaMigrationInfo } from '../../types';
-export const APP_VERSION = '17.3.1';
+export const APP_VERSION = '17.5.1';
 export const APP_NAME = 'SQL Assistant';
 export const SCHEMA_FORMAT_VERSION = 2;
 export const WRITER_LABEL = `${APP_NAME} ${APP_VERSION}`;
@@ -29,8 +29,8 @@ function firstNonEmpty(o: Record<string, unknown>, k: string[]): { key: string |
 function bool(v: unknown, fb = false): boolean { if (typeof v === 'boolean') return v; if ([1, '1', 'true', 'Y', 'y', 'yes'].includes(v as never)) return true; if ([0, '0', 'false', 'N', 'n', 'no'].includes(v as never)) return false; return fb; }
 const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : typeof v === 'string' && /^\d+$/.test(v.trim()) ? +v : undefined);
 const U = (s: string) => s.trim().toUpperCase();
-export interface WriterInfo { stamped: boolean; formatVersion: number | null; writtenBy: string | null; device: string | null; legacy: boolean; label: string; }
-export function detectWriter(reg: unknown): WriterInfo { const o = isObj(reg) ? reg : {}; const wb = ts(o.writtenBy) || null; const fv = typeof o.formatVersion === 'number' ? o.formatVersion : null; const st = !!wb || fv !== null; return { stamped: st, formatVersion: fv, writtenBy: wb, device: ts(o.writtenByDevice) || null, legacy: !st, label: st ? `${wb || `format ${fv}`}${ts(o.writtenByDevice) ? ` on ${ts(o.writtenByDevice)}` : ''}` : LEGACY_FORMAT_LABEL }; }
+export interface WriterInfo { stamped: boolean; formatVersion: number | null; writtenBy: string | null; device: string | null; legacy: boolean; label: string; /** V17.5: application version and time stamped by the writer (when present) */ appVersion?: string | null; writtenAt?: string | null; }
+export function detectWriter(reg: unknown): WriterInfo { const o = isObj(reg) ? reg : {}; const wb = ts(o.writtenBy) || null; const fv = typeof o.formatVersion === 'number' ? o.formatVersion : null; const st = !!wb || fv !== null; return { stamped: st, appVersion: ts(o.appVersion) || null, writtenAt: ts(o.writtenAt) || null, formatVersion: fv, writtenBy: wb, device: ts(o.writtenByDevice) || null, legacy: !st, label: st ? `${wb || `format ${fv}`}${ts(o.writtenByDevice) ? ` on ${ts(o.writtenByDevice)}` : ''}` : LEGACY_FORMAT_LABEL }; }
 interface Ctx { legacy: boolean; issues: SchemaIssue[]; notes: MigrationNote[]; }
 function normDecode(raw: unknown, path: string, t: string, col: string, c: Ctx): { decode?: DecodeEntry[]; unmapped: string[] } {
   const um: string[] = []; if (raw === undefined || raw === null) return { unmapped: um };
@@ -139,7 +139,7 @@ export function summarizeMigration(notes: MigrationNote[]): string[] {
 export function serializeRegistry(reg: SchemaRegistry, device = '', now: () => string = () => new Date().toISOString()): { ok: boolean; text: string; problems: { name: string; errors: SchemaIssue[] }[] } {
   const problems = reg.schemas.map((s, i) => ({ name: s.name, errors: validateSchemaModel(s, `schemas[${i}]`).errors })).filter((p) => p.errors.length);
   if (problems.length) return { ok: false, text: '', problems };
-  return { ok: true, text: JSON.stringify({ formatVersion: SCHEMA_FORMAT_VERSION, writtenBy: WRITER_LABEL, writtenByDevice: device, writtenAt: now(), activeSchemaId: reg.activeSchemaId, activeSchemaUpdatedAt: reg.activeSchemaUpdatedAt ?? null, schemas: reg.schemas }, null, 2), problems };
+  return { ok: true, text: JSON.stringify({ formatVersion: SCHEMA_FORMAT_VERSION, appVersion: APP_VERSION, writtenBy: WRITER_LABEL, writtenByDevice: device, writtenAt: now(), activeSchemaId: reg.activeSchemaId, activeSchemaUpdatedAt: reg.activeSchemaUpdatedAt ?? null, schemas: reg.schemas }, null, 2), problems };
 }
 export function recoverDecodeFromSource(target: SchemaModel, src: unknown): { schema: SchemaModel; restored: number; stillUnmapped: number } {
   const s = normalizeSchema(Array.isArray((src as { schemas?: unknown[] })?.schemas) ? (src as { schemas: unknown[] }).schemas[0] : src, { legacy: true }).schema;

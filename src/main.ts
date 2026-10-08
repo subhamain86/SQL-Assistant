@@ -1,5 +1,5 @@
 /**
- * SQL Assistant entry point (V17.3.1 with the V17.2 UI). Start-up order:
+ * SQL Assistant entry point (V17.4 on the V17.3.1 baseline and V17.2 UI). Start-up order:
  *   1. render the app shell (navbar, main, footer, toasts) — needs no services
  *   2. initialise services (storage, schemas, vault) — failures are shown in the page; navigation keeps working
  *   3. route (hash routing: works at "/", any sub-path such as GitHub Pages /<repo>/, file://, refresh and direct links)
@@ -9,7 +9,7 @@ import { APP, initServices, services, reloadSecrets, setRepositoryOverride, repo
 import { store, ROUTES, type Route } from './ui/state'; import { e } from './ui/dom'; import { icon } from './ui/components/icons';
 import { renderNavbar } from './ui/components/navbar'; import { mountToastContainer } from './ui/components/toast'; import { GuidedTour } from './ui/components/tourOverlay';
 import { renderReadOnlyPage } from './ui/pages/readonly'; import { renderQuickstartPage, renderCrPage, renderSchemaPage, renderErrorRectifierPage, renderAboutPage } from './ui/pages/other'; import { renderSettingsPage } from './ui/pages/settings';
-import { startSyncScheduler, getSyncPrefs } from './ui/syncPrefs'; import { memoryRepository } from './v17/services/githubClient';
+import { startSyncScheduler, getSyncPrefs } from './ui/syncPrefs'; import { memoryRepository } from './v17/services/githubClient'; import { encryptSchemaRegistry } from './v17/services/schemaCrypto';
 const ALIASES: Record<string, Route> = { builder: 'readonly', crbuilder: 'cr', usedschema: 'schema-used', schema: 'schema-used', errorrectifier: 'error-rectifier', home: 'quickstart' };
 export function parseRoute(hash: string): Route { const h = hash.replace(/^#!?\/?/, '').split(/[?/]/)[0]; const r = (ALIASES[h] || h) as Route; return ROUTES.includes(r) ? r : 'quickstart'; }
 let ready = false; let main: HTMLElement; let lastRendered = ''; let lastSchemaFp = '';
@@ -34,13 +34,17 @@ export async function boot(): Promise<void> {
   renderPage(true); // the shell is visible before any service starts
   let svc; try { svc = initServices(); } catch (err) { main.innerHTML = `<div class="page"><div class="issue-box">${icon('alert-triangle', 15)} SQL Assistant could not initialise its services: ${e((err as Error).message)}. Clear this site's stored data and reload if the problem persists.</div></div>`; document.documentElement.setAttribute('data-sqla-ready', '1'); return; }
   await reloadSecrets(); ready = true;
+  svc.adminMessage.subscribe(() => (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.()); // V17.5.1: a new / cleared / dismissed admin message updates the navbar at once
   svc.schemas.subscribe(() => { const fp = `${svc!.schemas.active().id}|${svc!.schemas.active().updatedAt}`; if (fp !== lastSchemaFp) { lastSchemaFp = fp; if (store.route !== 'settings') renderPage(true); } (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.(); });
   renderPage(true); (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.();
-  startSyncScheduler(() => { if (getSyncPrefs().source === 'github' && repository()) services().sync.synchronize().then((r) => { if (r.pull.migrated.length) store.pushToast('success', 'Legacy schema migrated and synchronized in the background.'); else if (r.pull.rejected.length) store.pushToast('warning', `${r.pull.rejected.length} repository schema(s) failed validation; your local copies were kept. Details: Settings → Schema Management.`); }).catch(() => undefined); });
+  startSyncScheduler(() => { if (getSyncPrefs().source === 'github' && repository()) { void services().knowledge.synchronize().catch(() => undefined); void services().adminMessage.synchronize().catch(() => undefined); services().sync.synchronize().then((r) => { if (r.pull.migrated.length) store.pushToast('success', 'Legacy schema migrated and synchronized in the background.'); else if (r.pull.rejected.length) store.pushToast('warning', `${r.pull.rejected.length} repository schema(s) failed validation; your local copies were kept. Details: Settings → Schema Management.`); }).catch(() => undefined); } });
+  // V17.5.1: the admin message is read at start-up and whenever the tab becomes visible again (throttled); a failure is silent — the last known message stays
+  if (getSyncPrefs().source === 'github' && repository()) void svc.adminMessage.synchronize().catch(() => undefined);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && getSyncPrefs().source === 'github' && repository()) void svc.adminMessage.pullIfStale().catch(() => undefined); });
   if (!svc.store.persistent) store.pushToast('warning', 'Browser storage is unavailable in this context — changes are kept for this session only.');
   if (svc.schemas.loadDiagnostics.migrated.length) store.pushToast('info', `Legacy schema detected in local storage — ${svc.schemas.loadDiagnostics.migrated.length} schema(s) migrated to the current format.`);
   if (svc.schemas.loadDiagnostics.recoveredFrom.length) store.pushToast('info', 'Schemas saved by SQL Assistant V17.2.1–V17.3 were recovered into the standard storage.');
-  if (new URLSearchParams(location.search).get('e2e') === '1') (window as unknown as Record<string, unknown>).__sqla = { services, memoryRepository, setRepositoryOverride, reloadSecrets, store, render: () => renderPage(true) };
+  if (new URLSearchParams(location.search).get('e2e') === '1') (window as unknown as Record<string, unknown>).__sqla = { services, memoryRepository, setRepositoryOverride, reloadSecrets, store, render: () => renderPage(true), encryptForTest: (text: string, pass: string) => encryptSchemaRegistry(text, pass, { device: 'test-device', schemaCount: 1 }) };
   if (!store.hasSeenWalkthrough && !location.search.includes('e2e')) setTimeout(() => store.pushToast('info', 'New here? Select "Guided Walkthrough" in the navbar for a 12-step tour.'), 600);
   document.documentElement.setAttribute('data-sqla-ready', '1');
 }

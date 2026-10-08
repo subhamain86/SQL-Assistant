@@ -20,11 +20,16 @@ function te(t: TableDef, pre: Set<string>): TableEntry {
   const all = norm(t.name).split(' '); const w = all.length > 1 && pre.has(all[0]) ? all.slice(1) : all; const p = new Set<string>();
   [all.join(' '), w.join(' ')].forEach((x) => { p.add(x); p.add(sing(x)); p.add(plur(x)); }); const m = w.filter((x) => !GENERIC.has(x)); if (m.length && m.length < w.length) { p.add(m.join(' ')); p.add(plur(m.join(' '))); }
   (SYN[t.name] || []).forEach((x) => p.add(x));
-  return { table: t, phrases: [...p], displayColumn: t.columns.find((c) => /(^|_)(NAME|TITLE)$/i.test(c.name)) || t.columns.find((c) => !c.isPrimaryKey && !c.isForeignKey && isStringType(c.type) && !c.decode) || null, pk: t.columns.find((c) => c.isPrimaryKey) || null };
+  return { table: t, phrases: [...p].filter((x) => !/^\d+$/.test(x)), displayColumn: t.columns.find((c) => /(^|_)(NAME|TITLE)$/i.test(c.name)) || t.columns.find((c) => !c.isPrimaryKey && !c.isForeignKey && isStringType(c.type) && !c.decode) || null, pk: t.columns.find((c) => c.isPrimaryKey) || null };
 }
+const NAME_STEM_SKIP = new Set(['full', 'first', 'last', 'display', 'user', 'file', 'short', 'long', 'legal', 'middle', 'nick']);
+const MEAS = ['amount', 'sum', 'value', 'total'];
 function ce(table: string, c: ColumnDef, pre: Set<string>): ColumnEntry {
   const n = norm(c.name); const p = new Set([n, norm(c.label || c.name)]); const tw = new Set(norm(table).split(' ').filter((w) => !pre.has(w)));
   const st = n.split(' ').filter((w) => !tw.has(w)).join(' '); if (st && st !== n && st.length > 2 && !STOP.has(st)) p.add(st);
+  // V17.4: "SUPPLIER_NAME" is also what a user calls "supplier"; "GROSS_SUM" is also "gross amount / value / total"
+  const nm = n.match(/^(.+) name$/); if (nm && nm[1].length > 2 && !NAME_STEM_SKIP.has(nm[1]) && !/^\d+$/.test(nm[1])) p.add(nm[1]);
+  [...p].forEach((x) => { const w = x.split(' '); if (w.length >= 2 && MEAS.includes(w[w.length - 1])) MEAS.filter((t) => t !== w[w.length - 1] && t !== w[w.length - 2]).forEach((t) => p.add([...w.slice(0, -1), t].join(' '))); });
   [...p].forEach((x) => { const a = x.split(' '); const l = a.pop() || ''; if (l.length > 2 && l !== 'id') p.add([...a, plur(l)].join(' ')); });
   return { table, column: c, phrases: [...p].filter((x) => x.length > 1) };
 }
