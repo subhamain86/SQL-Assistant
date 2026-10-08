@@ -1,0 +1,21 @@
+## SQL Assistant 17.5.1 — what changed
+
+V17.5.1 is a small, targeted update built **on the V17.5 code, functionality and UI** (`SOURCE_PROVENANCE.md`). Everything V17.5 did is unchanged. One feature was added:
+
+### Added — a short cross-device admin message in the navbar
+* **What users see.** When an administrator has published a message, a slim row appears **inside the navbar** (directly under the existing controls) on every device: *Message from the administrator* (or *Warning from the administrator*) followed by the text, with a **×** to hide it on that device. It is a row, not a chip, on purpose: it needs no horizontal room, so none of the existing navbar controls (sync source/time, schema badge, status icons, theme, walkthrough, signature) is squeezed or moved, and the whole 140-character text is readable on desktop, tablet and phone.
+* **What the administrator does.** **Settings → Synchronization → Admin message** (inside the password-protected Settings; no new tab): type up to **140 characters** (live counter), choose *Information* or *Warning*, press **Publish message**. **Clear message on all devices** removes it everywhere. The panel shows the current message and whether it still waits to be published.
+* **Cross-device, through the architecture that already exists.** The message is one small versioned JSON file (`sqla-admin-message` v1) in the **same repository and with the same connection** as the schema and knowledge synchronization: `sql-assistant-data/messages/admin-message.json` (a sibling of `schemas/` and `knowledge/`; the folder follows the configured schema path). No second credential path, no new service endpoint.
+* **When other devices receive it:** when SQL Assistant starts, when the browser tab becomes visible again (at most every 5 minutes), at every scheduled background synchronization, and when the user presses **Sync with GitHub Now**.
+* **Merge rule.** Last writer wins by `updatedAt`. Clearing is a *record* (`active:false`), not a deletion, so a device that was offline when the message was cleared still receives the clear later, and an older copy can never bring a cleared message back. An older repository record never replaces a newer local one.
+* **Hiding is per device.** × hides the current message on that device (kept across refreshes). A **new** message — different id — appears again.
+* **Offline / failures are quiet and safe.** The message is stored on the device, so it survives a refresh and is shown while the device is offline. If the repository cannot be reached, is not configured, or contains a damaged / hostile / newer-format file, the banner already on screen **stays**, no error toast appears, and nothing else is affected. If the **administrator** publishes while offline, the message is saved on that device and the result says plainly *"could not be published yet"*; it is published automatically at the next synchronization.
+
+### Safety
+* **Plain text only.** The text is shown with `textContent`-style escaping everywhere (navbar and admin panel) — HTML, scripts and addresses are displayed as text, never interpreted and never turned into links. Tested with `<img onerror>` and `<script>` payloads.
+* **No secrets.** Text that looks like a credential (token patterns, `password: …`, `passphrase = …`) is refused before anything is written; incoming records are checked again and rejected. The panel and the docs say that the file is **not encrypted** — do not write secrets in it. Error messages pass through the existing secret redaction.
+* **Untrusted input.** Every field of the repository file is validated (format, version, id, date, level, text length); unknown levels become *Information*; a newer format version is ignored rather than misread.
+* **No interference.** The message uses its own file and its own storage keys and never reads or changes the schema registry, the sync metadata, the Secret Vault, the passphrase or any sync setting (asserted byte-for-byte in the tests).
+
+### Compatibility
+No migration. V17.5 data, schemas, learned queries, the Admin Query Library, the Secret Vault, the schema passphrase, GitHub synchronization and settings are read as they are. A V17.5 device that has not been upgraded simply ignores the new file. Version `17.5.0` → `17.5.1` (footer, About, writer stamp, `version.json`, offline NLU engine label).

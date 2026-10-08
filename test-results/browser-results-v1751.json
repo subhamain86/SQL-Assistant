@@ -1,0 +1,238 @@
+[
+  {
+    "check": "Admin: Settings \u2192 Synchronization has an 'Admin message' panel (inside the password-protected Settings; no new tab)",
+    "pass": true
+  },
+  {
+    "check": "Admin: the panel explains the limit, plain-text-only, per-user hiding and that the file is not encrypted",
+    "pass": true
+  },
+  {
+    "check": "Admin: the type selector offers Information and Warning; Clear is disabled while nothing is published",
+    "pass": true
+  },
+  {
+    "check": "Admin: a live character counter shows 5 / 140",
+    "pass": true
+  },
+  {
+    "check": "Admin: an empty message is refused with a clear reason",
+    "pass": true
+  },
+  {
+    "check": "Admin: a message over 140 characters is refused and the counter turns red",
+    "pass": true
+  },
+  {
+    "check": "Admin: text that looks like a credential is refused and nothing is written",
+    "pass": true
+  },
+  {
+    "check": "Admin: 'password: \u2026' style text is refused as well",
+    "pass": true
+  },
+  {
+    "check": "Admin: publishing succeeds and says the other devices will receive it at their next synchronization or when they open the app",
+    "pass": true
+  },
+  {
+    "check": "Admin: the repository gets one small versioned plain-JSON file next to the schemas (same repository, separate file)",
+    "pass": true
+  },
+  {
+    "check": "Admin: the message is normalised to one clean line (spaces, line breaks and tabs collapsed)",
+    "pass": true
+  },
+  {
+    "check": "Admin: the file contains no credential, passphrase or token",
+    "pass": true
+  },
+  {
+    "check": "Admin: the publisher sees the banner immediately, inside the navbar",
+    "pass": true
+  },
+  {
+    "check": "Admin: the panel shows the current message and enables Clear",
+    "pass": true
+  },
+  {
+    "check": "Admin: nothing else was written to the repository (the schema file is untouched)",
+    "pass": true
+  },
+  {
+    "check": "Admin: a warning replaces the previous message and is styled as a warning",
+    "pass": true
+  },
+  {
+    "check": "Device B: before it synchronizes there is no banner",
+    "pass": true
+  },
+  {
+    "check": "Device B: 'Sync with GitHub Now' brings the message (the real user path) \u2014 warning text, label and level",
+    "pass": true
+  },
+  {
+    "check": "Device B: the existing navbar is untouched \u2014 schema badge keeps its full name and its width",
+    "pass": true
+  },
+  {
+    "check": "Device B: the banner adds one slim row (\u2248 30\u201340 px) below the controls \u2014 the controls row keeps its height",
+    "pass": true
+  },
+  {
+    "check": "Device B: the message is announced politely to assistive technology and the dismiss button is a labelled button",
+    "pass": true
+  },
+  {
+    "check": "Device B: the message survives a page refresh (it is stored on the device)",
+    "pass": true
+  },
+  {
+    "check": "Device B: only the message and its metadata are stored locally \u2014 no secret",
+    "pass": true
+  },
+  {
+    "check": "Device C: coming back to the tab (visibility) refreshes the message without any click",
+    "pass": true
+  },
+  {
+    "check": "Device D: a repository without a message shows nothing and raises no error",
+    "pass": true
+  },
+  {
+    "check": "Dismiss: 'hide' removes the banner on this device at once",
+    "pass": true
+  },
+  {
+    "check": "Dismiss: it stays hidden after a refresh",
+    "pass": true
+  },
+  {
+    "check": "Dismiss: other devices still show it (hiding is per device)",
+    "pass": true
+  },
+  {
+    "check": "Dismiss: synchronizing again does not bring the SAME message back",
+    "pass": true
+  },
+  {
+    "check": "Dismiss: a NEW message appears again on the device that had hidden the old one",
+    "pass": true
+  },
+  {
+    "check": "Clear: the administrator's own banner disappears and the panel says nothing is published",
+    "pass": true
+  },
+  {
+    "check": "Clear: a clearing record is published (so devices that are offline now receive it later)",
+    "pass": true
+  },
+  {
+    "check": "Clear: the other devices lose the banner at their next synchronization",
+    "pass": true
+  },
+  {
+    "check": "Clear: and it does not come back after a refresh",
+    "pass": true
+  },
+  {
+    "check": "Rendering: HTML in the message is shown as plain text \u2014 nothing is interpreted, no element is created, no script runs",
+    "pass": true
+  },
+  {
+    "check": "Rendering: the same text in the administrator's panel is escaped as well",
+    "pass": true
+  },
+  {
+    "check": "Rendering: a web address stays plain text \u2014 never a link",
+    "pass": true
+  },
+  {
+    "check": "Rendering: a 140-character message is accepted and fully shown",
+    "pass": true
+  },
+  {
+    "check": "Offline publish: the message is saved on this device and the result says clearly that it could not be published yet",
+    "pass": true
+  },
+  {
+    "check": "Offline publish: the panel marks it as not yet published",
+    "pass": true
+  },
+  {
+    "check": "Offline publish: a toast tells the administrator it is not yet published",
+    "pass": true
+  },
+  {
+    "check": "Offline publish: the next 'Sync with GitHub Now' publishes it automatically",
+    "pass": true
+  },
+  {
+    "check": "Offline publish: after that the 'not yet published' mark is gone",
+    "pass": true
+  },
+  {
+    "check": "Failure: when the repository cannot be reached the banner already on screen stays \u2014 no error, no flicker",
+    "pass": true
+  },
+  {
+    "check": "Failure: a damaged or hostile message file in the repository is ignored; the current banner stays",
+    "pass": true
+  },
+  {
+    "check": "Failure: a repository record that contains a credential-like text is rejected (never shown)",
+    "pass": true
+  },
+  {
+    "check": "Failure: a file written in a newer format is ignored instead of being misread",
+    "pass": true
+  },
+  {
+    "check": "Last writer wins: an OLDER message in the repository never replaces the newer one on this device",
+    "pass": true
+  },
+  {
+    "check": "Last writer wins: a NEWER message in the repository replaces it",
+    "pass": true
+  },
+  {
+    "check": "Regression: with no message the navbar is exactly the V17.5 navbar (no banner element, no extra row)",
+    "pass": true
+  },
+  {
+    "check": "Regression: the existing Synchronization content (sync source/time, shared location, knowledge, migrations, conflicts, log) is all still there",
+    "pass": true
+  },
+  {
+    "check": "Regression: Schema Management keeps its V17.5 content (repository sync, schema passphrase, stored schemas)",
+    "pass": true
+  },
+  {
+    "check": "Responsive (desktop 1366px): the banner spans the navbar, shows the full text, keeps the dismiss button reachable and causes no horizontal scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (small laptop 1024px): the banner spans the navbar, shows the full text, keeps the dismiss button reachable and causes no horizontal scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (tablet 768px): the banner spans the navbar, shows the full text, keeps the dismiss button reachable and causes no horizontal scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (phone 390px): the banner spans the navbar, shows the full text, keeps the dismiss button reachable and causes no horizontal scroll",
+    "pass": true
+  },
+  {
+    "check": "Dark theme: banner text uses the theme text colour and differs from the background",
+    "pass": true
+  },
+  {
+    "check": "Regression: the Guided Walkthrough still starts and highlights navbar controls while the banner is shown",
+    "pass": true
+  },
+  {
+    "check": "No console errors or uncaught exceptions in any V17.5.1 flow",
+    "pass": true
+  }
+]

@@ -1,4 +1,4 @@
-"""SQL Assistant V17.3.1 (V17.2 UI) — real-browser tests on the PRODUCTION build (Chromium/Playwright).
+"""SQL Assistant V17.5 — real-browser regression tests of the V17.3.1 baseline (V17.2 UI) on the PRODUCTION build (Chromium/Playwright).
    npm run build && python3 scripts/browser_test.py          (CHROME_PATH=/path/to/chrome to use an installed browser)"""
 import json, os, sys, time, subprocess, pathlib, tempfile, threading, functools, http.server, socketserver, socket
 from playwright.sync_api import sync_playwright
@@ -58,7 +58,7 @@ def main():
                     go(pg, r); pg.reload(); ready(pg); ok = ok and pg.inner_text("main").strip() != ""
                 check(f"{label}: every route renders and survives refresh", ok); ctx.close()
             ctx = b.new_context(viewport={"width": 1366, "height": 900}); pg = ctx.new_page(); watch(pg, "app"); pg.goto(pages + "?e2e=1"); ready(pg)
-            check("Version 17.3.1 in footer; no old product name", "17.3.1" in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
+            check("Version 17.5.1 in footer; no old product name", "17.5.1" in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
             pg.click("#navToggle"); pg.wait_for_timeout(150); pg.click(".hb-group-toggle"); pg.wait_for_timeout(100); pg.click('#hamburgerOverlay [data-route="readonly"]'); pg.wait_for_timeout(300)
             check("Hamburger navigation works", "Read Only Query Builder" in pg.inner_text("main") and pg.locator("#hamburgerOverlay").count() == 0)
             bx = [pg.locator(".builder-grid-top .builder-panel").nth(i).bounding_box() for i in range(2)]
@@ -82,7 +82,7 @@ def main():
             pg.fill("#settingsPwInput", "wrong-pass"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900)
             check("Wrong password rejected; Settings stay locked", "Incorrect password" in pg.inner_text("#settingsPwError") and pg.locator(".tab-btn").count() == 0)
             pg.fill("#settingsPwInput", "admin"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900)
-            check("Default password unlocks; V17.2 Settings tabs", pg.locator(".tab-btn").all_inner_texts() == ["Security", "Manual Schema Update", "Schema Management", "Secret Vault", "Synchronization", "AI/LLM Model", "Danger Zone"])
+            check("Default password unlocks; V17.2 Settings tabs", pg.locator(".tab-btn").all_inner_texts() == ["Security", "Manual Schema Update", "Schema Management", "Secret Vault", "Synchronization", "Admin Query Library", "AI/LLM Model", "Danger Zone"])
             check("Default-password warning shown", "default Admin Password" in pg.inner_text("main"))
             check("Navbar lock badge shows unlocked", "is-unlocked" in (pg.get_attribute("#settingsLockBadge", "class") or ""))
             tab(pg, "Security"); pg.fill("#pwCurrent", "admin"); pg.fill("#pwNew", "S3cure-Pass"); pg.fill("#pwConfirm", "Different-1"); pg.click("#changePwBtn"); pg.wait_for_timeout(400)
@@ -95,7 +95,7 @@ def main():
             pg.click("#lockSettingsBtn"); pg.wait_for_timeout(300); check("Lock Settings returns to the lock screen", pg.locator("#settingsPwInput").count() == 1)
             pg.fill("#settingsPwInput", "admin"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900); check("Old default password no longer works", pg.locator(".tab-btn").count() == 0)
             pg.reload(); ready(pg); go(pg, "settings"); check("Settings locked again after restart", pg.locator("#settingsPwInput").count() == 1)
-            unlock(pg, "S3cure-Pass"); check("New password unlocks after restart", pg.locator(".tab-btn").count() == 7 and "default Admin Password" not in pg.inner_text("main"))
+            unlock(pg, "S3cure-Pass"); check("New password unlocks after restart", pg.locator(".tab-btn").count() == 8 and "default Admin Password" not in pg.inner_text("main"))
             # Manual Schema Update — row-wise, delete needs the password
             tab(pg, "Manual Schema Update"); pg.select_option("#editorModuleSelect", "Vendors"); pg.wait_for_timeout(150); pg.select_option("#editorTableSelect", "VENDOR"); pg.wait_for_timeout(250)
             pg.click('tr[data-row-id="VENDORCOUNTRY"]'); pg.wait_for_timeout(150); check("Row selection identified", "VENDOR.COUNTRY" in pg.inner_text("#selectedRowLabel"))
@@ -114,7 +114,7 @@ def main():
             pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1500); r = pg.inner_text("main")
             check("Sync #1: legacy AP schema 77 migrated, nothing rejected", "Migration successful" in r and "failed validation" not in r, r[:500])
             pub = json.loads(pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)); ap = next(x for x in pub["schemas"] if x["name"] == "AP schema 77")
-            check("Republished: writer 17.3.1, all 437 decode entries", "17.3.1" in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
+            check("Republished: writer 17.5.1, all 437 decode entries", "17.5.1" in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
             for n in (2, 3):
                 pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1000); check(f"Sync #{n}: success, no re-migration", "Migration successful" not in pg.inner_text("main") and "failed validation" not in pg.inner_text("main"))
             corrected = pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)
@@ -133,7 +133,7 @@ def main():
             pg.fill("#dangerPw", "wrong"); pg.click("#dangerPwReset"); pg.wait_for_timeout(900); check("Danger Zone: wrong password refused", "Incorrect" in pg.inner_text("#dangerErr"))
             pg.fill("#dangerPw", "S3cure-Pass"); pg.click("#dangerPwReset"); pg.wait_for_timeout(900)
             check("Reset Admin Password to default locks Settings", pg.locator("#settingsPwInput").count() == 1)
-            pg.fill("#settingsPwInput", "admin"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900); check("Default password works again after reset", pg.locator(".tab-btn").count() == 7)
+            pg.fill("#settingsPwInput", "admin"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900); check("Default password works again after reset", pg.locator(".tab-btn").count() == 8)
             ctx.close()
             ctx = b.new_context(); ctx.add_init_script("Object.defineProperty(window,'localStorage',{get(){throw new DOMException('denied','SecurityError')}})")
             pg = ctx.new_page(); pg.goto(pages); ready(pg); check("Blocked storage: app still starts", pg.locator("#mainNavbar").count() == 1); ctx.close()

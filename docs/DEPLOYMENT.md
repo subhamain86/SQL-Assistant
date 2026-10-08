@@ -1,19 +1,15 @@
-# Deployment and upgrade
+## Deployment and upgrade (V17.5.1)
 
-1. **Build:**
-   - `npm install && npm run verify`. This produces `dist/index.html`, the root `index.html` and `release/`.
-   - To build without running the tests, use `npm run build`.
-2. **Publish** one of the following:
-   - **GitHub Pages:** push the project to `main`. The workflow publishes `release/`.
-   - **IIS, Azure Static Web Apps or another web server:** copy the contents of `release/` to the server.
-   - **A single shared file:** share `dist/index.html`.
-3. **First run on each device:**
-   - Open Settings → Secret Vault and check the owner, repository, branch and **schema file path** (`sql-assistant-data/schemas/registry.json`).
-   - If the vault was pushed from V17.2.1 or V17.3, enter the token once and save.
-4. **On the device with the most complete schemas,** go to Settings → Schema Management and press **Synchronize now**.
-   - Legacy schemas (for example AP schema 77) are migrated and published in format 2 with the writer stamp `SQL Assistant 17.3.1`.
-   - If a repository schema is still rejected, the message names the stage, location and the **device and version that wrote it**. Use **Validate repository file** to check, and **Publish my local copies** to replace the file.
-5. **Press Synchronize now on the other devices.**
-6. **Replace every older copy of the app,** especially V17.0 and earlier. Those copies publish schemas without validation.
+* **Build:** `npm install && npm run verify` produces `dist/index.html`, the root `index.html` and `release/`. To build without the tests use `npm run build`.
+* **Publish** one of: **GitHub Pages** (push to `main`; the workflow publishes `release/`) · **IIS / Azure Static Web Apps / other** (copy the contents of `release/`) · **a single shared file** (`dist/index.html`).
+* **Upgrading from V17.5:** replace the app — nothing to export, migrate or re-enter. The admin message is off until an administrator publishes one (Settings → Synchronization → Admin message); devices that have not been upgraded ignore the new file `sql-assistant-data/messages/admin-message.json`.
+* **Upgrading from V17.4:** replace the app — nothing to export, migrate or re-enter. Schemas, learned queries, the Admin Query Library, the Secret Vault, GitHub settings, the Admin Password and all other settings are read as they are. Synchronization stays **plain** (exactly as in V17.4) until an administrator sets a schema passphrase.
+* **Protect the synchronized schema with a passphrase (optional, recommended):** see `PULL_SCHEMA.md`. Administrator: Settings → Schema Management → Schema passphrase → *Save passphrase and publish encrypted schema*. Everyone else: hamburger menu → Schema → *Pull Schema*. Afterwards remove the old plain `…/schemas/registry.json` from the repository by hand.
+* **Upgrading from V17.3.1:** replace the app; nothing needs to be exported or re-entered. On first start V17.4 migrates the learned queries automatically (Settings → Synchronization → *Data migrations*). Schemas, the Secret Vault, GitHub settings, the Admin Password and all other settings are read as they are. The V17.3.1 learned-query data is **kept** next to the new store, so going back to V17.3.1 is possible.
+* **Each device, first run:** Settings → Secret Vault: check owner/repository, branch and schema file path (`sql-assistant-data/schemas/registry.json`). Then Settings → Schema Management → *Sync with GitHub Now*.
+* **Share learned queries and the Admin Query Library:** Settings → Synchronization → *Sync knowledge now* (also in the Admin Query Library tab). The data is one file, `sql-assistant-data/knowledge/knowledge.json`, in the same repository. Records are merged per item; a deletion on one device reaches the others on their next sync.
+* **A new device without the vault:** Settings → Secret Vault → enter the repository and a token that can read it, enter the *Vault Sync Passphrase* and press *Retrieve from Repository* (or *Import encrypted file*).
+* **Local model (optional):** run Ollama / LM Studio / llama.cpp with its OpenAI-compatible server, then Settings → AI/LLM Model → provider *Local model*, enter the model name, *Test connection*, *Enable*, *Save*. Everything keeps working offline if the model is not running.
+* **Replace every older copy of the app** — V17.0 and earlier publish schemas without validation.
 
-**SharePoint and OneDrive** usually *download* `.html` files instead of displaying them. Use them to distribute the file, not to host it.
+SharePoint and OneDrive usually *download* `.html` files instead of displaying them; use them to distribute the file, not to host it.

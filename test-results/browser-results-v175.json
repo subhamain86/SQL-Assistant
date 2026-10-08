@@ -1,0 +1,410 @@
+[
+  {
+    "check": "Tables: the tick-mark is already set in the same task as the click \u2014 no delay, no second action needed",
+    "pass": true
+  },
+  {
+    "check": "Tables: clicking the table name ticks it immediately and adds it to the query",
+    "pass": true
+  },
+  {
+    "check": "Tables: clicking the checkbox itself ticks it immediately (this was the broken case)",
+    "pass": true
+  },
+  {
+    "check": "Tables: multiple tables stay selected \u2014 selecting another never removes the previous ticks",
+    "pass": true
+  },
+  {
+    "check": "Tables: removing a table removes its tick immediately and updates the count",
+    "pass": true
+  },
+  {
+    "check": "Tables: removing through the row text removes the tick as well",
+    "pass": true
+  },
+  {
+    "check": "Tables: selecting and removing tables resets neither columns, filters, joins, Advanced Options, generated SQL nor the description",
+    "pass": true
+  },
+  {
+    "check": "Tables: the UI and the query state agree (ticks = selected tables = tables in the SQL)",
+    "pass": true
+  },
+  {
+    "check": "Tables: the keyboard (Space) toggles the tick as well",
+    "pass": true
+  },
+  {
+    "check": "Tables: switching tabs and coming back keeps every tick, column, filter and option",
+    "pass": true
+  },
+  {
+    "check": "Tables: after a page refresh the ticks come back with the saved draft",
+    "pass": true
+  },
+  {
+    "check": "Tables: Clear removes every tick immediately",
+    "pass": true
+  },
+  {
+    "check": "Tables: Select all ticks every listed table immediately",
+    "pass": true
+  },
+  {
+    "check": "Columns: a selected column offers 'Display as' \u2192 Column | CASE / DECODE",
+    "pass": true
+  },
+  {
+    "check": "CASE/DECODE: the control distinguishes Manual from From Schema",
+    "pass": true
+  },
+  {
+    "check": "CASE/DECODE: a column that has a schema definition starts on 'From Schema' and lists the definition",
+    "pass": true
+  },
+  {
+    "check": "Schema CASE: the generated SQL uses the selected schema definition",
+    "pass": true
+  },
+  {
+    "check": "Schema CASE: the SQL passes validation",
+    "pass": true
+  },
+  {
+    "check": "Schema DECODE (Oracle): the same definition is written as DECODE(\u2026) and validates",
+    "pass": true
+  },
+  {
+    "check": "CASE/DECODE: the definition comes only from the active schema (the Explain panel lists it)",
+    "pass": true
+  },
+  {
+    "check": "CASE/DECODE: the selected definition is preserved when switching Manual Selector tabs",
+    "pass": true
+  },
+  {
+    "check": "CASE/DECODE: outside Oracle the definition is written as CASE and the DECODE style is not offered",
+    "pass": true
+  },
+  {
+    "check": "Manual: choosing Manual offers to define the expression and does not use the schema definition",
+    "pass": true
+  },
+  {
+    "check": "Manual DECODE: the existing manual builder still works and its expression reaches the SQL",
+    "pass": true
+  },
+  {
+    "check": "Manual DECODE: the column stays ticked and shows its manual expression with an Edit button",
+    "pass": true
+  },
+  {
+    "check": "Switching Manual \u2192 From Schema uses the schema definition",
+    "pass": true
+  },
+  {
+    "check": "Switching back to Manual restores the manual expression (nothing is lost)",
+    "pass": true
+  },
+  {
+    "check": "Manual CASE: the existing manual CASE builder (Advanced Options) still works",
+    "pass": true
+  },
+  {
+    "check": "No definition: a column without a schema definition starts on Manual (nothing is made up)",
+    "pass": true
+  },
+  {
+    "check": "No definition: 'From Schema' says clearly that none exists and the SQL stays plain",
+    "pass": true
+  },
+  {
+    "check": "No definition: the builder warns that the plain column is used",
+    "pass": true
+  },
+  {
+    "check": "Describe What You Need: the user's selected CASE/DECODE is neither overwritten nor duplicated",
+    "pass": true
+  },
+  {
+    "check": "Describe What You Need: 'status description' selects the schema CASE/DECODE automatically and the plan says so",
+    "pass": true
+  },
+  {
+    "check": "Describe What You Need: 'using decode' on Oracle writes DECODE",
+    "pass": true
+  },
+  {
+    "check": "Describe What You Need: asking for a decode of a column without a definition is reported, never invented",
+    "pass": true
+  },
+  {
+    "check": "User-modified SQL: an edited CASE/DECODE query is accepted, validated and learned together with the fact that STATUS was decoded",
+    "pass": true
+  },
+  {
+    "check": "Learned query patterns: the learned decode is applied again, using the schema's current definition",
+    "pass": true
+  },
+  {
+    "check": "Admin: Schema Management has a 'Schema passphrase' panel with its status",
+    "pass": true
+  },
+  {
+    "check": "Admin: the passphrase fields are masked with a visibility button",
+    "pass": true
+  },
+  {
+    "check": "Admin: a short passphrase is refused with a clear message",
+    "pass": true
+  },
+  {
+    "check": "Admin: mismatching confirmation is refused",
+    "pass": true
+  },
+  {
+    "check": "Admin: the schema is published as an encrypted file and the result says so",
+    "pass": true
+  },
+  {
+    "check": "Admin: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata",
+    "pass": true
+  },
+  {
+    "check": "Admin: nothing readable is in the repository \u2014 no schema, table, column, decode label, passphrase or Base64 of them",
+    "pass": true
+  },
+  {
+    "check": "Admin: the status switches to 'Encrypted synchronization ON'",
+    "pass": true
+  },
+  {
+    "check": "Admin: the passphrase is stored on the device only as ciphertext",
+    "pass": true
+  },
+  {
+    "check": "Admin: the saved passphrase is shown masked and can be revealed",
+    "pass": true
+  },
+  {
+    "check": "Pull: Hamburger menu \u2192 Schema opens the Schema page with a 'Pull Schema' tab",
+    "pass": true
+  },
+  {
+    "check": "Pull: the page shows Pull Schema, a passphrase field, a show/hide button, short instructions and the Pull button",
+    "pass": true
+  },
+  {
+    "check": "Pull: the instructions explain what to do, why the passphrase is needed and to keep it secure",
+    "pass": true
+  },
+  {
+    "check": "Pull: the instructions are compact (not a tall block)",
+    "pass": true
+  },
+  {
+    "check": "Pull: the passphrase field is masked by default (type=password) and hidden-by-default is reflected for assistive technology",
+    "pass": true
+  },
+  {
+    "check": "Pull: Show reveals the passphrase, Hide masks it again",
+    "pass": true
+  },
+  {
+    "check": "Pull: the passphrase is never in the page text, the URL or the console",
+    "pass": true
+  },
+  {
+    "check": "Pull: the preview shows every validation step and nothing has been changed yet",
+    "pass": true
+  },
+  {
+    "check": "Pull: before replacing, it shows local version, repository version, updated date, contents and the action",
+    "pass": true
+  },
+  {
+    "check": "Pull: the preview names who wrote the file (writer, app version, schema format, time, device)",
+    "pass": true
+  },
+  {
+    "check": "Cancelled pull: says so and leaves the existing local schema exactly as it was",
+    "pass": true
+  },
+  {
+    "check": "Pull: success is confirmed with 'Schema pulled and validated successfully.' and no stale error",
+    "pass": true
+  },
+  {
+    "check": "Pull: the schema is imported and ACTIVATED (the navbar badge and active schema show it)",
+    "pass": true
+  },
+  {
+    "check": "Pull: structure, tables, columns, data types, relationships, CASE/DECODE definitions, version, identifier and updated time are preserved",
+    "pass": true
+  },
+  {
+    "check": "Pull: the passphrase was remembered on this device \u2014 encrypted, never plaintext",
+    "pass": true
+  },
+  {
+    "check": "Pull: Manual Selectors use the new schema straight away (no restart)",
+    "pass": true
+  },
+  {
+    "check": "Pull: the schema CASE/DECODE definitions of the pulled schema are available (1 = Open \u00b7 2 = Approved \u00b7 3 = Rejected)",
+    "pass": true
+  },
+  {
+    "check": "Pull: Describe What You Need and the offline NLU use the new schema and its CASE/DECODE",
+    "pass": true
+  },
+  {
+    "check": "Pull: the imported schema survives a page refresh",
+    "pass": true
+  },
+  {
+    "check": "Pull: the deep link #schema-used/pull opens the Pull Schema tab",
+    "pass": true
+  },
+  {
+    "check": "Active passphrase: the saved passphrase is displayed masked and can be revealed",
+    "pass": true
+  },
+  {
+    "check": "Pull: pulling again with the saved passphrase says everything is already up to date",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 incorrect passphrase: 'The passphrase is incorrect. The existing local schema has not been changed.'",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 incorrect passphrase: the message explains what to do next and does not echo the passphrase",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 unusable passphrase: 'Schema pull failed because the passphrase could not be validated. Your existing local schema has not been changed.'",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 empty passphrase is refused before the repository is contacted",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 missing schema: 'The synchronized schema could not be retrieved. Please verify the repository connection and try again.'",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 corrupted schema: 'The schema could not be decrypted using the supplied passphrase. The existing local schema has not been changed.'",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 decryption failure (header tampered with): reported, local schema intact",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 unreadable file: reported, local schema intact",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 a plain (unencrypted) file in the encrypted location is explained",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 invalid schema: 'The synchronized schema failed validation. The existing local schema has not been changed.' (with the location of the problem)",
+    "pass": true
+  },
+  {
+    "check": "Failure \u2014 network / repository failure: the retrieval message, technical detail on request, local schema intact",
+    "pass": true
+  },
+  {
+    "check": "No stale errors: after a failure, a successful retry shows only the new result",
+    "pass": true
+  },
+  {
+    "check": "After every failed or cancelled pull the user's own work is untouched",
+    "pass": true
+  },
+  {
+    "check": "Older schema: the repository copy is older than the local one \u2014 shown with both versions and dates, 'was not applied'",
+    "pass": true
+  },
+  {
+    "check": "Older schema: the newer local schema is not replaced",
+    "pass": true
+  },
+  {
+    "check": "Admin: changing the passphrase re-publishes the encrypted schema under the new passphrase",
+    "pass": true
+  },
+  {
+    "check": "Passphrase changed by the admin: the old passphrase is refused with the standard message",
+    "pass": true
+  },
+  {
+    "check": "Passphrase changed by the admin: the user types the new passphrase, pulls, and the saved passphrase is updated",
+    "pass": true
+  },
+  {
+    "check": "Passphrase changed by the admin: after a refresh the device shows the NEW saved passphrase (masked)",
+    "pass": true
+  },
+  {
+    "check": "Existing sync: 'Sync with GitHub Now' keeps working with a saved passphrase (encrypted file)",
+    "pass": true
+  },
+  {
+    "check": "Existing sync: the repository still holds only the encrypted file (no plain schema is written)",
+    "pass": true
+  },
+  {
+    "check": "Existing sync: without a passphrase the classic plain synchronization works exactly as in V17.4",
+    "pass": true
+  },
+  {
+    "check": "Existing sync: the plain file now also carries the app version and the writer stamp",
+    "pass": true
+  },
+  {
+    "check": "Existing Secret Vault: the vault tab and Push Secret Vault to Repository are unchanged",
+    "pass": true
+  },
+  {
+    "check": "Existing Settings: Admin Query Library is unchanged",
+    "pass": true
+  },
+  {
+    "check": "Existing Settings: Manual Schema Update is unchanged",
+    "pass": true
+  },
+  {
+    "check": "Existing Settings: AI/LLM Model is unchanged",
+    "pass": true
+  },
+  {
+    "check": "Security: no credential, no hard-coded passphrase and no key material in the production bundle",
+    "pass": true
+  },
+  {
+    "check": "Security: nothing the user typed as a passphrase reached any console message",
+    "pass": true
+  },
+  {
+    "check": "Responsive (desktop 1366px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (tablet 768px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (phone 390px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "No console errors or uncaught exceptions in any V17.5 flow",
+    "pass": true
+  }
+]

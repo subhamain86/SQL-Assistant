@@ -33,7 +33,7 @@ test('S7/S8 multi-schema scenarios 1–5 processed independently', () => {
 test('S9/S10/S13 Sync #1 → #2 → #3 → restart → sync: stable; Active Schema refreshed; another device reads clean data', async () => {
   const repo = memoryRepository({ [PATH]: v170MangledFile() }); const st = memoryStore(); const a = dev(repo, st);
   const r1 = await a.sync.synchronize(); assert.equal(r1.pull.ok, true); assert.equal(r1.pull.migrated.length, 1); assert.equal(r1.push.ok, true); assert.equal(r1.pull.activeChanged, true, 'Active Schema refreshed from the repository'); assert.equal(a.schemas.active().name, 'Core A');
-  const pub = JSON.parse(repo.files.get(PATH).text); assert.equal(pub.writtenBy, 'SQL Assistant 17.3.1'); assert.equal(pub.formatVersion, 2); assert.equal(countDecode(pub.schemas.find((s) => s.name === 'AP schema 77')), 437);
+  const pub = JSON.parse(repo.files.get(PATH).text); assert.equal(pub.writtenBy, 'SQL Assistant 17.5.1'); assert.equal(pub.formatVersion, 2); assert.equal(countDecode(pub.schemas.find((s) => s.name === 'AP schema 77')), 437);
   assert.ok(!pub.schemas.some((s) => s.name === 'AP / P2P Core'), 'untouched built-in default schema is not pushed into the shared repository');
   for (let i = 2; i <= 3; i++) { const r = await a.sync.synchronize(); assert.equal(r.pull.ok, true); assert.equal(r.pull.migrated.length, 0); assert.equal(r.pull.rejected.length, 0); assert.equal(r.push, null, `sync #${i}`); }
   const restarted = dev(repo, st); assert.equal(countDecode(ap(restarted)), 437); const r4 = await restarted.sync.synchronize(); assert.equal(r4.pull.ok, true); assert.equal(r4.push, null); assert.ok(r4.pull.unchanged.includes('AP schema 77'));

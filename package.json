@@ -1,10 +1,10 @@
 {
   "name": "sql-assistant",
   "productName": "SQL Assistant",
-  "version": "17.3.1",
+  "version": "17.5.1",
   "private": true,
   "type": "module",
-  "description": "SQL Assistant — schema-aware read-only and Change Request SQL generator with an offline self-training NLU, schema synchronization and an optional AI/LLM Model.",
+  "description": "SQL Assistant \u2014 schema-aware read-only and Change Request SQL generator with an offline self-training NLU, centralized learning, an Admin Query Library, schema CASE/DECODE, passphrase-protected cross-device schema synchronization a short cross-device administrator message in the navbar and an optional AI/LLM Model.",
   "scripts": {
     "clean": "node -e \"for (const d of ['build','dist','dev-dist','release','test-results']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -13,11 +13,16 @@
     "build:dev": "node scripts/build.mjs --dev",
     "dev": "node scripts/dev.mjs",
     "serve": "node scripts/serve.mjs",
-    "test": "node scripts/build.mjs && node --test test/*.test.mjs",
-    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py",
+    "test": "node scripts/build.mjs && node --test --test-concurrency=1 test/*.test.mjs",
+    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py && python3 scripts/browser_test_v174.py && python3 scripts/browser_test_v175.py && python3 scripts/browser_test_v1751.py",
     "diagnose": "node scripts/diagnose.mjs",
-    "verify": "npm run clean && npm run typecheck && npm run lint && npm test && npm run build:dev && npm run build && npm run test:browser"
+    "verify": "npm run clean && npm run typecheck && npm run lint && npm run security && npm test && npm run build:dev && npm run build && npm run test:browser",
+    "security": "node scripts/security_check.mjs"
   },
-  "devDependencies": { "typescript": "^5.8.3" },
-  "engines": { "node": ">=20" }
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
 }

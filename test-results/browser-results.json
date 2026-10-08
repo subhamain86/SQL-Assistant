@@ -60,7 +60,7 @@
     "pass": true
   },
   {
-    "check": "Version 17.3.1 in footer; no old product name",
+    "check": "Version 17.5.1 in footer; no old product name",
     "pass": true
   },
   {
@@ -172,7 +172,7 @@
     "pass": true
   },
   {
-    "check": "Republished: writer 17.3.1, all 437 decode entries",
+    "check": "Republished: writer 17.5.1, all 437 decode entries",
     "pass": true
   },
   {

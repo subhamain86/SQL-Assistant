@@ -1,0 +1,482 @@
+[
+  {
+    "check": "Selectors: selecting a table keeps the module filter and the search text (no reset)",
+    "pass": true
+  },
+  {
+    "check": "Selectors: selecting a table keeps the column search and the previously selected column",
+    "pass": true
+  },
+  {
+    "check": "Selectors: selecting a second column does not reset the first",
+    "pass": true
+  },
+  {
+    "check": "Selectors: selecting a table does not reset filters",
+    "pass": true
+  },
+  {
+    "check": "Selectors: editing a filter does not reset the selected tables",
+    "pass": true
+  },
+  {
+    "check": "Selectors: changing Advanced Options does not clear the selections",
+    "pass": true
+  },
+  {
+    "check": "Selectors: switching tabs keeps the search boxes, selections and filters",
+    "pass": true
+  },
+  {
+    "check": "Selectors: the Tables & Columns tab stays mounted \u2014 search text survives a tab round-trip",
+    "pass": true
+  },
+  {
+    "check": "Selectors: Advanced Options keep their values when the tab is shown again",
+    "pass": true
+  },
+  {
+    "check": "Selectors: the table list keeps its scroll position after a selection",
+    "pass": true
+  },
+  {
+    "check": "Selectors: a page reload keeps the builder draft (tables, options, SQL)",
+    "pass": true
+  },
+  {
+    "check": "Selectors: deselecting a table removes its columns/filters from the SQL but keeps them",
+    "pass": true
+  },
+  {
+    "check": "Selectors: re-selecting the table brings its columns and filters back",
+    "pass": true
+  },
+  {
+    "check": "Selectors: switching the Active Schema keeps the description, options and the selections that still exist",
+    "pass": true
+  },
+  {
+    "check": "Describe: the example request is accepted and the active schema is used",
+    "pass": true
+  },
+  {
+    "check": "Describe: SUM + GROUP BY + ORDER BY DESC + LIMIT 20 are inferred automatically",
+    "pass": true
+  },
+  {
+    "check": "Describe: the generated SQL is validated before it is shown (12 checks)",
+    "pass": true
+  },
+  {
+    "check": "Describe: Validate shows what was checked",
+    "pass": true
+  },
+  {
+    "check": "Describe: Explain lists tables, columns, joins, aggregation, grouping, sorting and limit",
+    "pass": true
+  },
+  {
+    "check": "Describe: the Advanced Options tab shows what was inferred automatically",
+    "pass": true
+  },
+  {
+    "check": "Describe: unknown columns are reported and never invented",
+    "pass": true
+  },
+  {
+    "check": "Describe: items the schema cannot provide (invoice number, gross amount) are listed as not found",
+    "pass": true
+  },
+  {
+    "check": "Describe: works fully offline (no external AI service)",
+    "pass": true
+  },
+  {
+    "check": "Learning: a generated (unconfirmed) query is recorded but is NOT used as a pattern",
+    "pass": true
+  },
+  {
+    "check": "Learning: SQL that is not valid for the Active Schema cannot be accepted or learned",
+    "pass": true
+  },
+  {
+    "check": "Learning: user-modified SQL is recorded as modified & confirmed",
+    "pass": true
+  },
+  {
+    "check": "Learning: SQL reported as successfully executed is the strongest learned tier",
+    "pass": true
+  },
+  {
+    "check": "Learning: a learned query is retrieved and used as a pattern for the same request",
+    "pass": true
+  },
+  {
+    "check": "Learning: 'Report issue' removes the result from the trusted patterns",
+    "pass": true
+  },
+  {
+    "check": "Learning: successful, modified and executed records are stored centrally (versioned structure)",
+    "pass": true
+  },
+  {
+    "check": "Describe: the dialect decides how the limit is written (TOP for SQL Server)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: aggregation (SUM) with GROUP BY completed automatically",
+    "pass": true
+  },
+  {
+    "check": "Advanced: aggregation COUNT",
+    "pass": true
+  },
+  {
+    "check": "Advanced: aggregation AVG",
+    "pass": true
+  },
+  {
+    "check": "Advanced: aggregation MIN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: aggregation MAX",
+    "pass": true
+  },
+  {
+    "check": "Advanced: HAVING",
+    "pass": true
+  },
+  {
+    "check": "Advanced: ORDER BY with ASC / DESC",
+    "pass": true
+  },
+  {
+    "check": "Advanced: LIMIT (FETCH FIRST for Oracle)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: DISTINCT",
+    "pass": true
+  },
+  {
+    "check": "Advanced: GROUP BY (manual columns)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: LEFT JOIN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: RIGHT JOIN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: FULL JOIN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: INNER JOIN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: table aliases",
+    "pass": true
+  },
+  {
+    "check": "Advanced: every option has a short plain-language description",
+    "pass": true
+  },
+  {
+    "check": "Advanced: the options catalog lists WHERE, AND/OR, BETWEEN, IN, LIKE, IS NULL, dates, CASE, joins, WITH, EXISTS",
+    "pass": true
+  },
+  {
+    "check": "Advanced: WITH / CTE",
+    "pass": true
+  },
+  {
+    "check": "Advanced: EXISTS sub-select filter (validated read-only)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: NOT EXISTS",
+    "pass": true
+  },
+  {
+    "check": "Advanced: a destructive sub-select is rejected and the SQL is flagged",
+    "pass": true
+  },
+  {
+    "check": "Advanced: options are limited to what the dialect supports (no FULL JOIN in MySQL)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: date filter shortcut (last 30 days)",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter IN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter NOT IN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter LIKE",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter NOT LIKE",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter BETWEEN",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter IS NULL",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter IS NOT NULL",
+    "pass": true
+  },
+  {
+    "check": "Advanced: filter <>",
+    "pass": true
+  },
+  {
+    "check": "Advanced: a manual option takes precedence over the value inferred from the description",
+    "pass": true
+  },
+  {
+    "check": "Schema: a row edit (column + table information) is saved and the Active Schema, SQL generation and NLU knowledge are refreshed",
+    "pass": true
+  },
+  {
+    "check": "Schema: the edit survives a page reload (centralized saved schema data)",
+    "pass": true
+  },
+  {
+    "check": "Schema: the Schema page shows the saved change",
+    "pass": true
+  },
+  {
+    "check": "Schema: a deleted row stays deleted after reload",
+    "pass": true
+  },
+  {
+    "check": "Schema: the builder uses the updated Active Schema (deleted column is gone)",
+    "pass": true
+  },
+  {
+    "check": "Schema: an invalid change (empty decode code) is refused with an actionable message",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: the tab is part of Settings and starts empty",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: tables and columns are detected from the SQL",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: test / validate runs the 12 checks against the Active Schema",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: add query \u2014 saved as a draft with metadata",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: draft queries are not trusted yet",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: approve (only valid queries) \u2014 query becomes a trusted example",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: an invalid query cannot be approved (clear reason shown)",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: test shows invalid result for the broken query",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: a query containing a credential is refused",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: names are escaped (no HTML injection)",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: search",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: search with no result",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: filter by approval status, tag and dialect",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: edit query keeps the approval when only the description changes",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: editing the SQL withdraws the approval (test + approve again)",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: an approved query is found and used during SQL generation (adapted, not copied)",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: retrieval order is shown \u2014 Active Schema \u2192 Admin Query Library \u2192 learned \u2192 NLU \u2192 SQL engine",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: the pattern is adapted to the dialect (TOP for SQL Server)",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: disable",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: a disabled query is not used",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: enable",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: the library survives a page reload",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: delete requires the Admin Password and removes the query",
+    "pass": true
+  },
+  {
+    "check": "Admin Library: learned queries are offered for review only when confirmed / executed",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: learned queries + the Admin Query Library are published as one versioned file",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: the published file holds no credentials",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: a second device receives the Admin Query Library",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: a second device receives the successfully executed learned query",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: the synchronized knowledge is used on the second device",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: a deletion made on one device reaches the other",
+    "pass": true
+  },
+  {
+    "check": "Knowledge sync: hostile remote records (destructive SQL, credentials) are rejected, not imported",
+    "pass": true
+  },
+  {
+    "check": "Vault: save secret \u2014 the token is encrypted at rest and never shown",
+    "pass": true
+  },
+  {
+    "check": "Vault: push validates the secret configuration first and explains what to fix",
+    "pass": true
+  },
+  {
+    "check": "Vault: push encrypts, prepares a repository-safe file, pushes, verifies by read-back",
+    "pass": true
+  },
+  {
+    "check": "Vault: the repository file contains no plaintext or Base64 token (AES-256-GCM envelope)",
+    "pass": true
+  },
+  {
+    "check": "Vault: pull \u2014 a wrong passphrase is rejected; the right one retrieves, decrypts and validates",
+    "pass": true
+  },
+  {
+    "check": "Vault: the plaintext token is never in the UI, console or storage of the receiving device",
+    "pass": true
+  },
+  {
+    "check": "Vault: a device without the decryption key says so clearly and keeps the old data",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM: the layered offline architecture is shown (schema engine \u00b7 offline NLU \u00b7 local learning \u00b7 optional local LLM)",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM: offline stays primary and a local model needs no key",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM: an unreachable local model is reported and SQL generation keeps working offline",
+    "pass": true
+  },
+  {
+    "check": "AI/LLM: with an unavailable model the offline result is still produced",
+    "pass": true
+  },
+  {
+    "check": "Migration: V17.3.1 learned data is migrated automatically and the old data is kept",
+    "pass": true
+  },
+  {
+    "check": "Migration: idempotent \u2014 a restart does not duplicate anything",
+    "pass": true
+  },
+  {
+    "check": "Migration: the Synchronization tab lists the versioned migrations",
+    "pass": true
+  },
+  {
+    "check": "Responsive (desktop 1366px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (tablet 768px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "Responsive (phone 390px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll",
+    "pass": true
+  },
+  {
+    "check": "Security: the production page contains no credentials and no external script",
+    "pass": true
+  },
+  {
+    "check": "Security: a hostile description is rendered as text (no HTML injection / script execution)",
+    "pass": true
+  },
+  {
+    "check": "No console errors or uncaught exceptions in any V17.4 flow",
+    "pass": true
+  }
+]
