@@ -1,10 +1,11 @@
 {
   "format": "sqla-published-data",
   "formatVersion": 1,
-  "publishedAt": "2026-10-12T11:38:00.607Z",
-  "sourceCommit": "f6e17f86f1b7e25c0da664e123889cdcd0ad6022",
+  "publishedAt": "2026-10-12T11:40:57.459Z",
+  "sourceCommit": "4c8abf9f14d26f82a806c388a6895b08d294d3b5",
   "sourceRepository": "subhamain86/SQL-Assistant",
   "files": {
+    "sql-assistant-data/knowledge/knowledge.json": "a52135cbcf1804e55d00066a24eb9e5acf3515320739b8144a540f3fe716cdee",
     "sql-assistant-data/messages/admin-message.json": "dd5b7b073ff883d50edc9f31fc3c5939e9327ccad257ab7b31e9c7e655313b59",
     "sql-assistant-data/schema-registry.json": "62b209e3d792c74649e2fa9b005ffd97299c9316161de3ea432e79828881b2e7",
     "sql-assistant-data/schemas/registry.enc.json": "507920babae725f5f119d0d4dedd4c8c953b60161aa216a5d6e2a2b91d8b37fb",
