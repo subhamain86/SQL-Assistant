@@ -20,7 +20,7 @@ jobs:
   deploy:
     # V17.6.4 — a push that touches server/** only deploys the service when it is configured (the repository variable SQLA_BROKER_APP_NAME exists); otherwise the job is SKIPPED instead of failing every push.
     # A manual run (workflow_dispatch) always runs and says, by name, what is missing.
-    if: ${{ github.event_name == 'workflow_dispatch' || vars.SQLA_BROKER_APP_NAME != '' }}
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.SQLA_BROKER_APP_NAME != 'Token-sql-query-gen' }}
     runs-on: ubuntu-latest
     environment: central-repository-access     # optional protection rules (required reviewers) apply to the job that sees the secret
     steps:
