@@ -1,0 +1,58 @@
+{
+ "format": "sqla-knowledge",
+ "formatVersion": 1,
+ "writtenBy": "SQL Assistant 17.6.5",
+ "writtenByDevice": "device-vhynma",
+ "learned": [
+  {
+   "id": "lp_muu97xi1",
+   "schemaId": "schema_mulms6ye_5",
+   "schemaName": "",
+   "schemaVersion": "",
+   "schemaFingerprint": "6f7a7197-171o",
+   "dialect": "",
+   "requestText": "fetch all invoices",
+   "tokens": [
+    "fetch",
+    "invoice"
+   ],
+   "generatedSql": "SELECT IA_ACTION_LOG.USER_ID,\n  DECODE(ADM_USER_DATA.LOGIN_ALLOWED, '0', 'Inactive', '1', 'Active') AS LOGIN_ALLOWED\nFROM ADM_USER_DATA;",
+   "modifiedSql": null,
+   "finalSql": null,
+   "tables": [
+    "ADM_USER_DATA",
+    "IA_INVOICE"
+   ],
+   "columns": [
+    {
+     "table": "IA_ACTION_LOG",
+     "column": "USER_ID"
+    }
+   ],
+   "sorts": [],
+   "limit": null,
+   "joins": [],
+   "filters": [],
+   "advanced": {
+    "distinct": false,
+    "groupBy": [],
+    "having": false,
+    "limit": null,
+    "joinType": null,
+    "tableAliases": false
+   },
+   "pattern": null,
+   "count": 4,
+   "status": "generated",
+   "resultStatus": "unknown",
+   "feedback": "none",
+   "feedbackNote": "",
+   "rejected": false,
+   "createdAt": "2026-10-04T20:09:15.775Z",
+   "updatedAt": "2026-10-04T20:09:15.775Z",
+   "device": "migrated-from-v17.3.1"
+  }
+ ],
+ "admin": [],
+ "writtenAt": "2026-10-12T11:40:47.257Z"
+}
