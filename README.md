@@ -1,9 +1,55 @@
-## SQL Assistant — V17.5.1
+## SQL Assistant — V17.6.5
 
 SQL Assistant writes read-only and Change Request SQL from your **Active Schema**.
 Its primary engine is an **offline, self-training natural-language model** that also learns from SQL you confirm and from an **Admin Query Library** of trusted queries. An AI/LLM Model (including a model running on your own computer) can optionally be added; nothing requires it.
 
-### What is new in V17.5.1
+### What is new in V17.6.5
+* **One Admin Password for all devices.** Settings → Security → **Save (all devices)** keeps the encrypted verification marker (never the password) in `sql-assistant-data/security/admin-credential.json`; devices refresh it at start, when the tab becomes visible, at the scheduled sync, on *Sync with GitHub Now* and once when an unlock fails. **Reset to default** sets `admin` centrally (current password, or a GitHub sign-in with write access). Rollback protection, strict parsing, lock-out after 5 wrong attempts. Without a central record the app behaves as V17.6.4. See `docs/CHANGELOG_V17.6.5.md`, `docs/TEST_REPORT_V17.6.5.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`.
+
+### What was new in V17.6.4
+* **Deployment fix, no feature or UI change.** The GitHub Pages workflow builds before its security check, runs each stage as its own named step, installs deterministically and checks that Pages is enabled; TypeScript is pinned to 5.8.3; the repository-access-service workflow is skipped on a push until it is configured. See `docs/CHANGELOG_V17.6.4.md`, `docs/TEST_REPORT_V17.6.4.md`, `docs/REGRESSION_BASELINE_V17.6.4.md`.
+
+### What was new in V17.6.3
+* **Reading the private repository needs no token.** A trusted workflow (`publish-data.yml`, built-in `GITHUB_TOKEN` only — no PAT) publishes a hash-checked copy of `sql-assistant-data/` next to the app; Pull Schema, Pull Secret Vault and synchronization read it on any device with no credential, no sign-in and nothing copied. Writing still needs a credential.
+* **A device with no token restores the central read-only token automatically** when a central token vault is published (`docs/PUBLISHED_DATA.md` §4); a vault under its own passphrase is restored with *Pull Secret Vault to Repository*.
+* **Opt-in:** without `sql-assistant-data/published.json` the app behaves exactly as V17.6.2. Same UI, same three Pull Schema cards in the same order. PAT check now prints GitHub's own message and SSO headers; workflows moved to Node 24 actions.
+* See `docs/CHANGELOG_V17.6.3.md`, `docs/PUBLISHED_DATA.md`, `docs/TEST_REPORT_V17.6.3.md`, `docs/SECURITY.md`.
+
+### What was new in V17.6.2
+* **Central GitHub PAT.** The token that reads and writes the data repository is stored **once**, as the GitHub Actions repository secret **`SQLA_GITHUB_PAT`**; no device holds it and nobody copies it. A secret like that cannot be read by a browser, so a small trusted **repository access broker** (`server/repo-broker.mjs`, Node ≥ 20, no dependency) uses it — only after the user proved with GitHub's own sign-in that their account may read the repository — and returns file contents, never the PAT.
+* **One mechanism for every repository action:** Pull Schema from GitHub, Pull / Push Secret Vault, *Sync with GitHub Now*, knowledge sync, the admin message. *Hamburger → Schema → Pull Schema* shows *Repository access (central)* — *Sign in with GitHub* once per browser session; a new device needs no token.
+* **Opt-in:** nothing changes until an administrator follows `docs/CENTRAL_PAT.md` (secret, GitHub App, `deploy-broker.yml`, `SQLA_BROKER_URL`). Without `sql-assistant-data/repo-broker.config.json` the app behaves exactly as V17.6.1. Same UI, same three Pull Schema cards in the same order; only a "Direction: repository → this device." sentence was added to the vault card.
+* **Clear errors** for a missing, invalid / expired / revoked, insufficiently privileged or read-only PAT; `verify-repo-pat.yml` warns weekly and 14 days before it expires.
+* See `docs/CHANGELOG_V17.6.2.md`, `docs/CENTRAL_PAT.md`, `docs/TEST_REPORT_V17.6.2.md`, `docs/SECURITY.md`, `docs/SOURCE_PROVENANCE.md`.
+
+### What was new in V17.6.1
+* **Secret Vault recovery on a device that has no GitHub token.** *Hamburger → Schema → Pull Schema → Pull Secret Vault to Repository → Retrieve from Repository*: after the routes that need no sign-in (a saved token GitHub still accepts; an anonymous read of a public repository), a **private** repository asks for a legitimate authorization — **GitHub sign-in** (OAuth device flow). The card shows a short code and the real `github.com/login/device` address; you approve with your own GitHub account; the page continues by itself, reads **only the encrypted vault**, checks it, decrypts it with the passphrase, asks GitHub whether the restored token works and restores it. The short-lived sign-in is kept in memory for that one read and never stored. **The passphrase decrypts the vault; it never replaces GitHub authentication.**
+* **Needs a one-time administrator setup** — a GitHub App (Contents: Read-only, device flow on), the small relay `scripts/github-device-relay.mjs` (no secret) and `sql-assistant-data/vault-bootstrap.config.json`. Without it nothing changes and the card says so honestly; *Import encrypted file* always works. See `docs/DEPLOYMENT.md` → *Vault recovery sign-in*.
+* **Safer restore:** the vault file's existence, structure and version are checked before decryption (an HTML login page is recognised); a token GitHub cannot use is not restored; an unconfirmed token never replaces a saved one; the passphrase is asked for first; a wrong passphrase after a sign-in can be corrected without signing in again; every failure leaves the device unchanged. The default passphrase, the vault format, Push, Pull Schema and the UI are unchanged.
+* See `docs/CHANGELOG_V17.6.1.md`, `docs/TEST_REPORT_V17.6.1.md`, `docs/SECURITY.md`, `docs/SOURCE_PROVENANCE.md`.
+
+### What was new in V17.5.7
+* **Schema → Pull Schema → GitHub repository:** repository, branch and schema file path are hidden, read-only for everybody, and changeable **only by an administrator** (Edit configuration → Admin Password → validated, and checked against GitHub when a token exists). One configuration serves Pull Schema, Sync with GitHub Now, Pull Secret Vault and Push Secret Vault.
+* **Pull Schema from GitHub** shows only the **Pull Schema** button (and its result) — no passphrase.
+* **Secret Vault across devices:** importing the vault on a new device restores the GitHub token without it ever being shown; GitHub is asked whether the token works (a rejected or empty token never replaces a saved one); Pull Schema and Push work right after. Push asks before replacing a vault it cannot open, refuses colliding vault paths and warns when the built-in default passphrase is used.
+* See `docs/CHANGELOG_V17.5.7.md`, `docs/TEST_REPORT_V17.5.7.md`, `docs/SECURITY.md` (limitations — a private repository cannot be read by a brand-new device without the vault file or a token) and `docs/DEPLOYMENT.md` (rollback).
+
+### What was new in V17.5.5
+* **Schema → Pull Schema:** the repository configuration (repository, branch, schema file path) is now **hidden by default** behind a *Show configuration / Hide configuration* button and stays **read-only**; **Pull Schema from GitHub** is a single **Pull Schema** button with no passphrase field (same validated, transactional pull; a passphrase-protected file can only be opened with a passphrase already saved on the device, otherwise it is reported); **Pull Secret Vault to Repository** keeps the default Vault Sync Passphrase (masked). A race that left the card on "Retrieving…" after a successful pull was fixed. See `docs/CHANGELOG_V17.5.5.md`.
+
+### What was new in V17.5.4
+* **Schema → Pull Schema** now holds the **GitHub repository (schema synchronization)** card (repository `basware/sk-ap-sql-assistant`, branch `main`, schema file `sql-assistant-data/schemas/registry.json` — fixed and read-only; a hidden details message with a Show / Hide button; the access token is set here with the Admin Password) and the **Pull Secret Vault to Repository** card (Vault Sync Passphrase pre-filled and masked; retrieves the encrypted Secret Vault onto this device; the repository is only read).
+* **Settings → Secret Vault** keeps only **Push Secret Vault to Repository**. The separate **Push to GitHub** tab and the **Schema passphrase — encrypted synchronization** card were removed. See `docs/CHANGELOG_V17.5.4.md` (including the security note about the pre-filled passphrase).
+
+### What was new in V17.5.3
+* **Schema → Push to GitHub** (hamburger menu → Schema → *Push to GitHub*): publish the schemas of this device to the shared repository — validated, encrypted with the **Vault passphrase** (masked, with an eye button), written, **read back and compared**, and only then reported as successful, with the list of schemas that were added / updated / already identical. Other files in the repository are never touched; failures name the cause and the next step and never look like a success. *Pull Schema* is now **Pull Schema from GitHub**. Rotation of the passphrase is explicit. See `docs/PUSH_SCHEMA.md` and `docs/CHANGELOG_V17.5.3.md`.
+
+### What was new in V17.5.2
+* **Table tick-marks are painted immediately** — even on the 77-table schema and slower computers (the expensive SQL refresh now runs after the paint).
+* **Schema-based CASE / DECODE only from valid definitions.** *From Schema* is offered only when the active schema holds a complete definition; incomplete or invalid ones are explained and never used; distinct aliases for same-named columns; correct types in PostgreSQL / MySQL.
+* **Honest cross-device synchronization.** A status block shows what is published and what is *not yet published*; every GitHub request has a time limit; failures name the cause (token rejected, no permission, timeout, incompatible format …) and the next step; conflicts are never overwritten and a partial pull is never shown as success. *Schema → Pull Schema* also shows the 8 steps and the passphrase / connection status. See `docs/CHANGELOG_V17.5.2.md`.
+
+### What was new in V17.5.1
 * **Admin message in the navbar.** An administrator publishes one short plain-text message (up to 140 characters, *Information* or *Warning*) under **Settings → Synchronization → Admin message**. Every device shows it as a slim row inside the navbar — it appears when SQL Assistant starts, when the tab becomes active again, at the scheduled synchronization and on **Sync with GitHub Now**. Users can hide it on their own device; a new message appears again; **Clear message on all devices** removes it everywhere. It travels through the same repository connection as the schemas (`sql-assistant-data/messages/admin-message.json`), is shown as plain text only, refuses credential-like text and never affects schema synchronization. See `docs/ADMIN_MESSAGE.md`.
 
 ### What was new in V17.5
@@ -37,12 +83,18 @@ Settings are locked behind the **Admin Password** (default `admin` — change it
 
 | File | Contents |
 |---|---|
+| `docs/CHANGELOG_V17.5.7.md` | Everything that changed in V17.5.7 (files, reasons, security, limitations) |
+| `docs/CHANGELOG_V17.5.5.md` | Everything that changed in V17.5.5 (files, reasons, security, limitations) |
+| `docs/CHANGELOG_V17.5.4.md` | Everything that changed in V17.5.4 |
+| `docs/CHANGELOG_V17.5.3.md` | Everything that changed in V17.5.3 |
+| `docs/PUSH_SCHEMA.md` | History: the Push to GitHub tab (removed in V17.5.4) |
+| `docs/CHANGELOG_V17.5.2.md` | Everything that changed in V17.5.2 |
 | `docs/CHANGELOG_V17.5.1.md` | Everything that changed in V17.5.1 |
 | `docs/ADMIN_MESSAGE.md` | Step-by-step guide to the admin message, behaviour table, file format |
 | `docs/CHANGELOG_V17.5.md` | Everything that changed in V17.5 |
 | `docs/PULL_SCHEMA.md` | Step-by-step guide (administrator and users), messages, file format |
-| `docs/REGRESSION_BASELINE_V17.5.md`, `docs/REGRESSION_BASELINE_V17.4.md` | The functionality that was protected, and which test guards each part |
-| `docs/TEST_REPORT_V17.5.1.md`, `docs/TEST_REPORT_V17.5.md` | Test results |
+| `docs/REGRESSION_BASELINE_V17.5.4.md`, `docs/REGRESSION_BASELINE_V17.5.3.md`, `docs/REGRESSION_BASELINE_V17.5.2.md`, `docs/REGRESSION_BASELINE_V17.5.1.md`, `…V17.5.md`, `…V17.4.md` | The functionality that was protected, and which test guards each part |
+| `docs/TEST_REPORT_V17.5.7.md`, `docs/TEST_REPORT_V17.5.5.md`, `docs/TEST_REPORT_V17.5.4.md`, `docs/TEST_REPORT_V17.5.3.md`, `docs/TEST_REPORT_V17.5.2.md`, `docs/TEST_REPORT_V17.5.1.md`, `docs/TEST_REPORT_V17.5.md` | Test results |
 | `docs/SECURITY.md` | Security model; V17.5 passphrase review (V17.4 review unchanged) |
 | `docs/DEPLOYMENT.md` | Upgrade and deployment steps |
 | `docs/SOURCE_PROVENANCE.md` | Which baseline was used and what could not be accessed |

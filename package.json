@@ -1,10 +1,10 @@
 {
   "name": "sql-assistant",
   "productName": "SQL Assistant",
-  "version": "17.5.1",
+  "version": "17.6.5",
   "private": true,
   "type": "module",
-  "description": "SQL Assistant \u2014 schema-aware read-only and Change Request SQL generator with an offline self-training NLU, centralized learning, an Admin Query Library, schema CASE/DECODE, passphrase-protected cross-device schema synchronization a short cross-device administrator message in the navbar and an optional AI/LLM Model.",
+  "description": "SQL Assistant \u2014 schema-aware read-only and Change Request SQL generator with an offline self-training NLU, centralized learning, an Admin Query Library, schema CASE/DECODE, cross-device schema synchronization (Pull Schema from GitHub with hidden repository configuration and a Secret Vault pull card), a CENTRAL Admin Password (one encrypted record for all devices, Save and Reset to default), a short cross-device administrator message in the navbar, CENTRAL repository access through a trusted repository access service that holds the GitHub PAT as a GitHub Actions secret (no token on any device), a PUBLISHED copy of the repository data that devices read without any GitHub credential, and an optional AI/LLM Model.",
   "scripts": {
     "clean": "node -e \"for (const d of ['build','dist','dev-dist','release','test-results']) require('fs').rmSync(d,{recursive:true,force:true})\"",
     "typecheck": "tsc -p tsconfig.json --noEmit",
@@ -14,13 +14,19 @@
     "dev": "node scripts/dev.mjs",
     "serve": "node scripts/serve.mjs",
     "test": "node scripts/build.mjs && node --test --test-concurrency=1 test/*.test.mjs",
-    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py && python3 scripts/browser_test_v174.py && python3 scripts/browser_test_v175.py && python3 scripts/browser_test_v1751.py",
+    "test:browser": "node scripts/build.mjs && python3 scripts/browser_test.py && python3 scripts/browser_test_v174.py && python3 scripts/browser_test_v175.py && python3 scripts/browser_test_v1751.py && python3 scripts/browser_test_v1752.py && python3 scripts/browser_test_v1754.py && python3 scripts/browser_test_v1755.py && python3 scripts/browser_test_v1757.py && python3 scripts/browser_test_v1761.py && python3 scripts/browser_test_v1762.py && python3 scripts/browser_test_v1763.py && python3 scripts/browser_test_v1765.py",
+    "compare": "python3 scripts/compare_v1765.py",
     "diagnose": "node scripts/diagnose.mjs",
-    "verify": "npm run clean && npm run typecheck && npm run lint && npm run security && npm test && npm run build:dev && npm run build && npm run test:browser",
-    "security": "node scripts/security_check.mjs"
+    "verify": "npm run clean && npm run typecheck && npm run lint && npm run build && npm run security && npm test && npm run build:dev && npm run build && npm run test:browser",
+    "security": "node scripts/security_check.mjs",
+    "relay": "node scripts/github-device-relay.mjs",
+    "broker": "node server/repo-broker.mjs",
+    "verify-pat": "node scripts/verify-pat.mjs",
+    "publish-data": "node scripts/publish-data.mjs",
+    "central-vault": "node scripts/build-central-vault.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.8.3"
+    "typescript": "5.8.3"
   },
   "engines": {
     "node": ">=20"
