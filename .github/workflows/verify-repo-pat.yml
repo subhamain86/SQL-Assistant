@@ -1,0 +1,20 @@
+name: Verify the central GitHub PAT (SQLA_GITHUB_PAT)
+# Runs the check in the one place that may read the secret: a GitHub Actions run. It tells an administrator whether the secret is missing, rejected (invalid / expired / revoked),
+# insufficiently privileged, read-only or about to expire — before users run into it. It writes nothing and prints nothing secret.
+on:
+  schedule: [{ cron: '17 5 * * 1' }]   # every Monday 05:17 UTC
+  workflow_dispatch: {}
+permissions: { contents: read }
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24 }
+      - name: Verify SQLA_GITHUB_PAT
+        env:
+          SQLA_GITHUB_PAT: ${{ secrets.SQLA_GITHUB_PAT }}
+          SQLA_REPOSITORY: ${{ github.repository }}
+          SQLA_BRANCH: main
+        run: node scripts/verify-pat.mjs
