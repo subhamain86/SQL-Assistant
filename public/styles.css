@@ -219,3 +219,20 @@ textarea:focus, input:focus, select:focus, button:focus-visible, .feature-card:f
 .admin-msg-bar.is-warning { background: rgba(230,170,50,.16); } .admin-msg-bar.is-warning .icon-svg, .admin-msg-bar.is-warning .admin-msg-bar-label { color: #b3820f; }
 .admin-msg-dismiss { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; width: 26px; height: 26px; border: none; border-radius: 7px; background: transparent; color: var(--text-muted); } .admin-msg-dismiss:hover { background: var(--hover); color: var(--text); }
 @media (max-width: 599.98px) { .admin-msg-bar { padding: .35rem .85rem; align-items: flex-start; flex-wrap: wrap; } .admin-msg-bar-label { flex: 1 1 calc(100% - 70px); } .admin-msg-bar-text { order: 3; flex: 1 1 100%; } }
+
+/* ── V17.5.2 additions (additive only — no existing rule is changed) ─────────────────────────────────────────────── */
+.pull-status { margin: .6rem 0; } .pull-status .chip-row { margin-top: .2rem; } .pull-status-err { color: #d64550; margin-top: .35rem; display: flex; gap: .35rem; align-items: flex-start; }
+.pull-steps-help { margin-top: .7rem; border: 1px solid var(--border); border-radius: 10px; padding: .45rem .8rem; background: var(--bg-card); } .pull-steps-help summary { cursor: pointer; font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: .4rem; }
+.pull-steps-help ol { margin: .45rem 0 .2rem; padding-left: 1.2rem; font-size: 12.5px; line-height: 1.45; column-count: 2; column-gap: 1.6rem; } .pull-steps-help li { break-inside: avoid; margin-bottom: .25rem; }
+@media (max-width: 899.98px) { .pull-steps-help ol { column-count: 1; } }
+.column-cd-reason { margin-top: .25rem; } .column-cd-bad span { overflow-wrap: anywhere; }
+
+/* ── V17.5.4 additions (additive only — no existing rule is changed) ─────────────────────────────────────────────── */
+input[data-locked][readonly] { background: var(--hover); color: var(--text-muted); cursor: default; }
+
+/* V17.6.5 — Settings → Security: strength indicator, status line, buttons at mobile widths (additive; no existing rule changed) */
+.pw-strength { display: flex; align-items: center; gap: .5rem; font-size: 12px; margin-top: .35rem; min-height: 18px; color: var(--text-muted); }
+.pw-meter { display: inline-flex; gap: 3px; } .pw-meter i { display: block; width: 26px; height: 6px; border-radius: 3px; background: var(--border); }
+.pw-meter.pw-s1 i:nth-child(-n+1) { background: #d64550; } .pw-meter.pw-s2 i:nth-child(-n+2) { background: #b3820f; } .pw-meter.pw-s3 i:nth-child(-n+3), .pw-meter.pw-s4 i:nth-child(-n+4) { background: #2f9e5b; }
+.sec-actions .btn:focus-visible, .passphrase-eye:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+@media (max-width: 599.98px) { .sec-actions { flex-direction: column; align-items: stretch; } .sec-actions .btn { width: 100%; min-height: 44px; justify-content: center; } }

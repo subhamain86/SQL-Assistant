@@ -58,7 +58,7 @@ def main():
                     go(pg, r); pg.reload(); ready(pg); ok = ok and pg.inner_text("main").strip() != ""
                 check(f"{label}: every route renders and survives refresh", ok); ctx.close()
             ctx = b.new_context(viewport={"width": 1366, "height": 900}); pg = ctx.new_page(); watch(pg, "app"); pg.goto(pages + "?e2e=1"); ready(pg)
-            check("Version 17.5.1 in footer; no old product name", "17.5.1" in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
+            check("Version 17.6.5 in footer; no old product name", "17.6.5" in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
             pg.click("#navToggle"); pg.wait_for_timeout(150); pg.click(".hb-group-toggle"); pg.wait_for_timeout(100); pg.click('#hamburgerOverlay [data-route="readonly"]'); pg.wait_for_timeout(300)
             check("Hamburger navigation works", "Read Only Query Builder" in pg.inner_text("main") and pg.locator("#hamburgerOverlay").count() == 0)
             bx = [pg.locator(".builder-grid-top .builder-panel").nth(i).bounding_box() for i in range(2)]
@@ -114,17 +114,17 @@ def main():
             pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1500); r = pg.inner_text("main")
             check("Sync #1: legacy AP schema 77 migrated, nothing rejected", "Migration successful" in r and "failed validation" not in r, r[:500])
             pub = json.loads(pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)); ap = next(x for x in pub["schemas"] if x["name"] == "AP schema 77")
-            check("Republished: writer 17.5.1, all 437 decode entries", "17.5.1" in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
+            check("Republished: writer 17.6.5, all 437 decode entries", "17.6.5" in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
             for n in (2, 3):
                 pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1000); check(f"Sync #{n}: success, no re-migration", "Migration successful" not in pg.inner_text("main") and "failed validation" not in pg.inner_text("main"))
             corrected = pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)
             pg.reload(); ready(pg); repo(pg, {PATH: corrected}); unlock(pg, "S3cure-Pass"); tab(pg, "Schema Management"); pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1000)
             check("Restart + sync: still clean", "failed validation" not in pg.inner_text("main") and "AP schema 77" in pg.inner_text("main"))
             # Secret Vault push — no token exposed
-            TOKEN = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2"; tab(pg, "Secret Vault")
-            pg.click("#changeTokenBtn"); pg.fill("#newTokenInput", TOKEN); pg.click("#saveTokenBtn"); pg.wait_for_timeout(900)
+            TOKEN = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2"; go(pg, "schema-used/pull"); pg.wait_for_timeout(500)  # V17.5.4: the token is set in Schema → Pull Schema → GitHub repository card (Admin Password required)
+            pg.click("#changeTokenBtn"); pg.fill("#newTokenInput", TOKEN); pg.fill("#tokenAdminPw", "S3cure-Pass"); pg.click("#saveTokenBtn"); pg.wait_for_timeout(1200)
             check("Token masked; not in browser storage", TOKEN not in pg.inner_text("body") and TOKEN not in pg.evaluate("() => JSON.stringify(Object.assign({}, localStorage))"))
-            repo(pg, {}); unlock(pg, "S3cure-Pass") if pg.locator("#settingsPwInput").count() else None; tab(pg, "Secret Vault")
+            repo(pg, {}); go(pg, "settings"); unlock(pg, "S3cure-Pass") if pg.locator("#settingsPwInput").count() else None; tab(pg, "Secret Vault")
             pg.fill("#v17VaultPass", "correct horse battery staple"); pg.fill("#v17VaultPass2", "correct horse battery staple"); pg.click("#pushVaultBtn"); pg.wait_for_timeout(2500)
             vf = pg.evaluate("() => [...window.__repo.files.values()].map(f=>f.text).join('')"); check("Push Secret Vault: encrypted, token not in repository", vf and TOKEN not in vf)
             # AI/LLM + Danger Zone (password required)

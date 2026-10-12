@@ -80,7 +80,8 @@ def install_finance(pg, version=None, updated=None, desc=None):
 def tickmarks(b, url):
     ctx, pg = newdev(b, url, tag="ticks"); go(pg, "readonly")
     r = pg.evaluate("() => { const i = document.querySelector('#tablePickerMount .picker-row[data-table=\"VENDOR\"] input'); i.click(); return [i.checked, document.querySelector('#tablePickerMount .picker-count').textContent, document.querySelector('#sqlBlockMount .sql-output').textContent.includes('FROM VENDOR')]; }")
-    check("Tables: the tick-mark is already set in the same task as the click — no delay, no second action needed", r[0] is True and r[1].startswith("1") and r[2] is True, r)
+    pg.wait_for_function("() => document.querySelector('#sqlBlockMount .sql-output').textContent.includes('FROM VENDOR')", timeout=3000)  # V17.5.2: the SQL refresh now runs right AFTER the first paint (see docs); the tick and the count are still set inside the click itself
+    check("Tables: the tick-mark is already set in the same task as the click — no delay, no second action needed", r[0] is True and r[1].startswith("1") and "FROM VENDOR" in sql(pg), r)
     pick_table(pg, "INVOICE_HEADER", "strong"); check("Tables: clicking the table name ticks it immediately and adds it to the query", tick(pg, "INVOICE_HEADER") and "INVOICE_HEADER" in sql(pg))
     pg.click('#tablePickerMount .picker-row[data-table="PO_HEADER"] input'); pg.wait_for_timeout(100)
     check("Tables: clicking the checkbox itself ticks it immediately (this was the broken case)", tick(pg, "PO_HEADER"))
@@ -133,9 +134,10 @@ def case_decode(b, url):
     # no definition
     col(pg, "INVOICE_HEADER", "INVOICE_DATE"); D = crow("INVOICE_HEADER", "INVOICE_DATE"); pg.select_option(D + " .column-mode-select", "casedecode"); pg.wait_for_timeout(120)
     check("No definition: a column without a schema definition starts on Manual (nothing is made up)", pg.eval_on_selector(D + " .column-cd-source", "e=>e.value") == "manual")
-    pg.select_option(D + " .column-cd-source", "schema"); pg.wait_for_timeout(150)
-    check("No definition: 'From Schema' says clearly that none exists and the SQL stays plain", "No CASE/DECODE definition is available for this column in the active schema." in pg.inner_text(D) and "CASE WHEN INVOICE_HEADER.INVOICE_DATE" not in sql(pg) and "INVOICE_HEADER.INVOICE_DATE" in sql(pg), pg.inner_text(D)[:200])
-    check("No definition: the builder warns that the plain column is used", "No CASE/DECODE definition is available for INVOICE_HEADER.INVOICE_DATE" in pg.inner_text("#roIssues"), pg.inner_text("#roIssues")[:200])
+    # V17.5.2 (requirement B): a column WITHOUT a valid schema definition no longer offers "From Schema" at all — the option is disabled and the reason is shown (V17.5.1 let the user
+    # select it and then showed the message). The intent of the two V17.5 checks is kept: nothing is fabricated and the user is told why.
+    check("No definition: 'From Schema' is not available (disabled) and the reason is shown; the SQL stays plain", pg.eval_on_selector(D + " .column-cd-source option[value=schema]", "e=>e.disabled") and "the active schema has no definition for it" in pg.inner_text(D) and "CASE WHEN INVOICE_HEADER.INVOICE_DATE" not in sql(pg) and "INVOICE_HEADER.INVOICE_DATE" in sql(pg), pg.inner_text(D)[:200])
+    check("No definition: the plain column is used and no CASE/DECODE is invented", "INVOICE_HEADER.INVOICE_DATE" in sql(pg) and "CASE WHEN INVOICE_HEADER.INVOICE_DATE" not in sql(pg) and "DECODE(INVOICE_HEADER.INVOICE_DATE" not in sql(pg), sql(pg)[:200])
     pg.select_option(D + " .column-mode-select", "raw"); pg.wait_for_timeout(100)
     # Describe What You Need
     pg.select_option(R + " .column-cd-source", "schema"); pg.select_option(R + " .column-cd-style", "decode"); pg.fill(R + " .column-alias-input", "MY_STATE"); pg.dispatch_event(R + " .column-alias-input", "change"); pg.wait_for_timeout(150)
@@ -157,22 +159,22 @@ def case_decode(b, url):
 
 # ───────────────────────────── 3. Pull Schema (Device A → Device B) ─────────────────────────────
 def publish_from_a(b, url):
-    A, a = newdev(b, url, tag="deviceA"); repo(a, {}); install_finance(a); unlock(a); stab(a, "Schema Management")
-    panel = a.inner_text("[data-v175-passphrase]")
-    check("Admin: Schema Management has a 'Schema passphrase' panel with its status", "Schema passphrase" in panel and "OFF" in panel)
-    check("Admin: the passphrase fields are masked with a visibility button", a.get_attribute("#schemaAdminPass", "type") == "password" and a.locator('[data-v175-passphrase] .passphrase-eye').count() == 2)
-    a.fill("#schemaAdminPass", "short"); a.fill("#schemaAdminPass2", "short"); a.click("#schemaPassPublish"); a.wait_for_timeout(300); check("Admin: a short passphrase is refused with a clear message", "at least 10 characters" in a.inner_text("#schemaPassResult"))
-    a.fill("#schemaAdminPass", PASS); a.fill("#schemaAdminPass2", "something different entirely"); a.click("#schemaPassPublish"); a.wait_for_timeout(300); check("Admin: mismatching confirmation is refused", "do not match" in a.inner_text("#schemaPassResult"))
-    a.fill("#schemaAdminPass2", PASS); a.click("#schemaPassPublish"); a.wait_for_timeout(4500); res = a.inner_text("#schemaPassResult"); f = repofile(a, ENC)
-    check("Admin: the schema is published as an encrypted file and the result says so", "encrypted file" in res and f != "", res[:200])
+    A, a = newdev(b, url, tag="deviceA"); repo(a, {}); install_finance(a)
+    # V17.5.4: the "Schema passphrase — encrypted synchronization" card (Settings → Schema Management) was removed on request; its 6 UI checks went with it. The publication itself is still the real
+    # SyncService.push() code path, triggered here through the page, so the cross-device flow below keeps exercising a genuinely published encrypted file.
+    pr = a.evaluate("async (p) => { const sv = window.__sqla.services(); await sv.passphrase.set(p); const r = await sv.sync.push({ allowReplacingInvalidRemote: true, replaceUndecryptable: true }); return JSON.stringify({ ok: r.ok, m: r.messages, p: r.problems }); }", PASS); pr = json.loads(pr); res = " ".join(pr["m"] + pr["p"]); f = repofile(a, ENC)
+    check("Publish: the schema is published as an encrypted, read-back-verified file and the result says so", pr["ok"] and "encrypted file" in res and "verified" in res and f != "", res[:200])
     h = json.loads(f) if f else {}
-    check("Admin: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata", h.get("format") == "sqla-schema-sync" and h.get("cipher", {}).get("alg") == "AES-256-GCM" and h.get("cipher", {}).get("kdf") == "PBKDF2-SHA256" and h.get("appVersion") == "17.5.1" and h.get("schemaFormatVersion") == 2 and h.get("formatVersion") == 1 and "writtenAt" in h and h.get("schemaCount") >= 1, list(h.keys()))
-    check("Admin: nothing readable is in the repository — no schema, table, column, decode label, passphrase or Base64 of them", all(x not in f for x in ["Finance Ops", "ORDERS", "CUSTOMER", "Approved", PASS, base64.b64encode(b"Finance Ops").decode(), base64.b64encode(PASS.encode()).decode()]) and PLAIN not in a.evaluate("() => [...window.__repo.files.keys()]"))
-    check("Admin: the status switches to 'Encrypted synchronization ON'", "ON" in a.inner_text("[data-v175-passphrase]") and a.is_visible("#schemaPassClear"))
+    check("Publish: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata", h.get("format") == "sqla-schema-sync" and h.get("cipher", {}).get("alg") == "AES-256-GCM" and h.get("cipher", {}).get("kdf") == "PBKDF2-SHA256" and h.get("appVersion") == "17.6.5" and h.get("schemaFormatVersion") == 2 and h.get("formatVersion") == 1 and "writtenAt" in h and h.get("schemaCount") >= 1, list(h.keys()))
+    check("Publish: nothing readable is in the repository — no schema, table, column, decode label, passphrase or Base64 of them", all(x not in f for x in ["Finance Ops", "ORDERS", "CUSTOMER", "Approved", PASS, base64.b64encode(b"Finance Ops").decode(), base64.b64encode(PASS.encode()).decode()]) and PLAIN not in a.evaluate("() => [...window.__repo.files.keys()]"))
     stored = a.evaluate("() => localStorage.getItem('sqla.schemapass.v175')")
-    check("Admin: the passphrase is stored on the device only as ciphertext", stored and PASS not in stored and base64.b64encode(PASS.encode()).decode() not in stored and "AES-256-GCM" in stored)
-    a.fill("#schemaAdminPass", PASS); a.click('[data-v175-passphrase] .passphrase-eye >> nth=0'); a.wait_for_timeout(100); check("Admin: the saved passphrase is shown masked and can be revealed", a.get_attribute("#schemaAdminPass", "type") == "text" and a.input_value("#schemaAdminPass") == PASS)
+    check("Publish: the passphrase is stored on the device only as ciphertext", stored and PASS not in stored and base64.b64encode(PASS.encode()).decode() not in stored and "AES-256-GCM" in stored)
     return A, a, f
+
+
+def pull_click(pg, saved=None):  # V17.5.5: Pull Schema is ONE button, no passphrase field. `saved` simulates a device on which a Vault passphrase is already saved ("" = none saved).
+    if saved is not None: pg.evaluate("async (p) => { const sv = window.__sqla.services(); if (p) await sv.passphrase.set(p); else sv.passphrase.clear(); }", saved)
+    pg.click("#pullBtn"); pg.wait_for_function("() => { const b = document.querySelector('#pullBtn'); const r = document.querySelector('#pullResult'); return b && !b.disabled && r && r.querySelector('.issue-box') && !/Retrieving the schema/.test(r.innerText); }", timeout=30000); pg.wait_for_timeout(250); return pg.inner_text("#pullResult")
 
 
 def pull_flow(b, url, enc_text):
@@ -180,27 +182,14 @@ def pull_flow(b, url, enc_text):
     bb.click("#navToggle"); bb.wait_for_timeout(150); bb.click('#hamburgerOverlay [data-route="schema-used"]'); bb.wait_for_timeout(350)
     check("Pull: Hamburger menu → Schema opens the Schema page with a 'Pull Schema' tab", "Pull Schema" in bb.inner_text("#schemaTabs .tabs-strip"))
     bb.click('#schemaTabs .tab-btn:has-text("Pull Schema")'); bb.wait_for_timeout(300); t = bb.inner_text("#schemaPullMount")
-    check("Pull: the page shows Pull Schema, a passphrase field, a show/hide button, short instructions and the Pull button", all(x in t for x in ["Pull Schema", "Passphrase", "Pull Schema"]) and bb.locator("#schemaPullPass").count() == 1 and bb.locator(".passphrase-eye").count() == 1 and bb.locator("#pullBtn").count() == 1)
-    check("Pull: the instructions explain what to do, why the passphrase is needed and to keep it secure", "Enter the active passphrase used to protect the synchronized schema and select Pull Schema" in t and "required to decrypt and import the synchronized schema on this device" in t and "Keep the passphrase secure and do not share it through unsecured channels" in t)
-    h = bb.evaluate("() => document.querySelector('.pull-help').getBoundingClientRect().height"); check("Pull: the instructions are compact (not a tall block)", h < 190, h)
-    check("Pull: the passphrase field is masked by default (type=password) and hidden-by-default is reflected for assistive technology", bb.get_attribute("#schemaPullPass", "type") == "password" and bb.get_attribute(".passphrase-eye", "aria-pressed") == "false" and bb.get_attribute(".passphrase-eye", "aria-label") == "Show passphrase")
-    bb.fill("#schemaPullPass", PASS); vis0 = bb.get_attribute("#schemaPullPass", "type"); bb.click(".passphrase-eye"); bb.wait_for_timeout(100); vis1 = bb.get_attribute("#schemaPullPass", "type"); lab1 = bb.get_attribute(".passphrase-eye", "aria-label"); val1 = bb.input_value("#schemaPullPass")
-    bb.click(".passphrase-eye"); bb.wait_for_timeout(100); vis2 = bb.get_attribute("#schemaPullPass", "type")
-    check("Pull: Show reveals the passphrase, Hide masks it again", vis0 == "password" and vis1 == "text" and val1 == PASS and lab1 == "Hide passphrase" and vis2 == "password", [vis0, vis1, vis2])
-    check("Pull: the passphrase is never in the page text, the URL or the console", PASS not in bb.inner_text("body") and PASS not in bb.url and not any(PASS in c for c in console_all))
-    bb.click("#pullBtn"); bb.wait_for_function("() => document.querySelector('#pullApplyBtn') || document.querySelector('#pullResult .issue-box.err')", timeout=15000); bb.wait_for_timeout(200); r = bb.inner_text("#pullResult")
-    check("Pull: the preview shows every validation step and nothing has been changed yet", all(x in r for x in ["Passphrase validated", "retrieved", "Decrypted", "Validated"]) and "Nothing has been changed on this device yet" in r and registry_json(bb) == before, r[:300])
-    check("Pull: before replacing, it shows local version, repository version, updated date, contents and the action", all(x in r for x in ["This device", "Repository", "Finance Ops", "v3.0", "updated 2026-08-01 09:00", "2 tables", "3 CASE/DECODE entries", "will be added"]), r[:420])
-    check("Pull: the preview names who wrote the file (writer, app version, schema format, time, device)", "SQL Assistant 17.5.1" in r and "app 17.5.1" in r and "schema format 2" in r, r[:300])
-    bb.click("#pullCancelBtn"); bb.wait_for_timeout(200)
-    check("Cancelled pull: says so and leaves the existing local schema exactly as it was", "Pull cancelled" in bb.inner_text("#pullResult") and "existing local schema has not been changed" in bb.inner_text("#pullResult") and registry_json(bb) == before and active_name(bb) == before_active and not bb.evaluate("() => localStorage.getItem('sqla.schemapass.v175')"))
-    bb.click("#pullBtn"); bb.wait_for_selector("#pullApplyBtn", timeout=15000); bb.click("#pullApplyBtn"); bb.wait_for_function("() => document.querySelector('#pullResult .issue-box.ok')", timeout=15000); bb.wait_for_timeout(300); ok = bb.inner_text("#pullResult")
-    check("Pull: success is confirmed with 'Schema pulled and validated successfully.' and no stale error", "Schema pulled and validated successfully." in ok and bb.locator("#pullResult .issue-box.err").count() == 0, ok[:260])
+    check("Pull: the Pull Schema from GitHub card has ONE action (Pull Schema) and no passphrase field or any passphrase wording (V17.5.5)", bb.locator("#schemaPullHost button").count() == 1 and bb.inner_text("#pullBtn").strip() == "Pull Schema" and bb.locator("#schemaPullHost input").count() == 0 and "passphrase" not in bb.inner_text("#schemaPullHost").lower(), bb.inner_text("#schemaPullHost")[:200])
+    check("Pull (V17.5.6+): the card has no instruction block — heading, the Pull Schema button and the result", "How to pull the schema" not in t and bb.locator(".pull-help").count() == 0)
+    r = pull_click(bb, PASS)  # this device simulates one that already has the Vault passphrase saved (the repository file is encrypted)
+    check("Pull: success is confirmed with 'Schema pulled and validated successfully.' and no stale error", "Schema pulled and validated successfully." in r and "Applied: Finance Ops (added)" in r and bb.locator("#pullResult .issue-box.err").count() == 0, r[:260])
     check("Pull: the schema is imported and ACTIVATED (the navbar badge and active schema show it)", active_name(bb) == "Finance Ops" and "Finance Ops" in bb.inner_text("#mainNavbar"), active_name(bb))
     got = bb.evaluate("() => { const s = window.__sqla.services().schemas.active(); return { id: s.id, version: s.version, updatedAt: s.updatedAt, tables: s.tables.map(t => [t.name, t.columns.map(c => c.name + ':' + c.type + ':' + (c.decode ? c.decode.map(d => d.rawValue + '=' + d.label).join('|') : ''))]), rel: s.relationships.length }; }")
     check("Pull: structure, tables, columns, data types, relationships, CASE/DECODE definitions, version, identifier and updated time are preserved", got["id"] == FINANCE["id"] and got["version"] == "3.0" and got["updatedAt"] == "2026-08-01T09:00:00.000Z" and got["rel"] == 1 and ["ORDERS", ["ID:NUMBER:", "CUSTOMER_ID:NUMBER:", "STATUS:NUMBER:1=Open|2=Approved|3=Rejected", "AMOUNT:NUMBER:", "CREATED:DATE:"]] in got["tables"], got)
-    saved = bb.evaluate("() => localStorage.getItem('sqla.schemapass.v175')")
-    check("Pull: the passphrase was remembered on this device — encrypted, never plaintext", saved and PASS not in saved and base64.b64encode(PASS.encode()).decode() not in saved and "AES-256-GCM" in saved)
+    check("Pull: the passphrase is never in the page text, the URL or the console", PASS not in bb.inner_text("body") and PASS not in bb.url and not any(PASS in c for c in console_all))
     # refresh, then verify the other pages use the new schema without restarting
     go(bb, "readonly"); tables = bb.eval_on_selector_all("#tablePickerMount .picker-row", "e=>e.map(x=>x.dataset.table)")
     check("Pull: Manual Selectors use the new schema straight away (no restart)", set(tables) == {"ORDERS", "CUSTOMERS"}, tables)
@@ -209,12 +198,9 @@ def pull_flow(b, url, enc_text):
     describe(bb, "show order id and status description for orders", "Oracle"); s = sql(bb)
     check("Pull: Describe What You Need and the offline NLU use the new schema and its CASE/DECODE", "FROM ORDERS" in s and "THEN 'Approved'" in s and "Active Schema used: Finance Ops" in bb.inner_text("#nlNotes") and "passed validation" in bb.inner_text("#validationMount"), s[:200])
     bb.reload(); ready(bb); repo(bb, {ENC: enc_text}); check("Pull: the imported schema survives a page refresh", active_name(bb) == "Finance Ops")
-    # saved passphrase is reused, masked and shown on request
     go(bb, "schema-used/pull"); bb.wait_for_timeout(500)
-    check("Pull: the deep link #schema-used/pull opens the Pull Schema tab", bb.locator("#schemaPullPass").count() == 1)
-    bb.wait_for_function("() => document.querySelector('#schemaPullPass').value.length > 0", timeout=5000)
-    check("Active passphrase: the saved passphrase is displayed masked and can be revealed", bb.get_attribute("#schemaPullPass", "type") == "password" and bb.input_value("#schemaPullPass") == PASS and PASS not in bb.inner_text("body"))
-    bb.click("#pullBtn"); bb.wait_for_timeout(3500); check("Pull: pulling again with the saved passphrase says everything is already up to date", "already up to date" in bb.inner_text("#pullResult"), bb.inner_text("#pullResult")[:200])
+    check("Pull: the deep link #schema-used/pull opens the Pull Schema tab", bb.locator("#pullBtn").count() == 1 and bb.locator("#schemaPullPass").count() == 0)
+    t2 = pull_click(bb); check("Pull: pulling again says nothing needed to change (no duplicates)", "No schema content needed to change." in t2 and "Schema pulled and validated successfully." in t2 and bb.evaluate("() => window.__sqla.services().schemas.schemas().filter(s => s.name === 'Finance Ops').length") == 1, t2[:200])
     return B, bb
 
 
@@ -223,34 +209,29 @@ def failures(b, url, enc_text):
     ctx, pg = newdev(b, url, tag="failures"); repo(pg, {ENC: enc_text})
     pg.evaluate("""() => { const sv = window.__sqla.services().schemas; const s = JSON.parse(JSON.stringify(sv.active())); s.name = 'My Local Work'; s.id = 'schema-local-work'; s.updatedAt = '2026-09-30T00:00:00.000Z'; const r = sv.saveSchema(s); if (!r.ok) throw new Error('x'); sv.setActive(s.id); }""")
     go(pg, "schema-used/pull"); pg.wait_for_timeout(400); base = registry_json(pg); who = active_name(pg)
-    def attempt(passphrase, msg):
-        pg.fill("#schemaPullPass", passphrase); pg.click("#pullBtn"); pg.wait_for_function("() => !document.querySelector('#pullBtn').disabled", timeout=15000); pg.wait_for_timeout(250); t = pg.inner_text("#pullResult")
-        intact = registry_json(pg) == base and active_name(pg) == who and pg.locator("#pullApplyBtn").count() == 0
-        return t, intact
-    t, ok = attempt("this is not the right one", ""); check("Failure — incorrect passphrase: 'The passphrase is incorrect. The existing local schema has not been changed.'", "The passphrase is incorrect. The existing local schema has not been changed." in t and ok, t[:200])
-    check("Failure — incorrect passphrase: the message explains what to do next and does not echo the passphrase", "Check the passphrase with your administrator" in t and "this is not the right one" not in t)
-    t, ok = attempt("short", ""); check("Failure — unusable passphrase: 'Schema pull failed because the passphrase could not be validated. Your existing local schema has not been changed.'", "Schema pull failed because the passphrase could not be validated. Your existing local schema has not been changed." in t and "at least 10 characters" in t and ok, t[:220])
-    t, ok = attempt("", ""); check("Failure — empty passphrase is refused before the repository is contacted", "could not be validated" in t and ok)
-    repo(pg, {}); t, ok = attempt(PASS, ""); check("Failure — missing schema: 'The synchronized schema could not be retrieved. Please verify the repository connection and try again.'", "The synchronized schema could not be retrieved. Please verify the repository connection and try again." in t and "registry.enc.json" in t and "existing local schema has not been changed" in t and ok, t[:260])
-    j = json.loads(enc_text); ct = j["cipher"]["ct"]; j2 = dict(j, cipher=dict(j["cipher"], ct=ct[:30] + ("B" if ct[30] == "A" else "A") + ct[31:])); repo(pg, {ENC: json.dumps(j2)}); t, ok = attempt(PASS, "")
-    check("Failure — corrupted schema: 'The schema could not be decrypted using the supplied passphrase. The existing local schema has not been changed.'", "The schema could not be decrypted using the supplied passphrase. The existing local schema has not been changed." in t and ok, t[:240])
-    repo(pg, {ENC: json.dumps(dict(j, schemaCount=11))}); t, ok = attempt(PASS, ""); check("Failure — decryption failure (header tampered with): reported, local schema intact", "could not be decrypted" in t and ok, t[:200])
-    repo(pg, {ENC: "{this is not json"}); t, ok = attempt(PASS, ""); check("Failure — unreadable file: reported, local schema intact", "could not be decrypted" in t and ok, t[:200])
-    repo(pg, {ENC: json.dumps(json.loads(PLAIN_STUB))}); t, ok = attempt(PASS, ""); check("Failure — a plain (unencrypted) file in the encrypted location is explained", "not protected by a passphrase" in t and ok, t[:220])
+    def attempt(saved=PASS):
+        t = pull_click(pg, saved); return t, registry_json(pg) == base and active_name(pg) == who
+    t, ok = attempt("this is not the right one"); check("Failure — the saved Vault passphrase does not open the repository file: reported with the next step, local schema unchanged, the passphrase is not echoed", "does not open the repository file" in t and "has not been changed" in t and "this is not the right one" not in t and ok, t[:300])
+    t, ok = attempt(""); check("Failure — the repository file is passphrase-protected but no Vault passphrase is saved here: reported (not 'missing'), local schema unchanged", "passphrase-protected" in t and "no Vault passphrase is saved" in t and ok, t[:300])
+    repo(pg, {}); t, ok = attempt(PASS); check("Failure — missing schema: 'No schema file was found in the repository yet' with the next step (not success), local schema intact", "No schema file was found in the repository yet" in t and "Sync with GitHub Now" in t and "Schema pulled and validated successfully." not in t and ok, t[:260])
+    j = json.loads(enc_text); ct = j["cipher"]["ct"]; j2 = dict(j, cipher=dict(j["cipher"], ct=ct[:30] + ("B" if ct[30] == "A" else "A") + ct[31:])); repo(pg, {ENC: json.dumps(j2)}); t, ok = attempt(PASS)
+    check("Failure — corrupted schema: reported, local schema intact, no success message", ("could not be decrypted" in t or "does not open the repository file" in t) and "Schema pulled and validated successfully." not in t and ok, t[:240])
+    repo(pg, {ENC: json.dumps(dict(j, schemaCount=11))}); t, ok = attempt(PASS); check("Failure — decryption failure (header tampered with): reported, local schema intact", ("could not be decrypted" in t or "does not open the repository file" in t) and ok, t[:200])
+    repo(pg, {ENC: "{this is not json"}); t, ok = attempt(PASS); check("Failure — unreadable file: reported, local schema intact", "could not be decrypted" in t and ok, t[:200])
+    repo(pg, {ENC: json.dumps(json.loads(PLAIN_STUB))}); t, ok = attempt(PASS); check("Failure — a plain (unencrypted) file in the encrypted location is reported, local schema intact", "could not be decrypted" in t and ok, t[:220])
     bad = pg.evaluate("""async ([pass]) => { const s = JSON.parse(JSON.stringify(window.__sqla.services().schemas.registry().schemas[0])); s.id = 'schema-bad'; s.name = 'Broken Remote'; s.tables[0].columns[0].decode = [{ rawValue: '', label: 'oops' }];
       return JSON.stringify({ formatVersion: 2, writtenBy: 'SQL Assistant 17.5.0', activeSchemaId: s.id, schemas: [s] }); }""", [PASS])
     enc_bad = pg.evaluate("""async ([text, pass]) => { const m = await window.__sqla.encryptForTest(text, pass); return m; }""", [bad, PASS]) if pg.evaluate("() => typeof window.__sqla.encryptForTest") == "function" else None
     if enc_bad:
-        repo(pg, {ENC: enc_bad}); t, ok = attempt(PASS, ""); check("Failure — invalid schema: 'The synchronized schema failed validation. The existing local schema has not been changed.' (with the location of the problem)", "The synchronized schema failed validation. The existing local schema has not been changed." in t and "empty raw value" in t and ok, t[:300])
+        repo(pg, {ENC: enc_bad}); t, ok = attempt(PASS); check("Failure — invalid schema: it is not imported ('failed validation … not loaded', with the location of the problem), the result is partial, the local schema is intact", "failed validation" in t and "Broken Remote" not in registry_json(pg) and "completed only partly" in t and "Schema pulled and validated successfully." not in t and ok, t[:360])
     else:
         check("Failure — invalid schema: validated by the Node suite (browser helper not exposed)", True)
     pg.evaluate("() => window.__sqla.setRepositoryOverride({ describe: 'down', read: async () => { throw new Error('Could not reach GitHub (network down).'); }, write: async () => { throw new Error('x'); } })")
-    t, ok = attempt(PASS, ""); check("Failure — network / repository failure: the retrieval message, technical detail on request, local schema intact", "The synchronized schema could not be retrieved. Please verify the repository connection and try again." in t and "network down" in t and ok, t[:240])
+    t, ok = attempt(PASS); check("Failure — network / repository failure: the retrieval message, technical detail, local schema intact", "The synchronized schema could not be retrieved. Please verify the repository connection and try again." in t and "network down" in t and ok, t[:240])
+    check("After every failed pull the user's own work is untouched", registry_json(pg) == base and active_name(pg) == who)
     # a success afterwards leaves no stale error behind
-    repo(pg, {ENC: enc_text}); pg.fill("#schemaPullPass", PASS); pg.click("#pullBtn"); pg.wait_for_selector("#pullApplyBtn", timeout=15000); pg.wait_for_timeout(150)
-    check("No stale errors: after a failure, a successful retry shows only the new result", pg.locator("#pullResult .issue-box.err").count() == 0 and "Finance Ops" in pg.inner_text("#pullResult"))
-    pg.click("#pullCancelBtn"); pg.wait_for_timeout(150)
-    check("After every failed or cancelled pull the user's own work is untouched", registry_json(pg) == base and active_name(pg) == who)
+    repo(pg, {ENC: enc_text}); t = pull_click(pg, PASS)
+    check("No stale errors: after a failure, a successful retry shows only the new result", pg.locator("#pullResult .issue-box.err").count() == 0 and "Schema pulled and validated successfully." in t and "Finance Ops" in t, t[:200])
     ctx.close()
 
 
@@ -260,19 +241,16 @@ PLAIN_STUB = json.dumps({"formatVersion": 2, "writtenBy": "SQL Assistant 17.4.0"
 def older_and_passphrase_change(b, url, A, a, enc_text):
     ctx, pg = newdev(b, url, tag="older"); repo(pg, {ENC: enc_text}); go(pg, "schema-used/pull"); pg.wait_for_timeout(300)
     install_finance(pg, version="9.9", updated="2027-05-05T00:00:00.000Z", desc="edited on this device, newer"); go(pg, "schema-used/pull"); pg.wait_for_timeout(300); mine = registry_json(pg)
-    pg.fill("#schemaPullPass", PASS); pg.click("#pullBtn"); pg.wait_for_function("() => document.querySelector('#pullResult').innerText.length > 40", timeout=15000); pg.wait_for_timeout(300); t = pg.inner_text("#pullResult")
-    check("Older schema: the repository copy is older than the local one — shown with both versions and dates, 'was not applied'", "The synchronized schema is older than the current local schema and was not applied." in t and "v9.9" in t and "v3.0" in t and "Local copy is newer" in t and pg.locator("#pullApplyBtn").count() == 0, t[:360])
+    t = pull_click(pg, PASS)
+    check("Older schema: the repository copy is older than the local one — 'was not applied', reported as a partial result (never as success)", "The synchronized schema is older than the current local schema and was not applied." in t and "Finance Ops" in t and "completed only partly" in t and "Schema pulled and validated successfully." not in t, t[:360])
     check("Older schema: the newer local schema is not replaced", registry_json(pg) == mine)
     # administrator changes the passphrase and republishes
-    a.fill("#schemaAdminPass", NEWPASS); a.fill("#schemaAdminPass2", NEWPASS); a.click("#schemaPassPublish"); a.wait_for_timeout(4500); new_enc = repofile(a, ENC)
-    check("Admin: changing the passphrase re-publishes the encrypted schema under the new passphrase", "encrypted file" in a.inner_text("#schemaPassResult") and new_enc and new_enc != enc_text, a.inner_text("#schemaPassResult")[:200])
+    pr2 = json.loads(a.evaluate("async (p) => { const sv = window.__sqla.services(); await sv.passphrase.set(p); const r = await sv.sync.push({ allowReplacingInvalidRemote: true, replaceUndecryptable: true }); return JSON.stringify({ ok: r.ok, m: r.messages, p: r.problems }); }", NEWPASS)); new_enc = repofile(a, ENC)
+    check("Publish: re-publishing under a changed passphrase replaces the encrypted file (explicit replacement)", pr2["ok"] and "encrypted file" in " ".join(pr2["m"]) and new_enc and new_enc != enc_text, pr2)
     ctx.close()
     C, c = newdev(b, url, tag="deviceC"); repo(c, {ENC: new_enc}); go(c, "schema-used/pull"); c.wait_for_timeout(300)
-    c.fill("#schemaPullPass", PASS); c.click("#pullBtn"); c.wait_for_function("() => !document.querySelector('#pullBtn').disabled", timeout=15000); c.wait_for_timeout(250)
-    check("Passphrase changed by the admin: the old passphrase is refused with the standard message", "The passphrase is incorrect. The existing local schema has not been changed." in c.inner_text("#pullResult"))
-    c.fill("#schemaPullPass", NEWPASS); c.click("#pullBtn"); c.wait_for_selector("#pullApplyBtn", timeout=15000); c.click("#pullApplyBtn"); c.wait_for_function("() => document.querySelector('#pullResult .issue-box.ok')", timeout=15000)
-    check("Passphrase changed by the admin: the user types the new passphrase, pulls, and the saved passphrase is updated", "Schema pulled and validated successfully." in c.inner_text("#pullResult") and active_name(c) == "Finance Ops")
-    c.reload(); ready(c); repo(c, {ENC: new_enc}); go(c, "schema-used/pull"); c.wait_for_function("() => document.querySelector('#schemaPullPass').value.length > 0", timeout=5000); check("Passphrase changed by the admin: after a refresh the device shows the NEW saved passphrase (masked)", c.input_value("#schemaPullPass") == NEWPASS and c.get_attribute("#schemaPullPass", "type") == "password")
+    t = pull_click(c, PASS); check("Passphrase changed by the admin: a device still holding the OLD saved passphrase is told so, with the next step — local schema unchanged", "does not open the repository file" in t and "has not been changed" in t and PASS not in t, t[:240])
+    t = pull_click(c, NEWPASS); check("Passphrase changed by the admin: a device that holds the NEW passphrase pulls with the same single click", "Schema pulled and validated successfully." in t and active_name(c) == "Finance Ops", t[:200])
     # classic sync on this device is encrypted too and does not break
     unlock(c); stab(c, "Schema Management"); c.click("#simpleSyncBtn"); c.wait_for_timeout(4000); check("Existing sync: 'Sync with GitHub Now' keeps working with a saved passphrase (encrypted file)", "Synchronization failed" not in c.inner_text("main") and "failed" not in c.inner_text("#simpleSyncResult").lower(), c.inner_text("#simpleSyncResult")[:200])
     check("Existing sync: the repository still holds only the encrypted file (no plain schema is written)", c.evaluate("() => [...window.__repo.files.keys()]") == [ENC], c.evaluate("() => [...window.__repo.files.keys()]"))
@@ -284,8 +262,8 @@ def classic_and_secrecy(b, url):
     ctx, pg = newdev(b, url, tag="classic"); repo(pg, {}); install_finance(pg); unlock(pg); stab(pg, "Schema Management"); pg.click("#simpleSyncBtn"); pg.wait_for_timeout(2500)
     files = pg.evaluate("() => [...window.__repo.files.keys()]")
     check("Existing sync: without a passphrase the classic plain synchronization works exactly as in V17.4", files == [PLAIN] and "Finance Ops" in repofile(pg, PLAIN) and "failed" not in pg.inner_text("#simpleSyncResult").lower(), files)
-    pub = json.loads(repofile(pg, PLAIN)); check("Existing sync: the plain file now also carries the app version and the writer stamp", pub.get("appVersion") == "17.5.1" and pub.get("writtenBy", "").startswith("SQL Assistant 17.5") and pub.get("formatVersion") == 2)
-    stab(pg, "Secret Vault"); check("Existing Secret Vault: the vault tab and Push Secret Vault to Repository are unchanged", pg.locator("#pushVaultBtn").count() == 1 and pg.locator("#pullVaultBtn").count() == 1 and pg.locator("#changeTokenBtn").count() == 1)
+    pub = json.loads(repofile(pg, PLAIN)); check("Existing sync: the plain file now also carries the app version and the writer stamp", pub.get("appVersion") == "17.6.5" and pub.get("writtenBy", "").startswith("SQL Assistant 17.6") and pub.get("formatVersion") == 2)
+    stab(pg, "Secret Vault"); check("Existing Secret Vault: Settings → Secret Vault keeps Push Secret Vault to Repository; the repository / token / pull controls moved to Schema → Pull Schema (V17.5.4)", pg.locator("#pushVaultBtn").count() == 1 and pg.locator("#pullVaultBtn").count() == 0 and pg.locator("#changeTokenBtn").count() == 0 and pg.locator("#vaultRepo").count() == 0)
     stab(pg, "Admin Query Library"); check("Existing Settings: Admin Query Library is unchanged", pg.locator("#aqAdd").count() == 1)
     stab(pg, "Manual Schema Update"); check("Existing Settings: Manual Schema Update is unchanged", pg.locator("#editorSchemaSelect").count() == 1)
     stab(pg, "AI/LLM Model"); check("Existing Settings: AI/LLM Model is unchanged", pg.locator("#v17LlmProvider").count() == 1)

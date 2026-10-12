@@ -61,7 +61,7 @@ def admin_panel(b, url):
     a.fill("#adminMsgText", "  Planned maintenance\n tonight 22:00–23:00 CET —  schema sync may be unavailable.  "); a.select_option("#adminMsgLevel", "info"); a.click("#adminMsgPublish"); a.wait_for_timeout(900); res = a.inner_text("#adminMsgResult"); f = a.evaluate("(p) => window.__repo.files.get(p)?.text || ''", MSG)
     check("Admin: publishing succeeds and says the other devices will receive it at their next synchronization or when they open the app", "was published" in res and "next synchronization" in res and "open SQL Assistant" in res, res[:200])
     j = json.loads(f) if f else {}
-    check("Admin: the repository gets one small versioned plain-JSON file next to the schemas (same repository, separate file)", j.get("format") == "sqla-admin-message" and j.get("formatVersion") == 1 and j.get("active") is True and j.get("level") == "info" and j.get("appVersion") == "17.5.1" and j.get("text") == "Planned maintenance tonight 22:00–23:00 CET — schema sync may be unavailable." and "updatedAt" in j and "id" in j, list(j.keys()))
+    check("Admin: the repository gets one small versioned plain-JSON file next to the schemas (same repository, separate file)", j.get("format") == "sqla-admin-message" and j.get("formatVersion") == 1 and j.get("active") is True and j.get("level") == "info" and j.get("appVersion") == "17.6.5" and j.get("text") == "Planned maintenance tonight 22:00–23:00 CET — schema sync may be unavailable." and "updatedAt" in j and "id" in j, list(j.keys()))
     check("Admin: the message is normalised to one clean line (spaces, line breaks and tabs collapsed)", j.get("text", "").count("  ") == 0 and "\n" not in j.get("text", ""))
     check("Admin: the file contains no credential, passphrase or token", TOKEN not in f and "ghp_" not in f)
     check("Admin: the publisher sees the banner immediately, inside the navbar", bar(a).count() == 1 and a.evaluate("() => !!document.querySelector('#mainNavbar #adminMsgBar')") and "Message from the administrator" in bar_text(a) and "Planned maintenance tonight" in bar_text(a))
@@ -146,9 +146,9 @@ def failures(b, url):
 
 def regression_and_layout(b, url):
     ctx, pg = newdev(b, url, tag="regress"); repo(pg, {})
-    check("Regression: with no message the navbar is exactly the V17.5 navbar (no banner element, no extra row)", pg.locator("#adminMsgBar").count() == 0 and "17.5.1" in pg.inner_text("footer") and pg.locator("#navToggle").count() == 1)
+    check("Regression: with no message the navbar is exactly the V17.5 navbar (no banner element, no extra row)", pg.locator("#adminMsgBar").count() == 0 and "17.6.5" in pg.inner_text("footer") and pg.locator("#navToggle").count() == 1)
     unlock(pg); stab(pg, "Schema Management"); stab(pg, "Synchronization"); check("Regression: the existing Synchronization content (sync source/time, shared location, knowledge, migrations, conflicts, log) is all still there", all(x in pg.inner_text("main") for x in ["Sync Source", "Shared Location", "Central knowledge", "Data migrations", "Conflict Management", "Synchronization Log"]))
-    stab(pg, "Schema Management"); check("Regression: Schema Management keeps its V17.5 content (repository sync, schema passphrase, stored schemas)", all(x in pg.inner_text("main") for x in ["Repository synchronization", "Schema passphrase", "Stored Schemas"]))
+    stab(pg, "Schema Management"); check("Regression: Schema Management keeps its V17.5 content (repository sync, stored schemas); the Schema passphrase card was removed in V17.5.4", all(x in pg.inner_text("main") for x in ["Repository synchronization", "Stored Schemas"]))
     ctx.close()
     for (w, h, name) in [(1366, 900, "desktop"), (1024, 800, "small laptop"), (768, 1024, "tablet"), (390, 800, "phone")]:
         c, p = newdev(b, url, w, h, tag=f"resp-{name}"); repo(p, {}); unlock(p); stab(p, "Synchronization"); ov0 = p.evaluate("() => document.documentElement.scrollWidth - window.innerWidth")

@@ -1,0 +1,7 @@
+{
+  "githubSignIn": {
+    "enabled": true,
+    "clientId": "Iv1.REPLACE_WITH_THE_PUBLIC_CLIENT_ID_OF_YOUR_GITHUB_APP",
+    "relayUrl": "https://sql-assistant-relay.example.org"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "repositoryBroker": {
+    "enabled": true,
+    "url": "https://sql-assistant-broker.example.org"
+  }
+}
