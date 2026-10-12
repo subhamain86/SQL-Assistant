@@ -1,0 +1,11 @@
+{
+ "format": "sqla-admin-message",
+ "formatVersion": 1,
+ "id": "mmuztxoq2q9ma",
+ "level": "info",
+ "updatedAt": "2026-10-08T17:47:56.905Z",
+ "updatedByDevice": "device-4d8xn1",
+ "appVersion": "17.5.1",
+ "active": true,
+ "text": "Schema"
+}
