@@ -1,84 +1,100 @@
 /**
- * V17.5 — Schema → Pull Schema.
- * Workflow: validate passphrase → retrieve (existing repository connection) → decrypt → validate → compare local / remote → [Apply | Cancel] →
- * import → activate → refresh. Nothing is written locally before the user presses Apply, and Apply itself is transactional (the existing validated,
- * rolled-back registry write): a failed pull leaves the working local schema untouched.
+ * V17.5.5 / V17.5.6 — Hamburger → Schema → Pull Schema.
+ * Three cards: (1) GitHub repository (schema synchronization), (2) Pull Schema from GitHub, (3) Pull Secret Vault to Repository.
+ * Card 2 has ONE action: Pull Schema. It calls SyncService.pullSchema() — the existing validated, transactional pull — against the repository, branch and schema file of Card 1.
+ * There is no passphrase field: a passphrase-protected repository file can only be opened with a Vault passphrase that is already saved on this device (the decryption requirement is
+ * not bypassed), and a file that cannot be opened is reported — never treated as missing. A failed pull never changes the local schemas (the registry write is validated and rolled back).
  */
-import { icon } from '../components/icons'; import { passphraseFieldHtml, wirePassphraseFields } from '../components/passphraseField'; import { store } from '../state'; import { services, secrets } from '../context'; import { e } from '../dom';
-import { redactSecrets } from '../../v17/errors/appErrors'; import type { PullPreview, PullRow, PullOutcome } from '../../v17/sync/syncService';
+import { icon } from '../components/icons'; import { store } from '../state'; import { services } from '../context'; import { e } from '../dom';
+import { redactSecrets } from '../../v17/errors/appErrors'; import { repoCardHtml, wireRepoCard, vaultPullCardHtml, wireVaultPullCard } from './schemaRepoCards';
+import type { PullOutcome } from '../../v17/sync/syncService'; import { ensureRepositoryAccess } from '../repoAccess'; import { brokerEnabled, publishedEnabled, secrets } from '../context';
 const UNCHANGED = 'The existing local schema has not been changed.';
 export const PULL_MESSAGES = {
-  incorrect: `The passphrase is incorrect. ${UNCHANGED}`,
   unavailable: 'The synchronized schema could not be retrieved. Please verify the repository connection and try again.',
-  decryption: `The schema could not be decrypted using the supplied passphrase. ${UNCHANGED}`,
+  decryption: `The schema file could not be decrypted. ${UNCHANGED}`,
   validation: `The synchronized schema failed validation. ${UNCHANGED}`,
   older: 'The synchronized schema is older than the current local schema and was not applied.',
   success: 'Schema pulled and validated successfully.',
-  passphrase: `Schema pull failed because the passphrase could not be validated. Your existing local schema has not been changed.`,
-  cancelled: `Pull cancelled. ${UNCHANGED}`,
+  partial: 'Schema pull completed only partly.',
+  auth: `The repository rejected the access token (it is invalid or has expired). ${UNCHANGED}`,
+  permission: `The access token is not allowed to read the repository (it needs Contents: read), or GitHub's rate limit was reached. ${UNCHANGED}`,
+  timeout: `GitHub did not answer in time. ${UNCHANGED}`,
+  incompatible: `The synchronized schema uses a format this version of SQL Assistant cannot read. ${UNCHANGED}`,
+  storage: `The schema could not be saved on this device. ${UNCHANGED}`,
+  noToken: `No GitHub access token is set on this device. ${UNCHANGED}`,
+  // V17.6.2 — central repository access
+  signin: `Repository access needs a GitHub sign-in (none is active on this browser, or it expired). ${UNCHANGED}`,
+  patMissing: `The central repository access is not set up: the access service has no GitHub PAT. ${UNCHANGED}`,
+  patRejected: `GitHub rejected the central PAT (it is invalid, expired or revoked). ${UNCHANGED}`,
+  patInsufficient: `The central PAT is not allowed to read the configured repository. ${UNCHANGED}`,
 };
-type View = { html: string; preview: PullPreview | null; pass: string | null };
-let view: View = { html: '', preview: null, pass: null }; let busy = false;
-const box = (kind: 'ok' | 'warn' | 'err', html: string) => `<div class="issue-box ${kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : ''} mini" role="${kind === 'err' ? 'alert' : 'status'}">${icon(kind === 'ok' ? 'check' : 'alert-triangle', 14)}<div>${html}</div></div>`;
-const when = (iso: string) => (iso && !Number.isNaN(Date.parse(iso)) && Date.parse(iso) > 0 ? iso.replace('T', ' ').slice(0, 16) : '—');
-const KIND: Record<PullRow['kind'], string> = { add: 'New on this device — will be added', update: 'Newer in the repository — will replace the local copy', unchanged: 'Already identical', 'local-newer': 'Local copy is newer — not applied', conflict: 'Changed on both — not applied (resolve in Settings → Schema Management)' };
-function problemHtml(p: NonNullable<PullPreview['problem']>): string {
-  const items = p.items?.length ? `<ul>${p.items.map((i) => `<li>${e(i)}</li>`).join('')}</ul>` : '';
-  switch (p.kind) {
-    case 'passphrase': return box('err', `<strong>${e(PULL_MESSAGES.passphrase)}</strong><br>${e(p.detail)}`);
-    case 'incorrect-passphrase': return box('err', `<strong>${e(PULL_MESSAGES.incorrect)}</strong><br>Check the passphrase with your administrator — it may have been changed — and try again.`);
-    case 'decryption': return box('err', `<strong>${e(PULL_MESSAGES.decryption)}</strong><br>${e(p.detail)}<br>If the problem continues, ask the administrator to publish the schema again.`);
-    case 'not-encrypted': return box('err', `<strong>The synchronized schema file is not protected by a passphrase.</strong><br>${e(UNCHANGED)}<br>Ask the administrator to set a passphrase and publish the schema (Settings → Schema Management).`);
-    case 'validation': case 'metadata': return box('err', `<strong>${e(PULL_MESSAGES.validation)}</strong><br>${e(p.detail)}${items}Ask the administrator to correct and republish the schema.`);
-    case 'missing': return box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>${e(p.detail)} Ask the administrator to publish the schema first. ${e(UNCHANGED)}`);
-    case 'configuration': return box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>${e(p.detail)} An administrator can set the repository and access token in Settings → Secret Vault. ${e(UNCHANGED)}`);
-    default: return box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>${e(UNCHANGED)}<br><span class="hint">Detail: ${e(p.detail)}</span>`);
+let view = ''; let busy = false;
+const box = (kind: 'ok' | 'warn' | 'err', html: string) => `<div class="issue-box ${kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : 'err'} mini" role="${kind === 'err' ? 'alert' : 'status'}">${icon(kind === 'ok' ? 'check' : 'alert-triangle', 14)}<div>${html}</div></div>`;
+const cardButton = () => `<button type="button" class="btn btn-outline btn-sm pull-open-vault">${icon('key', 13)} Go to the GitHub repository card</button>`;
+function openCard(): void { document.querySelector<HTMLElement>('#schemaRepoCardMount [data-v1754-repo-card]')?.scrollIntoView({ block: 'center' }); document.querySelector<HTMLButtonElement>('#changeTokenBtn')?.focus(); }
+/** The message for a pull that failed — it always says what failed and what to do, and that the local schema is unchanged. */
+function problemHtml(o: PullOutcome): string {
+  const detail = o.fileProblem ? `<br><span class="hint">Detail: ${e(o.fileProblem)}</span>` : '';
+  switch (o.errorKind) {
+    case 'signin': return box('err', `<strong>${e(PULL_MESSAGES.signin)}</strong><br>Select <em>Pull Schema</em> again to sign in with GitHub, or use <em>Sign in with GitHub</em> in the GitHub repository card above. ${cardButton()}${detail}`);
+    case 'pat-missing': return box('err', `<strong>${e(PULL_MESSAGES.patMissing)}</strong><br>An administrator must configure the GitHub Actions secret <code>SQLA_GITHUB_PAT</code> and redeploy the repository access service. No action on this device can fix it.${detail}`);
+    case 'pat-rejected': return box('err', `<strong>${e(PULL_MESSAGES.patRejected)}</strong><br>An administrator must replace the GitHub Actions secret <code>SQLA_GITHUB_PAT</code> with a valid fine-grained PAT and redeploy the repository access service. No action on this device can fix it.${detail}`);
+    case 'pat-insufficient': return box('err', `<strong>${e(PULL_MESSAGES.patInsufficient)}</strong><br>The PAT needs <em>Contents: Read</em> (and <em>Read and write</em> to publish) on the repository, and — if the organization uses SSO — must be authorized for it. An administrator must fix the PAT, or the repository in the GitHub repository card.${detail}`);
+    case 'config': if (brokerEnabled()) return box('err', `<strong>${e(PULL_MESSAGES.signin)}</strong><br>Select <em>Pull Schema</em> again to sign in with GitHub, or check the GitHub repository card above. ${cardButton()}${detail}`); return box('err', `<strong>${e(PULL_MESSAGES.noToken)}</strong><br>Select <em>Set Token</em> in the GitHub repository card above (Admin Password), or import the token with the <em>Pull Secret Vault to Repository</em> card below (<em>Import encrypted file</em> needs no token). ${cardButton()}`);
+    case 'auth': return box('err', `<strong>${e(PULL_MESSAGES.auth)}</strong><br>Create a new GitHub token with <em>Contents: read</em> for this repository and set it in the GitHub repository card. ${cardButton()}${detail}`);
+    case 'permission': if (publishedEnabled() && !secrets.githubToken) return box('err', `<strong>The site refused the published copy of the repository. ${e(UNCHANGED)}</strong><br>Open SQL Assistant from its normal address and sign in to the site first, then try again.${detail}`); if (brokerEnabled()) return box('err', `<strong>GitHub or the repository access service is limiting requests, or your account may not use the repository. ${e(UNCHANGED)}</strong><br>Wait a few minutes and try again.${detail}`); return box('err', `<strong>${e(PULL_MESSAGES.permission)}</strong><br>Ask the repository owner to grant the token <em>Contents: read</em> access, or wait a few minutes and try again. ${cardButton()}${detail}`);
+    case 'timeout': return box('err', `<strong>${e(PULL_MESSAGES.timeout)}</strong><br>Check your network connection and try again.${detail}`);
+    case 'not-found': return box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>The repository, branch or folder was not found for this token. Check that the token belongs to an account that can read the repository. ${UNCHANGED}${detail}`);
+    case 'passphrase': return box('err', `<strong>${e(o.fileProblem?.startsWith('The repository holds') ? 'The repository file is passphrase-protected.' : 'The Vault passphrase saved on this device does not open the repository file.')}</strong><br>${e(o.fileProblem?.startsWith('The repository holds') ? o.fileProblem : `It may have been changed. ${UNCHANGED} Ask the administrator to publish the schema without a passphrase (Settings → Schema Management → Sync with GitHub Now on a device that has none saved), or clear this site's saved data in the browser and pull again.`)}`);
+    case 'decryption': return box('err', `<strong>${e(PULL_MESSAGES.decryption)}</strong><br>The repository file is damaged. Ask the administrator to publish the schema again.${detail}`);
+    case 'incompatible': return box('err', `<strong>${e(PULL_MESSAGES.incompatible)}</strong><br>Update SQL Assistant on this device (use the latest release) and pull again.${detail}`);
+    case 'validation': return box('err', `<strong>${e(PULL_MESSAGES.validation)}</strong><br>Ask the administrator to correct and republish the schema.${detail}`);
+    case 'storage': return box('err', `<strong>${e(PULL_MESSAGES.storage)}</strong><br>Free some browser storage or allow site data for this site, then pull again.${detail}`);
+    default: return box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>${e(UNCHANGED)} Check your network connection and the GitHub repository card, then try again. ${cardButton()}${detail}`);
   }
 }
-function previewHtml(p: PullPreview): string {
-  const h = p.header; const rows = p.rows;
-  const table = `<div class="pull-table-wrap"><table class="pull-table"><thead><tr><th>Schema</th><th>This device</th><th>Repository</th><th>Contents</th><th>Result</th></tr></thead><tbody>${rows.map((r) => `<tr><td data-label="Schema"><strong>${e(r.name)}</strong></td><td data-label="This device">${r.kind === 'add' ? 'Not on this device yet' : `v${e(r.localVersion)}<br><span class="hint">updated ${e(when(r.localUpdated))}</span>`}</td><td data-label="Repository">v${e(r.remoteVersion)}<br><span class="hint">updated ${e(when(r.remoteUpdated))}</span></td><td data-label="Contents">${r.tables} tables · ${r.columns} columns · ${r.decodeEntries} CASE/DECODE entries</td><td data-label="Result"><strong>${e(KIND[r.kind])}</strong></td></tr>`).join('')}</tbody></table></div>`;
-  const older = rows.filter((r) => r.kind === 'local-newer'); const meta = `Written by ${e(p.writtenBy || '—')}${h?.appVersion ? ` · app ${e(h.appVersion)}` : ''}${h ? ` · schema format ${h.schemaFormatVersion}` : ''}${h?.writtenAt ? ` · ${e(when(h.writtenAt))}` : ''}${h?.writtenByDevice ? ` · ${e(h.writtenByDevice)}` : ''}`;
-  const steps = ['Passphrase validated', 'Schema retrieved from the repository', 'Decrypted', 'Validated (format, version, tables, columns, data types, relationships, CASE/DECODE, required metadata)'].map((x) => `<li>${icon('check', 13)} ${e(x)}</li>`).join('');
-  return `<ul class="pull-steps">${steps}</ul><div class="hint mt">${meta}</div>${table}${older.length ? box('warn', e(PULL_MESSAGES.older)) : ''}${p.willChange ? `${p.remoteActive ? `<p class="hint">Active schema after the pull: <strong>${e(p.remoteActive)}</strong> (now: ${e(p.localActive.name)} v${e(p.localActive.version)}).</p>` : ''}<div class="row-actions"><button type="button" class="btn btn-primary" id="pullApplyBtn">${icon('check', 14)} Apply to this device</button><button type="button" class="btn btn-outline" id="pullCancelBtn">Cancel</button></div><p class="hint">Nothing has been changed on this device yet.</p>` : box('ok', 'This device is already up to date — there is nothing to apply.')}`;
+/** The message for a pull that completed — success only when everything in the file was applied or already identical; kept / conflicting / rejected schemas make it a partial result. */
+function resultHtml(o: PullOutcome): string {
+  if (o.remoteMissing) return box('warn', `<strong>No schema file was found in the repository yet.</strong><br>${e(UNCHANGED)} Publish it first: on a device that has the schemas use <em>Sync with GitHub Now</em> (Settings → Schema Management).`);
+  const a = services().schemas.active(); const applied = [...o.added.map((n) => `${n} (added)`), ...o.updated.map((n) => `${n} (updated)`)];
+  const kept = o.localAhead.filter((n) => !o.unchanged.includes(n)); const conflicted = o.conflicts.map((c) => c.schemaName); const partial = kept.length > 0 || conflicted.length > 0 || o.rejected.length > 0;
+  const detail = `${applied.length ? `Applied: ${e(applied.join(', '))}. ` : 'No schema content needed to change. '}Active schema: <strong>${e(a.name)}</strong> v${e(String(a.version))}.${kept.length ? `<br>${e(PULL_MESSAGES.older)} (${e(kept.join(', '))})` : ''}${conflicted.length ? `<br><strong>Not applied — changed on both sides:</strong> ${e(conflicted.join(', '))}. Resolve in Settings → Schema Management (<em>Use Local</em> / <em>Use Remote</em>).` : ''}${o.messages.length ? `<ul>${o.messages.slice(0, 6).map((m) => `<li>${e(m)}</li>`).join('')}</ul>` : ''}`;
+  const tail = '<br><span class="hint">Manual Selectors, Describe What You Need, the offline NLU, SQL generation and the schema CASE/DECODE definitions now use the active schema.</span>';
+  return box(partial ? 'warn' : 'ok', `<strong>${e(partial ? PULL_MESSAGES.partial : PULL_MESSAGES.success)}</strong><br>${detail}${tail}`);
+}
+/** The card currently on screen. A successful pull changes the schema registry, which makes the page re-render while the pull is still finishing — so the card is always looked up again, never kept across an await. */
+const liveHost = (fallback?: HTMLElement) => document.querySelector<HTMLElement>('#schemaPullHost') || fallback || null;
+async function pull(): Promise<void> {
+  if (busy) return; busy = true; view = box('warn', 'Retrieving the schema from GitHub, validating it and synchronizing this device…'); paint(); // a new operation always starts clean — no stale message survives
+  let out: PullOutcome | null = null;
+  try {
+    // V17.6.2: is repository authorization available? A valid session is reused; otherwise (central access) the GitHub sign-in starts here. Without central access this does nothing and the V17.6.1 token behaviour applies.
+    const acc = await ensureRepositoryAccess({ show: (html) => { view = html; paint(); return document.querySelector<HTMLElement>('#pullResult'); } });
+    if (!acc.ok) { view = box(acc.cancelled ? 'warn' : 'err', `<strong>${e(acc.message)}</strong>`); busy = false; const h0 = liveHost(); if (h0) renderPullPanel(h0); return; }
+    view = box('warn', 'Retrieving the schema from GitHub, validating it and synchronizing this device…'); paint();
+    out = await services().sync.pullSchema(); view = out.ok ? resultHtml(out) : problemHtml(out); }
+  catch (err) { view = problemHtml({ ok: false, stage: null, fileProblem: redactSecrets((err as Error)?.message || 'unexpected error', services().vault.knownSecrets()), errorKind: null } as PullOutcome); }
+  if (out?.ok && !out.remoteMissing) store.pushToast(view.includes('issue-box warn') ? 'warning' : 'success', view.includes('issue-box warn') ? PULL_MESSAGES.partial : PULL_MESSAGES.success);
+  busy = false; const h = liveHost(); if (h) renderPullPanel(h); // re-render: the status chips (last download, nothing waiting …) now reflect the real result
 }
 function paint(): void {
-  const m = document.querySelector<HTMLElement>('#schemaPullMount'); if (!m) return; const r = m.querySelector<HTMLElement>('#pullResult'); if (r) r.innerHTML = view.html;
-  m.querySelector('#pullApplyBtn')?.addEventListener('click', () => { void apply(); }); m.querySelector('#pullCancelBtn')?.addEventListener('click', cancel);
-  const btn = m.querySelector<HTMLButtonElement>('#pullBtn'); if (btn) { btn.disabled = busy; btn.innerHTML = busy ? `${icon('refresh', 14)} Working…` : `${icon('download', 14)} Pull Schema`; }
+  const host = liveHost(); if (!host) return; const r = host.querySelector<HTMLElement>('#pullResult'); if (r) r.innerHTML = view; host.querySelectorAll('.pull-open-vault').forEach((b) => { (b as HTMLElement).onclick = openCard; });
+  const btn = host.querySelector<HTMLButtonElement>('#pullBtn'); if (btn) { btn.disabled = busy; btn.innerHTML = busy ? `${icon('refresh', 14)} Working…` : `${icon('download', 14)} Pull Schema`; }
 }
-const input = () => document.querySelector<HTMLInputElement>('#schemaPullPass');
-async function pull(): Promise<void> {
-  if (busy) return; busy = true; view = { html: box('warn', 'Validating the passphrase and retrieving the synchronized schema…'), preview: null, pass: null }; paint(); // a new operation always starts clean — no stale error survives
-  const pass = input()?.value ?? '';
-  try { const pv = await services().sync.previewEncryptedPull(pass); view = pv.ok ? { html: previewHtml(pv), preview: pv, pass } : { html: problemHtml(pv.problem!), preview: null, pass: null }; }
-  catch (err) { view = { html: problemHtml({ kind: 'unavailable', detail: redactSecrets((err as Error)?.message || 'unexpected error', [pass, ...services().vault.knownSecrets()]) }), preview: null, pass: null }; }
-  busy = false; paint();
+function renderPullPanel(host: HTMLElement): void {
+  host.innerHTML = `<div id="schemaPullMount"><div class="builder-panel"><h2>${icon('download', 16)} Pull Schema from GitHub</h2>
+    <div class="row-actions"><button type="button" class="btn btn-primary" id="pullBtn">${icon('download', 14)} Pull Schema</button></div>
+    <div id="pullResult" aria-live="polite">${view}</div></div></div>`;
+  host.querySelector('#pullBtn')!.addEventListener('click', () => { void pull(); }); paint();
 }
-async function apply(): Promise<void> {
-  const pv = view.preview; const pass = view.pass; if (!pv || busy) return; busy = true; paint();
-  let out: PullOutcome | null = null; try { out = await services().sync.applyPreview(pv); } catch (err) { view = { html: box('err', `<strong>${e(PULL_MESSAGES.unavailable)}</strong><br>${e(UNCHANGED)}<br><span class="hint">Detail: ${e(redactSecrets((err as Error)?.message || '', [pass || '']))}</span>`), preview: null, pass: null }; busy = false; paint(); return; }
-  if (!out.ok) { view = { html: box('err', `<strong>${e(PULL_MESSAGES.validation)}</strong><br>${e(out.fileProblem || 'The schema could not be saved.')}`), preview: null, pass: null }; busy = false; paint(); return; }
-  let remembered = false; if (pass && document.querySelector<HTMLInputElement>('#schemaPullRemember')?.checked !== false) { try { await services().passphrase.set(pass); remembered = true; } catch { remembered = false; } }
-  const a = services().schemas.active(); const applied = [...out.added.map((n) => `${n} (added)`), ...out.updated.map((n) => `${n} (updated)`)];
-  view = { html: box('ok', `<strong>${e(PULL_MESSAGES.success)}</strong><br>${applied.length ? `Applied: ${e(applied.join(', '))}. ` : 'No schema content needed to change. '}Active schema: <strong>${e(a.name)}</strong> v${e(String(a.version))}.${out.localAhead.length ? `<br>${e(PULL_MESSAGES.older)} (${e(out.localAhead.join(', '))})` : ''}<br><span class="hint">Manual Selectors, Describe What You Need, the offline NLU, SQL generation and the schema CASE/DECODE definitions now use this schema.${remembered ? ' The passphrase was saved on this device (encrypted).' : ''}</span>`), preview: null, pass: null };
-  store.pushToast('success', PULL_MESSAGES.success); busy = false; paint(); const inp = input(); if (inp && remembered) inp.value = pass || '';
-}
-function cancel(): void { view = { html: box('warn', e(PULL_MESSAGES.cancelled)), preview: null, pass: null }; paint(); }
+/** Schema → Pull Schema = the repository card, the schema pull, and the Secret Vault pull card — three independent mounts so one never wipes what was typed in another. */
 export function renderSchemaPullTab(panel: HTMLElement): void {
-  const { sync, passphrase } = services(); const saved = passphrase.hasSaved(); const connected = !!secrets.githubOwner && !!secrets.githubRepo && !!secrets.githubToken;
-  panel.innerHTML = `<div id="schemaPullMount"><div class="builder-panel"><h2>${icon('download', 16)} Pull Schema</h2>
-    <div class="note-box pull-help">${icon('info', 16)}<div><strong>How to pull the schema</strong><ol><li>Enter the active passphrase used to protect the synchronized schema and select <strong>Pull Schema</strong>.</li><li>The passphrase is required to decrypt and import the synchronized schema on this device.</li><li>Keep the passphrase secure and do not share it through unsecured channels.</li></ol></div></div>
-    <p class="hint mt pull-repo-hint">${icon('github', 12)} <span>${connected ? `Repository <code>${e(`${secrets.githubOwner}/${secrets.githubRepo}`)}</code> · <code>${e(sync.encryptedFilePath())}</code>` : 'The repository connection is not set up on this device — an administrator configures it in Settings → Secret Vault.'}</span></p>
-    ${passphraseFieldHtml('schemaPullPass', 'Passphrase', saved ? (passphrase.isUnreadable() ? 'The passphrase saved on this device can no longer be read here — enter it again.' : 'The passphrase saved on this device is shown masked. If an administrator changed it, type the new one and pull.') : 'Ask your administrator for the passphrase.')}
-    <label class="inline-check"><input type="checkbox" id="schemaPullRemember" ${saved || true ? 'checked' : ''}> Remember this passphrase on this device (stored encrypted)</label>
-    <div class="row-actions"><button type="button" class="btn btn-primary" id="pullBtn">${icon('download', 14)} Pull Schema</button>${saved ? `<button type="button" class="btn btn-outline" id="pullForgetBtn">Remove saved passphrase</button>` : ''}</div>
-    <div id="pullResult" aria-live="polite">${view.html}</div></div></div>`;
-  wirePassphraseFields(panel); const inp = panel.querySelector<HTMLInputElement>('#schemaPullPass')!;
-  void passphrase.get().then((p) => { if (p && !inp.value) inp.value = p; });
-  panel.querySelector('#pullBtn')!.addEventListener('click', () => { void pull(); }); inp.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') void pull(); });
-  panel.querySelector('#pullForgetBtn')?.addEventListener('click', () => { passphrase.clear(); inp.value = ''; view = { html: box('ok', 'The saved passphrase was removed from this device. Schema synchronization on this device is no longer encrypted until a passphrase is set again.'), preview: null, pass: null }; renderSchemaPullTab(panel); });
-  paint();
+  if (!busy) view = ''; // entering (or re-rendering) the page starts clean
+  panel.innerHTML = '<div id="schemaRepoCardMount"></div><div id="schemaPullHost" class="mt"></div><div id="schemaVaultCardMount"></div>';
+  const all = () => renderSchemaPullTab(panel);
+  const repo = panel.querySelector<HTMLElement>('#schemaRepoCardMount')!; repo.innerHTML = repoCardHtml(); wireRepoCard(repo, all);
+  renderPullPanel(panel.querySelector<HTMLElement>('#schemaPullHost')!);
+  const vc = panel.querySelector<HTMLElement>('#schemaVaultCardMount')!; vc.innerHTML = vaultPullCardHtml(); wireVaultPullCard(vc, all);
 }
 /** Test hook / reset when the page is left. */
-export function resetPullView(): void { view = { html: '', preview: null, pass: null }; busy = false; }
+export function resetPullView(): void { view = ''; busy = false; }

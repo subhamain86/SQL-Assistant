@@ -77,7 +77,7 @@ export class AdminMessageService {
       : this.out({ ok: true, published: false, changed: true, stage: p.stage, message: `${what} was saved on this device but could not be published: ${p.message} It will be published automatically at the next synchronization.` });
   }
   private async doPush(retry = true): Promise<AdminMessageOutcome> {
-    const repo = this.repo(); if (!repo) return this.out({ stage: 'Configuration', message: 'The repository connection is not set up on this device (Settings → Secret Vault).' });
+    const repo = this.repo(); if (!repo) return this.out({ stage: 'Configuration', message: 'The repository connection is not set up on this device (Schema → Pull Schema).' });
     const r = this.record(); if (!r) return this.out({ ok: true, message: 'Nothing to publish.' }); const text = JSON.stringify(r, null, 1); if (containsSecret(text)) return this.out({ stage: 'Validation', message: 'The message looks like it contains a credential and was not published.' });
     let remote; try { remote = await repo.read(this.path()); } catch (e) { return this.out({ stage: 'Download', message: redactSecrets((e as Error).message, this.secrets()) }); }
     if (remote) { let theirs: AdminMessage | null = null; try { theirs = sanitizeMessage(JSON.parse(remote.text)); } catch { theirs = null; } if (theirs && theirs.updatedAt > r.updatedAt) { this.save(theirs); this.setMeta({ sha: remote.sha, pending: false }); return this.out({ ok: true, message: 'A newer admin message from another administrator is already published; it was kept.' }); } }

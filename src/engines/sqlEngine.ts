@@ -3,6 +3,7 @@ import { renderFilterClause } from './filterEngine';
 import { computeAutoJoinPlan } from './joinAutoEngine';
 import { withFkRelationships } from '../v17/engines/joinGraph';
 import { activeSelection } from './scope';
+import { decodeDefinition, decodeUnavailableMessage, decodeAliases } from '../v17/engines/decodeDefinition';
 const RES = new Set(['as', 'at', 'by', 'in', 'is', 'of', 'on', 'or', 'to', 'and', 'end', 'for', 'not', 'set', 'all', 'asc', 'top', 'key', 'row', 'desc', 'from', 'join', 'case', 'else', 'null', 'then', 'when', 'with', 'left', 'user', 'view']);
 export function buildTableAliases(tables: string[]): Record<string, string> { const o: Record<string, string> = {}; const used = new Set<string>(); tables.forEach((t) => { const p = t.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean); const b = p.length === 1 ? p[0][0] : p.map((x) => x[0]).join(''); let a = b; let n = 2; while (used.has(a) || RES.has(a)) a = `${b}${n++}`; used.add(a); o[t] = a; }); return o; }
 export function applyTableAliases(sql: string, al: Record<string, string>): string {
@@ -14,8 +15,11 @@ export function applyTableAliases(sql: string, al: Record<string, string>): stri
  * V17.5 — renders a schema CASE/DECODE definition. The definition is ALWAYS read from the Active Schema at build time (never stored in the
  * query state), so a schema update or pull changes the generated SQL at once and nothing is ever invented.
  */
-export function schemaDecodeSql(base: string, decode: { rawValue: string; label: string }[], dialect: string, style: 'case' | 'decode' | undefined, alias: string): { sql: string; style: 'case' | 'decode' } {
-  const q = (v: string) => `'${String(v).replace(/'/g, "''")}'`; const fallback = dialect === 'Oracle' || dialect === 'SQL Server' ? `CAST(${base} AS VARCHAR(255))` : base;
+export function schemaDecodeSql(base: string, decode: { rawValue: string; label: string }[], dialect: string, style: 'case' | 'decode' | undefined, alias: string, colType?: string): { sql: string; style: 'case' | 'decode' } {
+  // The ELSE branch must have the same type as the text labels. Oracle / SQL Server always convert (unchanged since V17.5). PostgreSQL rejects a CASE that mixes text with an integer
+  // ("CASE types text and integer cannot be matched"), so a NON-text column is converted there and in MySQL / Generic too; a text column is used as it is.
+  const textual = !colType || /CHAR|TEXT|CLOB|STRING/i.test(colType);
+  const q = (v: string) => `'${String(v).replace(/'/g, "''")}'`; const fallback = dialect === 'Oracle' || dialect === 'SQL Server' ? `CAST(${base} AS VARCHAR(255))` : textual ? base : dialect === 'MySQL' ? `CAST(${base} AS CHAR(255))` : `CAST(${base} AS VARCHAR(255))`;
   if (style === 'decode' && dialect === 'Oracle') return { style: 'decode', sql: `DECODE(${base}, ${decode.map((d) => `${q(d.rawValue)}, ${q(d.label)}`).join(', ')}, TO_CHAR(${base})) AS ${alias}` };
   return { style: 'case', sql: `CASE ${decode.map((d) => `WHEN ${base} = ${q(d.rawValue)} THEN ${q(d.label)}`).join(' ')} ELSE ${fallback} END AS ${alias}` };
 }
@@ -26,12 +30,18 @@ export function buildSelect(st: ReadOnlyQueryState, s: SchemaModel): BuildResult
   const res: BuildResult = { sql: '', tablesUsed: [], columnsUsed: [], applied: [], warnings: [] };
   if (!st.selectedTables.length) { res.sql = '-- Select at least one table (or describe your requirement above) to generate SQL.'; return res; }
   const act = activeSelection(st); const [p, ...o] = st.selectedTables; const plan = computeAutoJoinPlan(withFkRelationships(s), p, o, st.joinPathChoices || {}); res.warnings.push(...plan.unresolvedWarnings);
+  // V17.5.2: two decoded columns with the same name (e.g. STATUS in two tables) get table-qualified default aliases — the SQL would otherwise repeat one alias and fail validation
+  const aliasOf = decodeAliases(act.columns.filter((c) => c.useDecode && !c.aggregate && !c.manualExpr && decodeDefinition(s.tables.find((t) => t.name === c.table)?.columns.find((x) => x.name === c.column)).state === 'valid'));
   const colExpr = (c: ReadOnlyQueryState['selectedColumns'][number]): string => {
     if (c.manualExpr) return c.manualExpr;
     const base = c.aggregate ? `${c.aggregate}(${c.table}.${c.column})` : `${c.table}.${c.column}`;
     const col = s.tables.find((t) => t.name === c.table)?.columns.find((x) => x.name === c.column);
-    if (c.useDecode && !c.aggregate && col?.decode?.length) { const a = c.alias || `${c.column}_DESC`; const r = schemaDecodeSql(base, col.decode, st.dialect, c.decodeStyle, a); res.applied.push(`CASE/DECODE: ${c.table}.${c.column} — schema definition as ${r.style === 'decode' ? 'DECODE' : 'CASE'}${c.decodeStyle === 'decode' && r.style === 'case' ? ' (DECODE is Oracle-only — CASE used)' : ''}`); return r.sql; }
-    if (c.useDecode && !c.aggregate && !col?.decode?.length) res.warnings.push(`No CASE/DECODE definition is available for ${c.table}.${c.column} in the active schema — the plain column is used (nothing was invented).`);
+    if (c.useDecode && !c.aggregate) {
+      const def = decodeDefinition(col);
+      if (def.state === 'valid') { const a = aliasOf.get(c.id) || `${c.column}_DESC`; const r = schemaDecodeSql(base, def.entries, st.dialect, c.decodeStyle, a, col?.type); res.applied.push(`CASE/DECODE: ${c.table}.${c.column} — schema definition as ${r.style === 'decode' ? 'DECODE' : 'CASE'}${c.decodeStyle === 'decode' && r.style === 'case' ? ' (DECODE is Oracle-only — CASE used)' : ''}`); return r.sql; }
+      // none / incomplete / invalid: never generate from it, say why, keep the rest of the query working
+      res.warnings.push(`${decodeUnavailableMessage(def, `${c.table}.${c.column}`)} — the plain column is used (nothing was invented).`);
+    }
     return c.alias ? `${base} AS ${c.alias}` : base;
   };
   const cols = act.columns.length ? act.columns.map(colExpr).join(',\n  ') : '*';

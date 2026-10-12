@@ -2,7 +2,7 @@
  * V17.5.1 — Settings → Synchronization → "Admin message". The administrator writes one short plain-text message (140 characters) that every device shows in
  * its navbar. Published through the existing repository connection; clearing it clears it everywhere. Settings are already behind the Admin Password.
  */
-import { icon } from '../components/icons'; import { store } from '../state'; import { services } from '../context'; import { e } from '../dom';
+import { icon } from '../components/icons'; import { store } from '../state'; import { services } from '../context'; import { e } from '../dom'; import { ensureRepositoryAccess } from '../repoAccess';
 import { ADMIN_MESSAGE_MAX, checkMessageText, type AdminMessageLevel } from '../../v17/services/adminMessage';
 let result = '';
 const box = (kind: 'ok' | 'warn' | 'err', html: string) => `<div class="issue-box ${kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : ''} mini" role="${kind === 'err' ? 'alert' : 'status'}">${icon(kind === 'ok' ? 'check' : 'alert-triangle', 14)}<div>${html}</div></div>`;
@@ -24,7 +24,7 @@ export function wireAdminMessage(p: HTMLElement, rerender: () => void): void {
   const cur = adminMessage.record(); if (cur?.active) { text.value = cur.text; level.value = cur.level; }
   const upd = () => { const n = [...checkMessageText(text.value).text].length; count.textContent = `${n} / ${ADMIN_MESSAGE_MAX}`; count.style.color = n > ADMIN_MESSAGE_MAX ? '#d64550' : ''; }; text.addEventListener('input', upd); upd();
   const busy = (on: boolean) => root.querySelectorAll('button').forEach((b) => (on ? b.setAttribute('disabled', '') : b.removeAttribute('disabled')));
-  root.querySelector('#adminMsgPublish')!.addEventListener('click', async () => { const c = checkMessageText(text.value); if (c.problem) { show(box('err', e(c.problem))); return; } busy(true); show(box('warn', 'Publishing…'));
+  root.querySelector('#adminMsgPublish')!.addEventListener('click', async () => { const c = checkMessageText(text.value); if (c.problem) { show(box('err', e(c.problem))); return; } busy(true); show(box('warn', 'Publishing…')); const acc = await ensureRepositoryAccess({ show: (h) => { out.innerHTML = h; return out; } }); if (!acc.ok) { show(box(acc.cancelled ? 'warn' : 'err', e(acc.message))); busy(false); return; } // V17.6.2: repository authorization first
     const r = await adminMessage.publish(c.text, level.value as AdminMessageLevel); show(r.ok ? box(r.published ? 'ok' : 'warn', e(r.message)) : box('err', e(r.message))); if (r.ok) store.pushToast(r.published ? 'success' : 'warning', r.published ? 'Admin message published.' : 'Admin message saved on this device — not yet published.'); rerender(); });
-  root.querySelector('#adminMsgClear')?.addEventListener('click', async () => { if (!confirm('Clear the admin message on all devices?')) return; busy(true); show(box('warn', 'Clearing…')); const r = await adminMessage.clear(); show(r.ok ? box(r.published ? 'ok' : 'warn', e(r.message)) : box('err', e(r.message))); text.value = ''; rerender(); });
+  root.querySelector('#adminMsgClear')?.addEventListener('click', async () => { if (!confirm('Clear the admin message on all devices?')) return; busy(true); show(box('warn', 'Clearing…')); const acc = await ensureRepositoryAccess({ show: (h) => { out.innerHTML = h; return out; } }); if (!acc.ok) { show(box(acc.cancelled ? 'warn' : 'err', e(acc.message))); busy(false); return; } const r = await adminMessage.clear(); show(r.ok ? box(r.published ? 'ok' : 'warn', e(r.message)) : box('err', e(r.message))); text.value = ''; rerender(); });
 }

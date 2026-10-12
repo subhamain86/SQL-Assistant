@@ -6,7 +6,8 @@ import { getSchemaContext, softNormalize, findPhrase, isNumericType, isDateType,
 import { agoExpr, startOfExpr, todayExpr, dateLiteral } from './dateExpressions';
 import { countryNameToIso2 } from './countryCodes';
 import { tokenize } from './textTokens';
-export const NLU_ENGINE_VERSION = 'offline-nlu-17.5.1';
+import { decodeDefinition, decodeUnavailableMessage } from './decodeDefinition';
+export const NLU_ENGINE_VERSION = 'offline-nlu-17.6.5';
 export interface AutoOption { kind: string; description: string; }
 export interface LearnedHint {
   patternId: string; similarity: number; tables: string[]; columns: { table: string; column: string }[]; options: { limit?: number | null; sorts?: { table: string; column: string; direction: 'ASC' | 'DESC' }[] };
@@ -165,7 +166,7 @@ export function runOfflineNlu(raw: string, schema: SchemaModel, opts: { dialect:
       const am = after.match(/^\s+(as\s+(?:readable\s+)?(?:text|label|labels|description|descriptions|name|words)|descriptions?|labels?|text|meaning|in\s+words|decoded|readable)\b/); const bm = before.match(/\b(decoded|readable|translated|textual)\s+$/);
       const intent = !!am || !!bm || (wholeRequestIntent && !filters.some((f) => f.table === h.e.table && f.column === h.e.column.name)); if (!intent) return;
       if (am) taken.push({ start: h.s.end + (am.index || 0), end: h.s.end + (am.index || 0) + am[0].length }); if (bm) taken.push({ start: h.s.start - bm[0].length, end: h.s.start });
-      const key = q(h.e.table, h.e.column.name); if (h.e.column.decode?.length) decodeCols.set(key, globalStyle); else if (am || bm) decodeNotes.push(`No CASE/DECODE definition is available for ${key} in the active schema — the plain column is shown (nothing was invented).`); }); }
+      const key = q(h.e.table, h.e.column.name); const def = decodeDefinition(h.e.column); if (def.state === 'valid') decodeCols.set(key, globalStyle); else if (am || bm) decodeNotes.push(`${decodeUnavailableMessage(def, key)} — the plain column is shown (nothing was invented).`); }); }
   // learned / Admin Query Library patterns — used as PATTERNS (what to select, group, sort, limit …), never copied; the Active Schema always wins
   const learned: string[] = []; let patternUsed: V17Requirement['patternUsed'];
   const colOk = (c: { table: string; column: string }) => ctx.columns.some((e) => e.table === c.table && e.column.name === c.column);
@@ -187,7 +188,7 @@ export function runOfflineNlu(raw: string, schema: SchemaModel, opts: { dialect:
       if (h.sortOnAggregate && !sorts.length) aggSort(h.sortOnAggregate === 'DESC'); adopted.push('aggregation', 'grouping'); }
     if (aggMode && !groupBy.length && h.similarity >= 0.7 && (h.groupBy || []).some((g) => inScope(g.table))) { (h.groupBy || []).filter((g) => inScope(g.table)).forEach((g) => addG(g.table, g.column)); adopted.push('grouping'); if (h.sortOnAggregate && !sorts.length) { aggSort(h.sortOnAggregate === 'DESC'); adopted.push('sorting'); } }
     // V17.5: columns the pattern showed through a schema CASE/DECODE — adopted only when the Active Schema STILL defines that decode
-    (h.decodes || []).filter((x) => inScope(x.table) && resolved.some((r) => r.e.table === x.table && r.e.column.name === x.column) && (h.similarity >= 0.8 || adopted.includes('columns'))).forEach((x) => { const e0 = ctx.columns.find((c) => c.table === x.table && c.column.name === x.column); const key = q(x.table, x.column); if (e0?.column.decode?.length) { if (!decodeCols.has(key)) { decodeCols.set(key, x.style === 'decode' && d === 'Oracle' ? 'decode' : 'case'); adopted.push('CASE/DECODE'); } } else notes.push(`${src} showed ${key} through a CASE/DECODE, but the Active Schema has no definition for it — the plain column is shown.`); });
+    (h.decodes || []).filter((x) => inScope(x.table) && resolved.some((r) => r.e.table === x.table && r.e.column.name === x.column) && (h.similarity >= 0.8 || adopted.includes('columns'))).forEach((x) => { const e0 = ctx.columns.find((c) => c.table === x.table && c.column.name === x.column); const key = q(x.table, x.column); if (decodeDefinition(e0?.column).state === 'valid') { if (!decodeCols.has(key)) { decodeCols.set(key, x.style === 'decode' && d === 'Oracle' ? 'decode' : 'case'); adopted.push('CASE/DECODE'); } } else notes.push(`${src} showed ${key} through a CASE/DECODE, but the Active Schema has no definition for it — the plain column is shown.`); });
     if (limit === null && h.options.limit) { limit = h.options.limit; adopted.push('row limit'); }
     if (!sorts.length && (h.options.sorts || []).some((s) => inScope(s.table))) { (h.options.sorts || []).filter((s) => inScope(s.table)).forEach((s) => sorts.push({ id: makeId('s'), ...s })); adopted.push('sorting'); }
     if (!aggMode && !distinct && h.distinct && h.similarity >= 0.8) { distinct = true; adopted.push('DISTINCT'); }

@@ -27,8 +27,8 @@ export function renderTablePicker(container: HTMLElement, schema: SchemaModel, s
   search.addEventListener('input', () => { ui.tableSearch = search.value; renderList(); });
   mod.addEventListener('change', () => { ui.tableModule = mod.value; renderList(); });
   container.querySelector('.picker-list')!.addEventListener('scroll', (ev) => { ui.tableScroll = (ev.target as HTMLElement).scrollTop; });
-  container.querySelector('[data-action="select-all"]')!.addEventListener('click', () => { current = Array.from(new Set([...current, ...scope().tables.map((t) => t.name)])); onChange([...current]); renderList(); });
-  container.querySelector('[data-action="clear"]')!.addEventListener('click', () => { current = []; onChange([...current]); renderList(); });
+  container.querySelector('[data-action="select-all"]')!.addEventListener('click', () => { current = Array.from(new Set([...current, ...scope().tables.map((t) => t.name)])); renderList(); onChange([...current]); });
+  container.querySelector('[data-action="clear"]')!.addEventListener('click', () => { current = []; renderList(); onChange([...current]); });
   renderList();
   return { update(sel) { current = [...sel]; renderList(); } };
 }
