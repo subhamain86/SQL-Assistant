@@ -1,3 +1,17 @@
+## Added in V17.6.5 — centralized Admin Password
+
+* **What is stored where.** The repository file `…/security/admin-password.json` and the device entry `sqla.pwvault.v15` hold the same thing as in V17.6.4: an AES-256-GCM encrypted fixed marker whose key is derived from the password (PBKDF2-SHA-256, 150 000 iterations, random salt and IV). **No password, no key and no hash of the password is stored or transmitted.** A reset record (`isDefault: true`) holds no marker at all.
+* **Same channel, no new credential.** The file is read and written only through the existing repository connection (central access service / saved token / published copy). The service's path prefix, the publication rules and the safety scan (no token or private key in published files) apply unchanged; the build and security checks scan the new code (no console output, no dynamic code, no credential-like string).
+* **Fail-safe.** An invalid, tampered or newer-format record is ignored (the local password keeps working); an absent record never resets a device; a record can only be adopted after structural validation (base64 fields, bounded sizes, integer revision, ISO time). A failed fetch or publication never throws and never changes the password.
+* **Unlock-time fetch.** A password that does not match the local marker triggers at most one central fetch every 4 seconds and a second check. A wrong password is still rejected; the fetch only makes a legitimately changed password work at once.
+* **Reset to default** is a deliberate, confirmed action inside the unlocked Settings; it re-locks Settings, warns that `admin` is insecure and publishes the reset immediately; it modifies no other storage entry (browser test compares the storage before and after).
+### Limitations (V17.6.5)
+* Write access to the data repository is sufficient to replace the Admin Password record (including with the default). Restrict it; every write by the central access service is audited there.
+* The marker can be attacked offline by anyone who can read the repository (as the V17.6.4 marker could by anyone who could read the browser's storage). Use a long password.
+* A device that is offline keeps accepting its last known password until it synchronizes.
+
+---
+
 # Security model and review (V17.5 — the V17.4 review below is unchanged)
 
 ## Secret Vault (unchanged cryptography, stronger flow)
@@ -229,34 +243,7 @@ SQL Assistant never rotates a passphrase by itself, so existing encrypted data c
 * A publication can briefly lag or be inconsistent (the page refuses an inconsistent one and the user retries).
 * Verified against an emulated GitHub API and static servers, not github.com, GitHub Actions or the zone platform (see `TEST_REPORT_V17.6.3.md`).
 
-## Added in V17.6.5 — a central, encrypted Admin Password record
-
-The Admin Password was a per-device value (an encrypted marker in browser storage). V17.6.5 keeps **one** record for all devices: `sql-assistant-data/security/admin-credential.json` in `basware/sk-ap-sql-assistant`.
-
-### The encrypted-marker design
-* The record is a versioned envelope — `format`, `formatVersion`, `revision`, `updatedAt`, `updatedBy` (device id), `isDefault` — around the **existing encrypted verification marker** (PBKDF2-SHA-256, 150 000 iterations → AES-256-GCM over the fixed text `sqla-verified-marker-v15`; the same format as `sqla.pwvault.v15`). **The password is never stored — not in plaintext, not in Base64, not in any reversible form, not in the record, the device cache, a log, a URL, the Secret Vault export, the schema file or the admin message.** Verification is unchanged: the entered password must decrypt the marker (GCM authenticates), and nothing else is accepted.
-* **Strict parser** (`src/v17/services/adminCredential.ts`; the same rules run in the broker, in `publish-data.mjs` and in `npm run security`): exactly these keys, exact types, canonical Base64 of the exact sizes this cipher produces (salt 16 B, IV 12 B, marker 40 B), ≤ 4 KB. An extra field (for example a `password`), a different cipher, a newer or unknown format version, a damaged file → **refused**; the device keeps its last good record and is told once. `isDefault` must match the marker (a default record opens with the public default password and a normal one must not), so a record cannot claim to be something it is not.
-* **Rollback protection:** only a higher `revision` with a time stamp not older than the current one is applied; an older revision, or the same revision with different content, is refused. A published copy that merely lags behind a change this device saved or read fresh itself (24 h window) is kept quiet instead of being announced as an attack — it is still never applied.
-* **Read:** a device with a repository sign-in or token reads a fresh copy; every device can read the **published copy** (V17.6.3, SHA-256 checked against the publication marker), so a device with no token can verify. **Write:** only through the authenticated route (broker session or device token); the new record is read back and compared before this device applies it and reports success. A failed write, read-back or publication leaves this device unchanged and names the step (policy, current password, access, read, write, read-back).
-* **Lock-out:** after 5 wrong attempts verification is refused for 60 s, doubling with every further wrong attempt up to 15 minutes; a correct password resets it. It applies to the unlock screen and every protected action (Save, Reset, Danger Zone, repository card, Admin Query Library).
-* **Policy** for Save (all devices): at least 10 characters, not `admin`. The device-only **Change Password** keeps its V17.6.4 policy (4 characters) and is refused while a central record exists (it would be ignored). The device's own marker is never overwritten.
-
-### Reset to default — the two authorization paths
-The reset writes a new central record with `isDefault: true` and a higher revision (the marker of the default password), reads it back and publishes it like any other change. It needs **either**
-1. the **current Admin Password**, **or**
-2. a **GitHub sign-in with write access** to the repository (a forgotten password) — the broker session must be write-capable (the broker itself refuses a read-only caller with 403), a device token must not be reported read-only by GitHub.
-
-Nobody else can trigger it; a read-only sign-in and a wrong password are refused before anything is written. After a reset every device shows the existing default-password warning, Settings stay locked until unlocked with `admin`, and an unlocked session on another device ends at its next refresh. The first Save afterwards replaces the default record.
-
-### Server-side check
-`server/repo-broker.mjs` refuses (422 `credential-record-invalid`) any write to `…/security/admin-credential.json` that is not a valid encrypted record (plaintext, extra fields, forged `isDefault`); `scripts/publish-data.mjs` publishes the record only when it is valid (an invalid one never replaces the published copy); `npm run security` fails on a plaintext password literal, a password-like value written to storage, a Base64-encoded password, a password in a JSON body or request, and an invalid `admin-credential.json` in the repository or a published copy.
-
-### Limitations (V17.6.5) — please read
-* **Anyone with write access to the repository can replace the central record, including resetting it to the default** (or deleting `sql-assistant-data/security/`, which returns every device to its local password). The record is validated, not signed. **Recommendation:** enable branch protection on `main` and add a `CODEOWNERS` rule for `sql-assistant-data/security/**` (for example `sql-assistant-data/security/** @basware/<owners-team>`) with *Require review from Code Owners*.
-* **Branch protection also constrains Save and Reset:** both write directly to the branch (through the repository access service or a device token). If `main` forbids direct pushes, the write fails and the app reports the failed step (*writing the central record*). Either let the central PAT / GitHub App bypass the rule for `sql-assistant-data/security/**` (a CODEOWNERS review then applies to humans, not to the service) or accept that Save does not work while the rule is in force. This was not exercised against real branch protection (see `TEST_REPORT_V17.6.5.md`).
-* **While a reset-to-default is in force the password is publicly known by design** (`admin`). Use it only to set a new password; unlock, then Save (all devices) at once.
-* **The record is published with the site, so the marker can be copied and attacked offline.** The 10-character minimum and PBKDF2 (150 000 iterations) slow a guessing attack; they do not stop one against a weak password. The lock-out lives in browser storage and protects only the UI, not an offline attack. Choose a long, unique password.
-* The Admin Password is a **client-side gate** for the Settings pages, as before; it is not an access-control boundary against someone who controls the browser or can modify the page. Repository access is still decided by GitHub.
-* A publication can lag: a device without a repository sign-in learns of a change when the data publication has run (`publish-data.yml`), and again when the site has been republished.
-* Verified against emulated GitHub / site / broker, not against real GitHub, GitHub Actions or the zone platform (see `TEST_REPORT_V17.6.5.md`).
-
+## V17.7 — what the browser can and cannot protect
+* **No test back door in production.** The browser-test hooks (an in-memory repository, the store, the module registry) exist only in `test-dist/` (`npm run build:test`), never in `dist/`, `index.html` or `release/`; `verify:artifact` fails on any trace. In V17.6.9 the production page created them whenever the address contained `?e2e=1`.
+* **The default password has one door** (`verifyDefault`) and is confirmed by evidence only (`docs/ADMIN_PASSWORD.md`).
+* **Honest limit.** SQL Assistant is a client-side application. A person who controls the browser (developer tools, a modified copy of the page, edited browser storage) controls everything that runs there; the Admin Password protects the Settings of the **application as deployed**, it is not a server-side access control, and the central verifier can be attacked offline by anyone who can read the repository (see `ADMIN_PASSWORD.md`, limitations). Protect write access to the data repository and use a long Admin Password.

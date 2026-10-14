@@ -1,0 +1,26 @@
+# Changelog — V17.7 (stamped 17.7.0)
+
+Baseline: **V17.6.9** (the supplied `SQL-Assistant-V17.6.9.zip`). V17.7 modifies only what the Admin Password defect required; no feature, workflow, storage key, record format, repository path or UI element was removed or redesigned.
+
+## Fix — the Admin Password authority confirms the default by evidence; the production page has no test back door
+**Root cause (found by reading the V17.6.9 source and proven by tests, not assumed).** V17.6.9 had already introduced `confirmed-default`, but the boundary around it still had six weaknesses:
+
+| # | Weakness in V17.6.9 | Effect | V17.7 |
+|---|---|---|---|
+| 1 | `src/main.ts` of the **production** bundle created `window.__sqla` whenever the address contained `?e2e=1`: `setRepositoryOverride`, `setBrokerConfig`, `setPublishedState`, the `store`, `memoryRepository`. An in-memory repository is, by design, an *authoritative* source, so an empty one answered "no record" and the authority confirmed the default. `window.__sqlaRequire` (the module registry) and a global `define` were also exposed. | A test seam reached the authentication boundary in every deployed page. | The hooks live in **`src/testHooks.ts`**, compiled only into the separate test build (`npm run build:test` → `test-dist/`). Production is built from `src/main.ts` alone; its script runs in one function scope (no global `define`, no module registry). `verify:artifact` fails on any trace; hygiene fails if production reaches the module. |
+| 2 | One function (`verifyLocal`) compared a candidate with **either** the stored marker **or** — when the stored value was empty (`''`) — the default marker. | An empty / blanked marker accepted `admin`. | Two functions: `verifyStored` (never falls back) and `verifyDefault` (called only from the `confirmed-default` branch). |
+| 3 | `resolution()` treated *"outcome `applied` and no marker on this device"* as *"explicit reset"*. | A marker that vanished after a central **verifier** was applied (cleared / damaged storage) enabled `admin` until the next throttled read (4 s). | The observation records `reset` (is the applied central record a reset?). No marker + applied verifier = inconsistent ⇒ default refused, verifier applied again **at once** (throttle bypassed). |
+| 4 | An authoritative **"absent"** answer enabled the default even on a device that had applied a central record before. | A deleted / rolled-back / force-pushed record looked like an administrator reset. | A device that knew a central record (`meta.revision > 0`) refuses the default when the record vanishes; an administrator must publish a reset (or restore the record). A device that never knew one still gets the first-time default. |
+| 5 | A device without a verifier but with a higher local revision / pending flag kept the default against a valid non-default central record. | A "pending reset" outranked the central password. | A device without a verifier always applies a valid non-default central record. |
+| 6 | `doPush` published whatever the device held — including a **reset record** when the marker was missing. | A missing marker could become a central "reset to default" for every device. | Synchronization never publishes a reset; only `reset()` does, after the administrator authenticated and the central state was read. |
+
+Everything else of the V17.6.8 / V17.6.9 design is preserved unchanged: the state model `loading | central-applied | local-fallback | confirmed-default | error`, publish-first with read-back, revision / optimistic concurrency, stale-session re-lock, one-time unlock ticket, `sqla.pwvault.v15`, `sqla.adminpwmeta.v1765`, the record format and path.
+
+## Pipeline / tests
+* `npm run build:test` (new) builds `test-dist/index.html` with `src/testHooks.ts`; `scripts/serve.mjs` (a development server) answers `?e2e=1` with it. The Chromium suites load that build; the **production** artifact is validated separately and in a new suite served as **plain static files** (`scripts/browser_test_v177.py`).
+* `check:stale` knows the test-only module (`TEST_ONLY` in `scripts/source-set.mjs`); `verify:artifact` checks the production pages for hook traces and function scope; `verify-no-npm.mjs` and `clean` know the new folders.
+* New `test/v177.test.mjs` (current-version assertions, the six weaknesses, one-authentication-service structure, no hook in production, no Node/npm API in the application). Historical tests that pinned `17.6` as the latest shape were relaxed to the shape `17.x.y`; the V17.6.9 tests that asserted the old function name / the main.ts hook were updated to the V17.7 locations.
+* Version stamps: `17.6.9 → 17.7.0` (package.json, `APP_VERSION`, writer label, NLU label, About, `version.json`, README, docs, tests).
+
+## Not changed
+SQL generation, Change Request SQL, Manual Selectors, CASE/DECODE, filters, Advanced Options, offline NLU, self-learning, Admin Query Library, AI/LLM, schema synchronization, Pull Schema, Secret Vault, knowledge synchronization, admin messages, repository / broker / device-flow behaviour, published-data retrieval, navbar Sync, deployment targets, the style sheet and every page module except the version history on the About page. TypeScript 5.8.3 and strict mode unchanged; no `any`, `@ts-nocheck` or `@ts-ignore` added.

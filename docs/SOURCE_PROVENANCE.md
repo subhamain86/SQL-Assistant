@@ -1,13 +1,46 @@
+### Source provenance (V17.6.7)
+
+#### Baseline used
+* **`SQL-Assistant-V17.6.6.zip`** — the attachment; the sole implementation baseline and last-known-good UI (the SharePoint links point to the same file). Extracted, built and tested unchanged first (216/216 Node tests) before any change. Nothing was copied from any other version.
+
+#### What could NOT be accessed or done (stated, not simulated)
+* **No real GitHub, GitHub Actions run, Azure broker or deployed site.** Repositories were emulated: an in-memory repository (Node); `test/support/github-stub.mjs` (a private repository, tokens, the real GitHub client); the **real** repository access service (`server/repo-broker.mjs`, separate process); the **real** publication script and a real static server (published copy). The user's actual deployment path (token / central access / published copy / file opened from disk) is **not known** to the build environment — see "Still to check" in `TEST_REPORT_V17.6.7.md`.
+* The SharePoint folders were not browsable; `package-lock.json` is still absent (registry blocked).
+
+#### Interpretation notes for V17.6.7
+* The request says the default keeps being accepted "on a newly installed device". The V17.6.6 code already rejected it at the moment of a check wherever the repository was reachable; what remained reproducible is the **Settings session opened with the default before the repository was reachable** (and the misleading lock-screen hint). That is what was fixed; where the repository is not reachable at all the default stays valid by design (V17.6.2 contract) and is now reported as unverified.
+* "Temporary validation" = the in-memory, secret-free authentication trace (`adminAuth.diagnostics()`, e2e only) and the automated tests; no logging to the console or to storage was added.
+
+---
+
+### Source provenance (V17.6.6)
+
+#### Baseline used
+* **`SQL-Assistant-V17.6.5.zip`** — the attachment; the sole implementation baseline and last-known-good UI (the SharePoint links point to the same file). Extracted, built and tested unchanged first (195/195 Node tests) before any change. Nothing was copied from any other version.
+
+#### What could NOT be accessed or done (stated, not simulated)
+* **No real GitHub, GitHub Actions run, Azure broker or deployed site.** The repository is an in-memory emulation (Node) or the **real publication script + static server** (browser test: a new device reads the published copy exactly as in production). Whether the real *Publish SQL Assistant data* workflow has published the record, and a device's real GitHub sign-in, are **unverified**.
+* The SharePoint folders were not browsable; `package-lock.json` is still absent (registry blocked).
+
+---
+
 ### Source provenance (V17.6.5)
 
 #### Baseline used
-* **`SQL-Assistant-V17.6.4.zip`** — the attachment; named by the request as the implementation baseline and the last-known-good UI. Extracted, then lint, the production build, `npm run security`, all **172** Node tests and all **11 browser suites (795 checks, Chromium)** were run **unchanged** before any change. It is returned unchanged as `SQL-Assistant-V17.6.4-rollback.zip`.
-* Nothing was copied from any older version; the V17.6.2 broker, the V17.6.3 published data and vault and the V17.6.4 workflow fixes are kept and extended.
-* The two SharePoint folder links (all TypeScript versions, all project versions) were **not browsed**; the attached V17.6.4 archive was the only source used.
+* **`SQL-Assistant-V17.6.4.zip`** — the attachment (229 files); named by the request as the baseline and last-known-good UI (the SharePoint links point to the same file). Extracted, type-checked, built and tested unchanged first (172/172 Node tests) before any change. Nothing was copied from any other version.
 
-#### What could NOT be done (stated, not simulated)
-* No real GitHub, GitHub Actions run, zone platform or broker host was reachable: they are emulated (see `TEST_REPORT_V17.6.5.md`, "Verified only against stubs").
-* `package-lock.json` still cannot be generated here (npm registry blocked); TypeScript 5.8.3 (the pinned version) was used from a local install.
+#### What could NOT be accessed or done (stated, not simulated)
+* **No real GitHub, GitHub Actions run, Azure broker or site** was reachable. The repository is an in-memory emulation (Node tests; one live shared repository for several Chromium "devices" in the browser test). Whether the central file can be written by your real repository access service / token, and published by the real *Publish SQL Assistant data* workflow, is **unverified** — see "Still to check" in `TEST_REPORT_V17.6.5.md`.
+* The SharePoint folders (TypeScript / Raw archives) were not browsable; only the attached ZIP was used.
+* The npm registry is blocked; TypeScript 5.8.3 (the pinned version, pre-installed) was run directly. `package-lock.json` is still absent.
+
+#### Interpretation notes for V17.6.5
+* **"Maintain a single authoritative encrypted Admin Password"** = one record in the repository holding the *existing encrypted verification marker* (not the password, not a reversible copy). That keeps "never store or expose the password in plaintext" and "preserve existing encryption" literally true.
+* **"Reset … to default" while the reset must be central:** a reset is a record with `isDefault: true`. Deleting the repository file is deliberately not a reset (it would let a stale publication downgrade devices); `npm run reset-admin-password` is the recovery path.
+* **"Do not modify any other security settings":** the reset touches only the marker and the new synchronization meta; the browser test proves the rest of browser storage is byte-identical. The Danger Zone's existing *Reset password* button was routed through the same central reset (otherwise it would create exactly the device-specific divergence the request forbids).
+* **Synchronization is not gated by the "Sync Source" selection** (default GitHub): whenever a repository connection exists the Admin Password converges on the central record.
+
+---
 
 ### Source provenance (V17.6.4)
 

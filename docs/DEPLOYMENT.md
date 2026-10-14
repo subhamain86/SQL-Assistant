@@ -1,16 +1,45 @@
+## Deployment and upgrade (V17.6.9)
+
+No new feature, no new endpoint, no new storage key. The application files are the same shape as V17.6.8 (`release/` → GitHub Pages / IIS / Azure Static Web Apps).
+
+**Pipeline** (`.github/workflows/deploy-pages.yml`): checkout → setup Node → install (project-pinned TypeScript **5.8.3**, checked) → typecheck → lint → **repository hygiene** (`npm run check:stale`: orphaned / stale files, reported by name) → production build → security scan (source **and every generated output**) → **artifact verification** (`npm run verify:artifact`) → tests → final build → publish → verify the published artifact → **deploy**. The `deploy` job has `needs: build` and runs only when the whole build job (including the tests) succeeded; no step uses `continue-on-error`; a failing run writes a GitHub Actions error annotation and a job summary naming the failing stage.
+
+**Publication artifact** (`release/`): `index.html`, `404.html` (refresh / deep-link fallback), `.nojekyll`, `version.json`, `staticwebapp.config.json` (Azure Static Web Apps: navigation fallback → `/index.html`), `web.config` (IIS: 404 → `/index.html`) and, when the repository variable `SQLA_BROKER_URL` is set, `sql-assistant-data/repo-broker.config.json` (a public address only). The root `index.html`, `dist/index.html`, `release/index.html` and `release/404.html` are byte-identical (one build). The page is self-contained (inline script with a matching CSP hash, no module / external script / external stylesheet, no absolute `/…` asset path), so it works under any base path. The publishing-zone repository `basware/dh-zone` (`bw-publish-zone`) could **not** be read from the build environment; nothing in this release claims details of that target. The release is a static, relative, self-contained folder; whether `bw-publish-zone` accepts that structure has to be confirmed against the zone's own documentation by the person who owns it.
+
+### Repository access service deployment (`deploy-broker.yml`) — required configuration
+| Key | Kind | Where | Purpose |
+|---|---|---|---|
+| `AZURE_CREDENTIALS` | **secret** | repository secret, or a secret of the environment `central-repository-access` | service-principal JSON for `azure/login`. **Required**: without it no Azure deployment can happen and none is attempted. |
+| `SQLA_GITHUB_PAT` | secret | Actions secrets | the central PAT (one repository, Contents: Read and write) |
+| `SQLA_SESSION_SECRET` | secret | Actions secrets | ≥ 32 random characters |
+| `SQLA_BROKER_APP_NAME` | variable | Actions variables | Azure App Service name |
+| `SQLA_GITHUB_CLIENT_ID` | variable | Actions variables | public client ID of the GitHub App (device flow) |
+| `SQLA_ALLOWED_ORIGINS` | variable | Actions variables | origin that serves SQL Assistant |
+
+The preflight step reports **every** missing key at once, by name only, e.g. `Deployment blocked: AZURE_CREDENTIALS is not configured.` (stage, component, retry rule and where to configure it are in the annotation) and stops the job before any Azure step. Azure authentication is never bypassed and no secret value is printed. This must be configured in the target repository / environment before a real Azure broker deployment can succeed.
+
+### PAT verification failure (HTTP 403)
+`verify-repo-pat.yml` / `scripts/verify-pat.mjs` report `Repository credential verification failed with HTTP 403. Review the enterprise authorization and Conditional Access diagnostic.` plus GitHub's own message, safe upstream identifiers (error code, trace / correlation id when supplied) and the *possible* causes, explicitly marked as not verified. A 403 is never a successful verification and the authorization is never weakened. If an organization policy (for example Conditional Access) keeps blocking the token, an administrator has to change the policy or authorization — see `docs/PUBLISHED_DATA.md` → "Troubleshooting a 403". Reading and publishing the data folder does **not** need this PAT (`publish-data.yml`, built-in `GITHUB_TOKEN`).
+
+### Upgrading from V17.6.8
+Replace the application files (or deploy `release/`). Browser storage, the Secret Vault, repository configuration and the central Admin Password record are unchanged and compatible. **Then remove the leftovers of earlier versions from the repository** (copying a package over a repository never deletes them):
+```
+node scripts/check-stale.mjs                 # lists them by name (CI runs this and fails while any exist)
+node scripts/prune-orphans.mjs --delete      # the unreferenced src/ files
+node scripts/prune-stale.mjs --delete        # the reviewed list in scripts/stale-files.json
+git add -A && git commit -m "Remove stale files of earlier versions"
+```
+Rollback to V17.6.8: see `docs/ROLLBACK_V17.6.9.md`.
+
 ## Deployment and upgrade (V17.6.5)
 
-* **Upgrading from V17.6.4:** replace the app (`SQL-Assistant-V17.6.5.zip`) — nothing to migrate or re-enter. No existing storage key, file format or encryption parameter changes (the device's own Admin Password marker `sqla.pwvault.v15` is never touched). **Until a central record exists the app behaves exactly as V17.6.4** (local password, default `admin`). New browser-storage keys: `sqla.credrec.v1765` (cached central record), `sqla.credmeta.v1765`, `sqla.pwlock.v1765` (lock-out counter). None holds a password.
-* **Zone platform:** keep the build compatible with the platform — `dist/**` is republished on a push to `main`. **Do not rely on GitHub Pages.** `npm run build` keeps `dist/sql-assistant-data/**` (the published copy is not build output). Commit `dist/` after a build as before.
-* **First use:** open **Settings → Security**, enter the current password, choose a new one (at least 10 characters) and select **Save (all devices)**. The first Save creates `sql-assistant-data/security/admin-credential.json` (through the repository access service or a device token); the **publish-data.yml** workflow (`.github/workflows/publish-data.yml`) then publishes it next to the app so devices with no token can verify. It runs on every push that touches `sql-assistant-data/**` (including `security/**`) and its last step fails, by name, if the record is not published. If the site is not republished by a push event, set the variable `SQLA_SITE_PUBLISH_WORKFLOW` (see the workflow header).
-* **Branch protection:** Save and Reset write directly to `main`. If direct pushes are forbidden the write fails and the app names the step; let the repository access service's PAT (or the GitHub App) bypass the rule for `sql-assistant-data/security/**`, or do not require pull requests for that path.
-* **Recommended once:** branch protection on `main` and a `CODEOWNERS` rule `sql-assistant-data/security/** @<owners-team>` (see `SECURITY.md`).
-* **Repository access service (V17.6.2 broker):** redeploy `server/repo-broker.mjs` (the workflow *Deploy the repository access service* does it on a push to `server/**` once `SQLA_BROKER_APP_NAME` exists). Without the new broker everything still works, but the server-side check of the credential record is missing. Nothing else changes (no new setting, secret or variable).
-* **Rollback — either:**
-  1. **publish V17.6.4 again** (`SQL-Assistant-V17.6.4-rollback.zip`): it ignores the central record; every device then uses its own local password (V17.6.4 behaviour); **or**
-  2. **delete `sql-assistant-data/security/*`** from the repository (the next publication removes the published copy): every device that reads a fresh copy or the publication drops the central record and uses its local password again. Devices that cannot reach any source keep their cached record until they can.
-  A device that never had a local password falls back to the default `admin` in both cases — set a local one first if that matters (Settings → Security → Change Password while no central record exists).
-* **Forgotten password:** Settings → Security → **Reset to default**, leave the password empty and sign in to GitHub with an account that has **write** access (or use the current password). Then unlock with `admin` and Save a new password at once.
+* **Upgrade V17.6.4 → V17.6.5:** deploy the new `release/` exactly as before (`deploy-pages.yml` is unchanged). No repository setting, secret, variable, workflow or configuration file changes.
+* **Admin Password after the upgrade:** the first device that has a custom password and a repository connection publishes it (`sql-assistant-data/security/admin-password.json`, revision 1, encrypted marker only); every other device applies it at its next synchronization or at its next unlock attempt. With *Publish SQL Assistant data* enabled, devices that read the published copy see the file after the next publication; devices **without a write credential** cannot publish a change (they say so and keep it pending) — change the password on a device that can write (token, or central access service).
+* **Check after deployment (about 5 minutes):** Device 1 → Settings → Security → *Central synchronization* shows *synchronized (revision N)*; the repository contains `sql-assistant-data/security/admin-password.json` with no readable password; on Device 2 the same password unlocks Settings. Do **not** test the reset on production unless intended — it resets the password on every device.
+* **Forgotten password:** `npm run reset-admin-password` in a clone, commit, push (see `docs/ADMIN_PASSWORD.md`).
+* **Rollback to V17.6.4:** redeploy the V17.6.4 package; nothing to undo. The local marker keeps its V17.6.4 format and the last synchronized password; the new file is ignored.
+
+---
 
 ## Deployment and upgrade (V17.6.3)
 
@@ -103,3 +132,9 @@ Passphrase (pre-filled with the default, editable) → **Retrieve from Repositor
 * **Replace every older copy of the app** — V17.0 and earlier publish schemas without validation.
 
 SharePoint and OneDrive usually *download* `.html` files instead of displaying them; use them to distribute the file, not to host it.
+
+
+## V17.7 — production build vs. browser-test build
+* `npm run build` produces the deployable artifacts (`dist/index.html`, `index.html`, `release/**`). They contain **no** browser-test hook; `npm run verify:artifact` fails if one appears.
+* `npm run build:test` produces `test-dist/index.html` for the Chromium suites only (`src/testHooks.ts`, `?e2e=1`). **Never deploy `test-dist/`.** It is not part of `release/`, and the workflows do not build it.
+* The Admin Password flow needs no Node.js / npm on any device (see `docs/ADMIN_PASSWORD.md`, "No NPM at runtime"); the Pages / IIS / Static Web Apps / publishing-zone host only serves static files.

@@ -79,7 +79,3 @@ Never paste the token or this output (if it contains the token) into a chat or t
 | *This device reads the published copy and holds no token, so it cannot publish* | writing needs a token (Set Token, restore the central vault, or a clone) |
 | *…protected by its own Vault Sync Passphrase* | enter it in *Pull Secret Vault to Repository* |
 In every case the local schema, vault and settings are left exactly as they were.
-
-## V17.6.5 — the central Admin Password record is published too
-`sql-assistant-data/security/admin-credential.json` (the encrypted verification marker of the Admin Password in a versioned envelope — never the password) is mirrored like any other `*.json` file, so a device with **no token** verifies the Admin Password against it. Only a **valid** record is published (`scripts/publish-data.mjs` applies the same strict check as the browser and the broker); an invalid one never replaces the published copy, whose last good version stays listed in `published.json`. Deleting the file from the repository removes it from the publication and every device returns to its local password. The last step of `publish-data.yml` fails by name when the record exists in the repository but is not published. See `SECURITY.md` (V17.6.5) for the limitations.
-
