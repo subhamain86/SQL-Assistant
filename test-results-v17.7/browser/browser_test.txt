@@ -1,0 +1,58 @@
+PASS Build output exists: dist/index.html
+PASS Build output exists: index.html
+PASS Build output exists: release/index.html
+PASS Build output exists: release/404.html
+PASS Build output exists: release/.nojekyll
+PASS Entry page is self-contained (no src/main.ts, no module script, no CDN)
+PASS Root cause reproduced: V17.2.1 root index.html (src/main.ts) is blank
+PASS GitHub Pages sub-path /SQL-Assistant/: index loads with the V17.2 UI
+PASS GitHub Pages sub-path /SQL-Assistant/: every route renders and survives refresh
+PASS project root via http: index loads with the V17.2 UI
+PASS project root via http: every route renders and survives refresh
+PASS dist/index.html via file://: index loads with the V17.2 UI
+PASS dist/index.html via file://: every route renders and survives refresh
+PASS root index.html via file://: index loads with the V17.2 UI
+PASS root index.html via file://: every route renders and survives refresh
+PASS Current version in footer; no old product name
+PASS Hamburger navigation works
+PASS V17.2 layout: two equal top cards (Describe / Generated SQL)
+PASS Offline NLU: aggregation, grouping, date range, limit
+PASS Offline NLU badge + Active Schema audit line
+PASS Manual Selectors: table + column
+PASS Advanced Options: DISTINCT + limit
+PASS Generated SQL validates
+PASS Query Builder for CR
+PASS Settings locked: password screen shown, tabs hidden
+PASS Wrong password rejected; Settings stay locked
+PASS Default password unlocks; V17.2 Settings tabs
+PASS Default-password warning shown
+PASS Navbar lock badge shows unlocked
+PASS Change password: mismatch rejected
+PASS Change password: wrong current password rejected
+PASS Change password: success
+PASS Password never stored in plain text
+PASS Lock Settings returns to the lock screen
+PASS Old default password no longer works
+PASS Settings locked again after restart
+PASS New password unlocks after restart
+PASS Row selection identified
+PASS Save disabled until a change
+PASS Row edit saved; other rows unchanged
+PASS Row delete: wrong password refused
+PASS Row delete with the Admin Password removes only that row
+PASS Sync #1: legacy AP schema 77 migrated, nothing rejected
+PASS Republished: writer = current version, all 437 decode entries
+PASS Sync #2: success, no re-migration
+PASS Sync #3: success, no re-migration
+PASS Restart + sync: still clean
+PASS Token masked; not in browser storage
+PASS Push Secret Vault: encrypted, token not in repository
+PASS AI/LLM Model tab present (offline stays primary)
+PASS Danger Zone asks for the Admin Password
+PASS Danger Zone: wrong password refused
+PASS Reset Admin Password to default locks Settings
+PASS Default password works again after reset
+PASS Blocked storage: app still starts
+PASS No console errors or uncaught exceptions
+
+56/56 browser checks passed

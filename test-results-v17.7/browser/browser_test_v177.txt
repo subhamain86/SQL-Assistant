@@ -1,0 +1,30 @@
+PASS P1. The PRODUCTION page opened with ?e2e=1 exposes no test hook, no module registry, no global define, no Node globals
+PASS P2. The deployed page contains no hook identifier (__sqla, installTestHooks, testHooks, e2e)
+PASS P3. The page is byte-identical to dist/index.html (the artifact under test is the production build)
+PASS A0. Device A starts on the first-time default confirmed by the (empty) authoritative repository
+PASS A1. A saved a non-default password; the central record (revision 1, encrypted verifier only, no plaintext) was published and read back
+PASS A2. The real publication script published the central record and its SHA-256 marker
+PASS B0. Device B is a clean context served the PRODUCTION page: no test hook (typeof __sqla)
+PASS B1. Clean device, central record published: 'admin' is REJECTED and Settings stay locked
+PASS B2. The central verifier was retrieved from the published copy and applied (marker = central verifier, revision 1)
+PASS B3. The centralized password is ACCEPTED on the clean device
+PASS B4. NO NPM / NODE: the device asked a plain static file server for static files only (index page + sql-assistant-data/** published copy); no node_modules, no package, no API, no external host
+PASS B5. The page itself needs no Node.js: no require / process / module in the page, no dev server (served by Python http.server)
+PASS B6. A second clean device whose FIRST attempt is 'admin': rejected; the central password then opens Settings
+PASS B7. The lock screen never claims that 'admin' is the password while a central password is in force
+PASS C0. B (still open) is authenticated with the old central password
+PASS C1. A changed the password: revision 2 published and read back; the verifier differs
+PASS C2. The Sync button on B applied revision 2 and the stale Admin session was invalidated: Settings are LOCKED again (the old authorization is not left in force)
+PASS C3. B's marker is now the revision-2 verifier
+PASS C4. After the remote change: the PREVIOUS password is rejected, 'admin' remains rejected, the NEW password works
+PASS D-norecord. published copy lists NO Admin Password record (central status unknown on this device): 'admin' REJECTED
+PASS D-tampered. central record altered after publication (hash mismatch → unavailable): 'admin' REJECTED
+PASS D-invalid. central record INVALID: 'admin' REJECTED
+PASS D-down. host unreachable after the page was delivered (network request failed): 'admin' REJECTED
+PASS D-central. central record available (CP1 was replaced by revision 2): 'admin' REJECTED; central password rejected
+PASS D-reset. central record is an EXPLICIT reset to the default: 'admin' ACCEPTED (explicit central reset)
+PASS E0. Device E adopted the central verifier from the published copy
+PASS E1. Central source unavailable on reload: the compatible LOCAL verifier still opens Settings, 'admin' does NOT
+PASS No unexpected browser console errors or page errors
+
+28/28 V17.7 browser checks passed

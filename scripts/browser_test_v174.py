@@ -29,8 +29,12 @@ def watch(pg, tag):
 def ready(pg): pg.wait_for_function("() => document.documentElement.getAttribute('data-sqla-ready') === '1'", timeout=20000); pg.wait_for_timeout(200)
 def go(pg, route): pg.evaluate(f"location.hash = '#{route}'"); pg.wait_for_timeout(300)
 def sql(pg): return pg.inner_text("#sqlBlockMount .sql-output")
+def confirm_default(pg):  # V17.6.9: a device with NO repository connection never accepts the default; these suites test the first-time default, which the AUTHORITATIVE (empty) repository confirms
+    try:
+        if pg.evaluate("() => window.__sqla.adminAuth.diagnostics().source") == "none": pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120)
+    except Exception: pass
 def unlock(pg, pw="admin"):
-    go(pg, "settings")
+    confirm_default(pg); go(pg, "settings")
     if pg.locator("#settingsPwInput").count(): pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(1000)
 def stab(pg, name): pg.click(f'.tab-btn:has-text("{name}")'); pg.wait_for_timeout(300)
 def btab(pg, which): pg.click(f'[data-tour="tab-{which}"]'); pg.wait_for_timeout(250)
@@ -314,7 +318,7 @@ def ai_and_rest(b, url, pages_root):
 
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"
     try:

@@ -1,0 +1,37 @@
+PASS The production bundle contains no credential-looking string
+PASS Identity: footer 'Version <current>'; About lists the current version first, then 17.6.6, 17.6.5, 17.6.4; page title unchanged
+PASS Clean installation: lock screen offers the default 'admin' hint; nothing in storage about the Admin Password
+PASS Security page: Change Admin Password and Session panels are unchanged; the status line and the new reset panel are added
+PASS Clean installation: the first synchronization publishes NOTHING (default password, no record) and does not claim the default is synchronized
+PASS Change on device A: success message says it was synchronized to the central repository
+PASS Central record: revision 1, encrypted verifier only, no plaintext password anywhere in the file
+PASS Status line shows the central revision
+PASS Device B (never synchronized): the lock screen asks for the central record at once and no longer claims that 'admin' is the password (V17.6.8)
+PASS Device B: a wrong password is rejected (after one central check)
+PASS Device B: the NEW password unlocks Settings at once (central record fetched at the unlock check)
+PASS Device B: its marker is the central one (V17.6.4 key and format: salt / iv / ciphertext) and 'admin' no longer works there
+PASS No plaintext password in either device's browser storage
+PASS Reset: a confirmation dialog opens first and explains: default 'admin', every device, insecure, change immediately, no other setting changed
+PASS Reset: nothing has happened yet (marker and central record unchanged)
+PASS Reset: Cancel closes the dialog and changes nothing
+PASS Reset (confirmed): the reset is published to the central repository immediately (revision 2, isDefault, no verifier)
+PASS Reset: Settings are locked again and the dialog is closed
+PASS Reset: a warning says the default password is insecure and must be changed immediately, and that the reset was published
+PASS Reset: this device's marker is removed (V17.6.4 representation of the default) and 'admin' unlocks
+PASS Reset: 'admin' unlocks Settings on this device
+PASS Reset: no other storage entry (repository configuration, Secret Vault, synchronization, application settings, device tag) was created or modified
+PASS Device A (stale, still held the old password) applies the reset at its next synchronization: 'admin' unlocks, the old password does not
+PASS Change after a reset: revision continues (3) and is published
+PASS Danger Zone → Reset Admin Password to default: also central (revision 4, default), Settings locked, warning shown
+PASS Upgrade: a V17.6.4 password (custom marker, no new meta) still unlocks after the upgrade
+PASS Upgrade: the first upgraded device publishes its existing password as revision 1 (encrypted marker only)
+PASS Upgrade: a fresh device B accepts the central password
+PASS Upgrade: device C had a DIFFERENT V17.6.4 password — it is replaced by the central one and C is told
+PASS Upgrade: C's own old password no longer works (no device-specific divergence)
+PASS Rollback format: the synchronized marker is byte-compatible with V17.6.4 (salt / iv / ciphertext under sqla.pwvault.v15)
+PASS Read-only repository (V17.6.8: publish first): the change is REFUSED with the reason — nothing changes on this device, nothing is published
+PASS Once publishing is possible the same change is published (revision 1) and applied
+PASS No repository connection: the change still works locally and says so; status shows the missing connection
+PASS No browser console errors or page errors
+
+35/35 V17.6.5 browser checks passed

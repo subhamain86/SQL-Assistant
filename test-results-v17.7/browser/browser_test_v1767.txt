@@ -1,0 +1,35 @@
+PASS The production bundle contains no credential-looking string and none of the test passwords
+PASS A. Device A: Settings → Security: 'admin' → MyCentralPassword saved and synchronized (message says so)
+PASS A. The repository contains the updated centralized Admin Password record (revision 1, encrypted verifier, no plaintext, no password in the commit)
+PASS B1. Device B is a clean installation: no local Admin Password marker, no synchronization record
+PASS B1. The lock screen no longer tells the user that 'admin' is the password (the central record was found; the hint was wrong)
+PASS B1. MyCentralPassword unlocks Settings on the new device
+PASS B1. 'admin' is rejected on the new device (Settings stay locked)
+PASS B1. Device B adopted the central encrypted verifier byte-for-byte (marker == central verifier, revision recorded)
+PASS B1. Diagnostics (from opening Settings on): central record downloaded → loaded → authentication; the default basis never occurs; the default was rejected
+PASS B1. After a refresh: the central password still unlocks and 'admin' is still rejected
+PASS B1. No plaintext password in Device B's browser storage or diagnostics
+PASS B2. V17.6.9 — with NO repository connection yet the default is NOT accepted (a new device is not an uninitialized installation): Settings stay locked and the message names the Sync button
+PASS B2. Diagnostics: no session was opened (basis none); the bootstrap state is 'error'
+PASS B2. Once the repository is reachable the central password is applied; Settings are still locked; 'admin' is rejected
+PASS B2. MyCentralPassword unlocks Settings
+PASS B2. 'Sync with GitHub Now' keeps working after the central password was applied (status: synchronized)
+PASS B3. (set-up) Device B3 unlocks with MyCentralPassword
+PASS A. A second change (→ MyCentralPassword-v2) is synchronized; the repository record is revision 2
+PASS B3. 'Sync with GitHub Now' on Device B refreshes the Admin Password record (revision 2)
+PASS B3. The changed password is valid on Device B after synchronization; the previous one is not
+PASS B4. Invalid central record (V17.6.8): the default is NOT accepted, Settings stay locked, nothing is applied or overwritten, and the message says the record is not valid and names the Sync button
+PASS B4. Normal retry: once the record is valid again the Sync button applies it; the central password unlocks and 'admin' is rejected
+PASS P1. Published copy — Device B (clean install, no credential): the START-UP synchronization downloaded and applied the central verifier before anyone opened Settings
+PASS P1. 'admin' is rejected and MyCentralPassword unlocks Settings on the new device
+PASS P2. V17.6.9 — a publication exists but lists no central record: a published copy can be OLDER than the repository, so the default is NOT accepted (it needs an explicit reset record or the authoritative repository); Settings stay locked
+PASS P2. The central record appears later (publication): the next Sync applies it; 'admin' is rejected and the central password unlocks
+PASS K1. Central access — Device A (signed in): the change is synchronized through the repository access service; the repository record exists, encrypted, revision 1
+PASS K2. Central access — Device B (clean, no GitHub session): the Settings unlock starts the existing GitHub sign-in FIRST; once the central record is readable 'admin' is REJECTED (V17.6.8: no provisional default on a managed device)
+PASS K3. Central access — MyCentralPassword unlocks Settings on Device B and 'admin' stays rejected
+PASS C1. (set-up) marker and meta created (baseline build not found — current build used)
+PASS C1. An existing V17.6.6 installation after the upgrade: marker unchanged byte-for-byte, its password unlocks, 'admin' is rejected, nothing re-locks or re-asks
+PASS Hygiene: the test password appears in no request URL or body sent by any page
+PASS No browser console errors or page errors
+
+33/33 V17.6.7 browser checks passed

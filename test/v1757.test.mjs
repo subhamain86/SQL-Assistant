@@ -10,6 +10,7 @@ const ok = (canWrite = true) => async () => ({ state: 'ok', canWrite, message: '
 
 test('V17.5.7 (kept) the application version is stamped consistently: package.json = APP_VERSION', () => { assert.equal(F.APP_VERSION, JSON.parse(readFileSync(new URL('../package.json', import.meta.url))).version); });
 
+{ const PW = await imp('services/passwordService.js'); /* V17.6.9: the LOCAL primitives are exercised here — a stub authority that has confirmed the default (the default only while no marker exists) */ PW.setPasswordAuthority({ resolve: async () => ({ state: 'confirmed-default', defaultAllowed: PW.isUsingDefaultPassword(), reason: '' }) }); }
 test('V17.5.7 centralized repository configuration: defaults, validation, authorization in the service, persistence, tamper handling', async () => {
   assert.deepEqual(RC.DEFAULT_REPOSITORY, { owner: 'basware', repo: 'sk-ap-sql-assistant', branch: 'main', schemaPath: 'sql-assistant-data/schemas/registry.json' }); assert.deepEqual(RC.loadRepositoryConfig(memoryStore()), { config: RC.DEFAULT_REPOSITORY, custom: false, problem: null });
   const bad = (over, re) => { const p = RC.validateRepositoryConfig({ ...GOOD, ...over }); assert.ok(p.some((x) => re.test(x)), `${JSON.stringify(over)} → ${p.join(' | ')}`); };

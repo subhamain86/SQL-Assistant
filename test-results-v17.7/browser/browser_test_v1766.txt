@@ -1,0 +1,36 @@
+PASS 13. Generated-bundle secret scan: no credential-looking string, none of the synthetic test passwords
+PASS 1. A centralized non-default Admin Password is saved (revision 1, encrypted verifier, no plaintext in the record)
+PASS 2. A clean new device has NO local Admin Password marker and no synchronization record
+PASS Race: the unlock check is waiting for the central record (it did not accept the default while the start-up synchronization was still running)
+PASS 5. The default 'admin' is REJECTED on the new device once the central record has arrived (Settings stay locked, no hint about the password)
+PASS 3. The new device retrieved the centralized encrypted verifier (marker applied, V17.6.5 format salt / iv / ciphertext, central revision recorded)
+PASS 4. The saved central password unlocks Admin mode on the new device
+PASS No plaintext password in the new device's browser storage; the central record is byte-identical to what was published
+PASS The saved password works after a refresh (marker kept, 'admin' still rejected)
+PASS New device #2: the central password works at the first attempt; the default does not
+PASS Manual sync test set-up: device M is unlocked with revision 1; revision 2 (a password change from another device) is published
+PASS 7. Manual 'Sync with GitHub Now' refreshes the Admin Password record (marker replaced, revision 2 recorded)
+PASS 8. The changed password is valid on the other device after synchronization; the previous one is not
+PASS The central record was not overwritten by the device (the published file is the one device A produced)
+PASS 9. Central data unreadable (valid JSON, not a record): V17.6.8 — the default is NOT accepted, Settings stay locked, no marker is created, nothing is claimed as synchronized
+PASS    … unreadable (valid JSON, not a record): an actionable message names the problem and the retry (the Sync button)
+PASS    … unreadable (valid JSON, not a record): Security → Central synchronization does not say 'synchronized'
+PASS 9. Central data unreadable (valid JSON, not a record): an existing device's valid local marker is not overwritten and its password still unlocks
+PASS    … unreadable (valid JSON, not a record): the published central file is untouched
+PASS 9. Central data invalid record (bad fields): V17.6.8 — the default is NOT accepted, Settings stay locked, no marker is created, nothing is claimed as synchronized
+PASS    … invalid record (bad fields): an actionable message names the problem and the retry (the Sync button)
+PASS    … invalid record (bad fields): Security → Central synchronization does not say 'synchronized'
+PASS 9. Central data invalid record (bad fields): an existing device's valid local marker is not overwritten and its password still unlocks
+PASS    … invalid record (bad fields): the published central file is untouched
+PASS 9. Central data no record published: V17.6.9 — the publication lists no record, but a published copy can be OLDER than the repository: the default is NOT accepted (it needs an explicit reset record or the authoritative repository), Settings stay locked, no marker is created, nothing is claimed as synchronized
+PASS    … no record published: Security → Central synchronization does not say 'synchronized'
+PASS    … no record published: the published central file is untouched
+PASS 10. (set-up) marker and meta created (baseline build not found — current build used)
+PASS 10. Existing V17.6.5 installation after the upgrade: marker and meta unchanged byte-for-byte, its password unlocks, the default 'admin' is rejected
+PASS Late connection: before any connection the device has no marker
+PASS Late connection: the connection itself causes no Admin Password request (Pull Schema / vault / sign-in contracts stay exact)
+PASS Late connection: at the next unlock the central record is asked first — 'admin' is rejected, the central password unlocks
+PASS Late connection: the central record was not overwritten (no write, same content)
+PASS No browser console errors or page errors
+
+34/34 V17.6.6 browser checks passed

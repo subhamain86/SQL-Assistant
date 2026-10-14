@@ -12,6 +12,7 @@ import browser_test_v1754 as T
 B = T.B
 from playwright.sync_api import sync_playwright
 ROOT = B.ROOT; PLAIN = B.PLAIN; ENC = B.ENC; TOK_A, TOK_B, TOK_BAD = B.TOK_A, B.TOK_B, B.TOK_BAD; DEFAULT_PASS = T.DEFAULT_PASS; VPATH = T.VPATH; PREFIX = T.REPO_PREFIX
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 check, go, unlock, stab, newdev, configure, section = B.check, B.go, B.unlock, B.stab, B.newdev, B.configure, B.section
 UNRELATED = T.UNRELATED; CUSTOM = "a-different-vault-passphrase-2027"
 VALUES = ["basware/sk-ap-sql-assistant", "main", "sql-assistant-data/schemas/registry.json"]
@@ -76,7 +77,7 @@ def cards_ui(b, url):
 def identity(b, url):
     ctx, pg = newdev(b, url, None, tag="id"); foot = pg.inner_text("footer"); title = pg.title(); ver = pg.evaluate("async () => (await (await fetch('version.json', { cache: 'no-store' })).json())")
     go(pg, "about"); about = pg.inner_text("main")
-    check("Identity: the application identifies itself as SQL Assistant V17.6.5 (title, footer, About, release metadata) and the name is unchanged", title == "SQL Assistant" and "Version 17.6.5" in foot and "17.6.5" in about and "SQL Assistant" in about and ver.get("version") == "17.6.5" and ver.get("name") == "SQL Assistant", (title, foot, ver))
+    check("Identity: the application identifies itself as SQL Assistant at the current version (title, footer, About, release metadata) and the name is unchanged", title == "SQL Assistant" and ("Version " + VERSION) in foot and VERSION in about and "SQL Assistant" in about and ver.get("version") == VERSION and ver.get("name") == "SQL Assistant", (title, foot, ver))
     check("Identity: the navbar still shows 'SQL Assistant' with the version and the existing controls", "SQL Assistant" in pg.inner_text("#mainNavbar") and pg.locator("#navToggle, #syncSourceBtn, #syncTimeBtn, #tourBtnNav").count() == 4)
     ctx.close()
 
@@ -221,7 +222,7 @@ def responsive(b, url):
 
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = B.free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"; st = {}
     try:

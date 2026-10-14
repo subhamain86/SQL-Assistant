@@ -27,7 +27,7 @@ const DONE = async (w, fn) => { try { await fn(w); } finally { await w.close(); 
 const sharedSession = { w: null, s: null };
 const getRW = async (w) => (await w.signIn(USER_RW)).session;
 
-test('V17.6.2 version is stamped everywhere (package.json = APP_VERSION = writer label)', () => { const pkg = JSON.parse(src('package.json')); assert.match(pkg.version, /^17\.6\.[2-9]$/, 'V17.6.2 or a later 17.6.x patch'); assert.equal(F.APP_VERSION, pkg.version); assert.equal(F.WRITER_LABEL, `SQL Assistant ${pkg.version}`); });
+test('V17.6.2 version is stamped everywhere (package.json = APP_VERSION = writer label)', () => { const pkg = JSON.parse(src('package.json')); assert.match(pkg.version, /^17\.(6\.[2-9]|[7-9]\.\d+)$/, 'V17.6.2 or a later 17.6.x patch'); assert.equal(F.APP_VERSION, pkg.version); assert.equal(F.WRITER_LABEL, `SQL Assistant ${pkg.version}`); });
 
 // ═════════════════════════════════ the broker (a real HTTP server; github.com is the stub) ═════════════════════════════════
 test('V17.6.2 broker refuses to start with unusable public settings, and only localhost may replace the GitHub addresses', () => {

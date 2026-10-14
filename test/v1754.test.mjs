@@ -33,5 +33,5 @@ test('V17.5.4 Pull Secret Vault only READS the repository: no write, no other fi
 });
 test('V17.5.4 removed UI leaves the shared logic intact: SyncService.push (options, read-back), publishPlan and the encrypted pull are still exported and working', async () => {
   const SY = await imp('v17/sync/syncService.js'); assert.equal(typeof SY.SyncService.prototype.push, 'function'); assert.equal(typeof SY.SyncService.prototype.publishPlan, 'function'); assert.equal(typeof SY.SyncService.prototype.previewEncryptedPull, 'function'); assert.equal(typeof SC.encryptSchemaRegistry, 'function');
-  assert.match(F.APP_VERSION, /^17\.[56]\.\d+$/);
+  assert.match(F.APP_VERSION, /^17\.\d+\.\d+$/);
 });

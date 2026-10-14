@@ -11,15 +11,12 @@
  *   · NEVER a deployment configuration file (`*.config.json`: repo-broker / vault-bootstrap) — those are written by an administrator's deploy step; copying them from repository data would let a repository
  *     write redirect the application's sign-in or broker address;
  *   · a file that contains a GitHub token / private key in readable form is NOT published and the run FAILS (an encrypted vault contains none);
- *   · V17.6.5: `security/admin-credential.json` (the central Admin Password record) IS published — devices with no token verify against it — but only when it is a valid encrypted-marker record
- *     (the same strict check as the browser and the broker). An invalid one is NOT published; a previously published copy stays in place and stays listed, so devices keep their last good record;
  *   · files that an earlier publication listed and the repository no longer has are removed from the site; files this script did not publish (configuration files) are never touched.
  *   usage: node scripts/publish-data.mjs --src . --dest dist --commit <sha> --repository owner/repo
  */
 import { readFileSync, writeFileSync, mkdirSync, readdirSync, lstatSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname, relative, resolve, sep } from 'node:path'; import { createHash } from 'node:crypto'; import { fileURLToPath } from 'node:url';
-import { validateAdminCredential } from '../server/repo-broker.mjs';
-export const ROOT = 'sql-assistant-data'; export const MARKER = `${ROOT}/published.json`; export const CREDENTIAL = `${ROOT}/security/admin-credential.json`; export const MAX_FILE = 8 * 1024 * 1024; export const MAX_FILES = 500;
+export const ROOT = 'sql-assistant-data'; export const MARKER = `${ROOT}/published.json`; export const MAX_FILE = 8 * 1024 * 1024; export const MAX_FILES = 500;
 const CRED = /\bgh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
 const okName = (p) => /^[A-Za-z0-9._\-/]+$/.test(p) && !p.includes('//') && !p.split('/').some((s) => s === '' || s === '.' || s === '..' || s.startsWith('.')) && /\.json$/i.test(p) && !/\.config\.json$/i.test(p) && p !== MARKER && p.length <= 255;
 const sha = (b) => createHash('sha256').update(b).digest('hex');
@@ -33,11 +30,9 @@ export function publish({ src, dest, commit, repository, now = () => new Date().
   const srcData = resolve(src, ROOT); if (!existsSync(srcData)) throw new Error(`There is no ${ROOT}/ folder in the repository to publish.`);
   if (!/^[0-9a-f]{7,64}$/.test(String(commit || ''))) throw new Error('--commit must be a commit id.'); if (!/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(String(repository || ''))) throw new Error('--repository must be owner/repo.');
   const rels = []; const skipped = []; walk(srcData, resolve(src), rels, skipped); rels.sort(); if (rels.length > MAX_FILES) throw new Error(`More than ${MAX_FILES} files — refusing to publish.`);
-  const files = {}; const blobs = new Map(); const prevPath = join(dest, MARKER); let prev = null; if (existsSync(prevPath)) { try { prev = JSON.parse(readFileSync(prevPath, 'utf8')); } catch { prev = null; } }
+  const files = {}; const blobs = new Map();
   for (const rel of rels) { const buf = readFileSync(join(resolve(src), rel)); const text = buf.toString('utf8'); if (CRED.test(text)) throw new Error(`${rel} contains a GitHub token or private key in readable form — NOT published. Remove it from the repository (and revoke the token); encrypted vault files contain none.`);
-    try { JSON.parse(text); } catch { skipped.push(`${rel}: not valid JSON`); continue; }
-    if (rel === CREDENTIAL) { const v = validateAdminCredential(text); if (!v.ok) { const kept = prev && prev.files && prev.files[rel]; const there = join(resolve(dest), rel); if (kept && existsSync(there) && sha(readFileSync(there)) === kept) { files[rel] = kept; skipped.push(`${rel}: not a valid Admin Password record (${v.reason}) — NOT published; the previously published copy stays`); } else skipped.push(`${rel}: not a valid Admin Password record (${v.reason}) — NOT published`); continue; } }
-    files[rel] = sha(buf); blobs.set(rel, buf); }
+    try { JSON.parse(text); } catch { skipped.push(`${rel}: not valid JSON`); continue; } files[rel] = sha(buf); blobs.set(rel, buf); }
   const outData = resolve(dest, ROOT); mkdirSync(outData, { recursive: true }); const old = join(dest, MARKER); let removed = [];
   if (existsSync(old)) { try { const prev = JSON.parse(readFileSync(old, 'utf8')); for (const p of Object.keys(prev.files || {})) if (!(p in files) && okName(p)) { rmSync(join(resolve(dest), p), { force: true }); removed.push(p); } } catch { /* a damaged old marker is simply replaced */ } }
   for (const [rel, buf] of blobs) { const to = join(resolve(dest), rel); mkdirSync(dirname(to), { recursive: true }); writeFileSync(to, buf); }

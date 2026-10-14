@@ -14,9 +14,10 @@ import browser_test_v1757 as V7
 T = V7.T; B = V7.B
 from playwright.sync_api import sync_playwright
 ROOT = B.ROOT; check, section, newdev, configure, go, stab, unlock = B.check, B.section, B.newdev, B.configure, B.go, B.stab, B.unlock
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 TOK_A, TOK_B, CUSTOM, DEFAULT_PASS, VPATH, PLAIN, DEF = V7.TOK_A, V7.TOK_B, V7.CUSTOM, V7.DEFAULT_PASS, V7.VPATH, B.PLAIN, V7.DEF
 SIGNIN = "ghu_" + "Si1Gn2In3To4Ke5Nn6Aa7Bb8Cc9Dd0Ee1Ff2"; SIGNIN_NA = "ghu_" + "Nn1Oo2Aa3Cc4Cc5Ee6Ss7Ss8Dd9Ee0Nn1Ii2"; SIGNIN_OLD = "ghu_" + "Oo1Ll2Dd3Ee4Xx5Pp6Ii7Rr8Ee9Dd0Tt1Oo2Kk3"
-CLIENT = "Iv1.0123456789abcdef"; USERCODE = "WDJB-MJHT"; SCHEMA_NAME = "Shared AP Schema"; HTML = (ROOT / "dist/index.html").read_text(encoding="utf-8")
+CLIENT = "Iv1.0123456789abcdef"; USERCODE = "WDJB-MJHT"; SCHEMA_NAME = "Shared AP Schema"; HTML = (ROOT / "test-dist/index.html").read_text(encoding="utf-8")
 CFG_PATH = "sql-assistant-data/vault-bootstrap.config.json"
 SECRETS = [TOK_A, TOK_B, SIGNIN, SIGNIN_NA, SIGNIN_OLD, CUSTOM]
 
@@ -50,7 +51,7 @@ class Hub61(V7.Hub7):
         return super().handler(route)
 
 def tmp_site(cfg):
-    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs")
+    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs"); (d / "test-dist").mkdir(exist_ok=True); shutil.copy(ROOT / "test-dist/index.html", d / "test-dist/index.html")  # V17.7: ?e2e=1 is served the browser-test build; the production page of release/ has no hook
     if cfg is not None: data = d / "release/sql-assistant-data"; data.mkdir(parents=True, exist_ok=True); (data / "vault-bootstrap.config.json").write_text(cfg if isinstance(cfg, str) else json.dumps(cfg), encoding="utf-8")
     return d
 def serve_site(d, port): p = subprocess.Popen(["node", str(d / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9); return p
@@ -176,7 +177,7 @@ def scenario_f(b, url, st, relay_calls):
     check("F: the card explains, in one added sentence, that the passphrase does not sign you in to a private repository and where sign-in / Import come in", "does not sign you in to a private repository" in pg.inner_text("[data-v1754-vault-card]") and pg.input_value("#vaultFilePathRO") == VPATH)
     go(pg, "settings"); unlock(pg); stab(pg, "Secret Vault"); tabs = pg.locator(".tab-btn").all_inner_texts()
     check("F: Settings → Secret Vault is untouched (Push Secret Vault to Repository is the only push) and the 8 Settings tabs are unchanged", pg.locator("#pushVaultBtn").count() == 1 and tabs == ["Security", "Manual Schema Update", "Schema Management", "Secret Vault", "Synchronization", "Admin Query Library", "AI/LLM Model", "Danger Zone"], tabs)
-    go(pg, "about"); about = pg.inner_text("main"); check("F: version 17.6.5 in the footer and the About page (first entry, 17.5.7 still listed)", "17.6.5" in pg.inner_text("footer") and about.index("17.6.5") < about.index("17.5.7"))
+    go(pg, "about"); about = pg.inner_text("main"); check("F: current version in the footer and the About page (first entry, 17.5.7 still listed)", VERSION in pg.inner_text("footer") and about.index(VERSION) < about.index("17.5.7"))
     ok = True
     for r in ["quickstart", "readonly", "cr", "schema-used", "schema-used/pull", "error-rectifier", "settings", "about"]: go(pg, r); ok = ok and pg.inner_text("main").strip() != ""
     check("F: every route renders", ok)
@@ -186,7 +187,7 @@ def scenario_f(b, url, st, relay_calls):
     check("F: 'Import encrypted file' (the route that needs no sign-in at all) is unchanged: decrypt, validate with GitHub, restore", "Secret Vault imported and validated" in r and TOK_A[-4:] in masked(p2) and not leaked(r, TOK_A, CUSTOM), r[:200]); ctx.close(); c2.close()
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     app_port, relay_port, stub_port, dead_port = B.free_port(), B.free_port(), B.free_port(), B.free_port()
     stub = ThreadingHTTPServer(("127.0.0.1", stub_port), GitHubDevice); threading.Thread(target=stub.serve_forever, daemon=True).start()
     relay = subprocess.Popen(["node", str(ROOT / "scripts/github-device-relay.mjs")], env={**os.environ, "PORT": str(relay_port), "HOST": "127.0.0.1", "ALLOWED_CLIENT_IDS": CLIENT, "ALLOWED_ORIGINS": f"http://127.0.0.1:{app_port}", "GITHUB_BASE": f"http://127.0.0.1:{stub_port}"}, stdout=subprocess.PIPE, stderr=subprocess.PIPE); time.sleep(1.0)

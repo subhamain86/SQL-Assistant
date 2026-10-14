@@ -1,0 +1,14 @@
+=== Summary ===
+PASS  clean
+PASS  toolchain
+PASS  typecheck
+PASS  lint
+PASS  check:stale
+PASS  build
+PASS  security
+PASS  verify:artifact
+PASS  test
+PASS  build:dev
+PASS  build:test
+PASS  build:final
+exit=0

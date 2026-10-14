@@ -1,0 +1,28 @@
+{
+ "_comment": "EXPLICIT fixtures for historical-compatibility tests (V17.6.9). These are the stamps that earlier releases WROTE into repository files; the tests feed them to the CURRENT code. They are never derived from package.json and are never rewritten when the application version changes.",
+ "schemaWriters": [
+  "SQL Assistant 17.1.0",
+  "SQL Assistant 17.2",
+  "SQL Assistant 17.2.1",
+  "SQL Assistant 17.3.0",
+  "SQL Assistant 17.4.0",
+  "SQL Assistant 17.5.0",
+  "SQL Assistant 17.5.6",
+  "SQL Assistant 17.5.8",
+  "SQL Assistant 17.6.0",
+  "SQL Assistant 17.6.5",
+  "SQL Assistant 17.6.8",
+  "SQL Assistant 17.6.9"
+ ],
+ "adminPasswordAppVersions": [
+  "17.6.5",
+  "17.6.6",
+  "17.6.7",
+  "17.6.8",
+  "17.6.9"
+ ],
+ "adminMessageAppVersions": [
+  "17.5.1",
+  "17.6.4"
+ ]
+}

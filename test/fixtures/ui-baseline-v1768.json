@@ -1,0 +1,38 @@
+{
+ "_comment": "SHA-256 of the V17.6.8 UI files (styles, icon, every src/ui module). 'unchanged' must stay byte-identical in V17.6.9; 'changed' lists the V17.6.8 hashes of the only two modules touched (authentication text / version history).",
+ "unchanged": {
+  "public/favicon.svg": "9fbda24ae78fb6ebc296a18f171af7d232cd5ce0d428794a3678d0a9649da5dd",
+  "public/styles.css": "7e95591628c5abf1c8dcf01e1772ba05d0c51a9edd06df98bf00833a645dc7af",
+  "src/ui/advancedCatalog.ts": "4678d3b926178cc04668a1a9fb98850fbedb5067d32e9e256af0555f4b28225e",
+  "src/ui/components/columnPicker.ts": "5e7b5af85cadc2bee0729b038fcd4f0ef1417137b64dbe4afb8112b4b223b189",
+  "src/ui/components/dataTable.ts": "8da1867d2fdcc60954af26e947eaf80dd52249632dd3fdcfbd425c6934442426",
+  "src/ui/components/filterBuilder.ts": "dc8a906bb8b9bf342515b43637e866c9afb33108122ad3ec9a7ea55361a54dc2",
+  "src/ui/components/icons.ts": "787e006d81a0532834e086da2df17dd1a5b2f456fb143b0a6d669919ddf263b1",
+  "src/ui/components/logoMark.ts": "3d860efc9dca2d2be5ebb51fbd3ef11df86d063504cd4a172287a5c102c55b5e",
+  "src/ui/components/manualExprBuilder.ts": "d0a29fbc25e6fe22148e806a7e91d9da564cfa57f298c4087c11ccb338be2bc9",
+  "src/ui/components/modal.ts": "c81b616469dd10eb45ecd13a782618d6ebc555be7e5b9016be761e386abda1dc",
+  "src/ui/components/navbar.ts": "c73638f182697e610a82a9d65466ae87b74b7827dedf10f9610d1f0eebf0bb33",
+  "src/ui/components/passphraseField.ts": "5e959ae77927afb42ce0464f17292d8e16590ef98a1fd6e2e4278ccd5f66c753",
+  "src/ui/components/sqlCodeBlock.ts": "07ba425f21e41a56d19efbe7beffdd8f5f068f2fc628066b8821f072bc77578e",
+  "src/ui/components/syncStatus.ts": "325dff572dcb46de267feea5cd0cceabf3428ae195d5e176c19f4a691eae4c0a",
+  "src/ui/components/tablePicker.ts": "d9ff7905d54d84fcdb70f24412ce1fa7760e9ae5110b86c5d8721fdf0292d4ef",
+  "src/ui/components/tabs.ts": "b03be73c7a545ee7dd940bd3f701e98532a7a578afd8a6d68af3bff1b39f0312",
+  "src/ui/components/toast.ts": "e7358771b533b02cb879d6e5e611e37b49375898b198055f28effbbee749d817",
+  "src/ui/components/tourOverlay.ts": "8ee66d180a311d5726838db3553df6a263d68491d7ff84e3ca8c5d8d6e420055",
+  "src/ui/context.ts": "392f4c6b23b6a72a8e85c22e49762983e5e411f2db72fafff902c991e44adce2",
+  "src/ui/dom.ts": "1dba04926c343e17697cc6ce4d6d14249612d247fab6253237114adb44711cf3",
+  "src/ui/pages/adminLibrary.ts": "174a31f68f855c8893e8d7bfa14fa910cb185cd4ab6ef8d74ba722aaf2e89f2c",
+  "src/ui/pages/adminMessagePanel.ts": "5dc97e8f35f735492d03d5df66a3f597c5da6355d74904a0df7ec276c9a8834e",
+  "src/ui/pages/readonly.ts": "f1378c4cc3def0b818147be75f6658ee92f00b297d7e86fb65509557a7e7bd7c",
+  "src/ui/pages/schemaPull.ts": "106bd82cf20e25631fe49c9f01cdddf8788b2d7273a57e94b386387bb855b6b7",
+  "src/ui/pages/schemaRepoCards.ts": "cfef4b9eea1e1308128e83856f40735400e2655017a93da56c14282caa468bec",
+  "src/ui/repoAccess.ts": "a8625ae7737b4d2ee219d71e386fccd16df615d52fca3c0b24dc031f527fdf0d",
+  "src/ui/selectorState.ts": "bc52f34505c1e71beaf74a2711cc8bec0e3b23bd39efeaf36606d52b7936ae7c",
+  "src/ui/state.ts": "09a5673124af8e0d58dbe7b3d388eeedd3d5634e058cba6611fc3d982294f76e",
+  "src/ui/syncPrefs.ts": "5d46561ea238ffc7a760c47a2a37282094fe05c221fa45b4370eb7f0f967d2a6"
+ },
+ "changed": {
+  "src/ui/pages/other.ts": "9ef9d3080122e30ad11997bd2e747364e447d5f8f42b922d8dab92d95c31ac30",
+  "src/ui/pages/settings.ts": "ea0299933d04138a72238eb55bd05c13228d24b6c1dfb452a4419cb40c4fd888"
+ }
+}

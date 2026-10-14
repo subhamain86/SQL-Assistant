@@ -75,7 +75,7 @@ test('V17.5.3 publishPlan: new / changed / unchanged, invalid schemas and the st
   await A.sync.push(); assert.equal(A.sync.publishPlan().schemas[0].kind, 'unchanged');
 });
 test('V17.5.3 compatibility: files written by V17.5.2 (plain and encrypted) are read unchanged, and the files written now keep the same formats', async () => {
-  const repo = GH.memoryRepository(); const A = dev(repo); withSchema(A, mk('Orders')); await A.sync.push({ passphrase: PASS }); const h = SC.readHeader(repo.files.get(ENC).text); assert.deepEqual([h.format, h.formatVersion, h.schemaFormatVersion, h.appVersion], ['sqla-schema-sync', 1, 2, F.APP_VERSION]); assert.match(F.APP_VERSION, /^17\.[56]\.\d+$/);
+  const repo = GH.memoryRepository(); const A = dev(repo); withSchema(A, mk('Orders')); await A.sync.push({ passphrase: PASS }); const h = SC.readHeader(repo.files.get(ENC).text); assert.deepEqual([h.format, h.formatVersion, h.schemaFormatVersion, h.appVersion], ['sqla-schema-sync', 1, 2, F.APP_VERSION]); assert.match(F.APP_VERSION, /^17\.\d+\.\d+$/);
   const old = JSON.stringify({ ...JSON.parse((await SC.decryptSchemaRegistry(repo.files.get(ENC).text, PASS)).text), appVersion: '17.5.2', writtenBy: 'SQL Assistant 17.5.2' }); const enc = await SC.encryptSchemaRegistry(old, PASS, { device: 'old', schemaCount: 1 });
   const B = dev(GH.memoryRepository({ [ENC]: enc })); const pv = await B.sync.previewEncryptedPull(PASS); assert.deepEqual([pv.ok, pv.rows[0].kind], [true, 'add']);
   const P = dev(GH.memoryRepository({ [PATH]: F.serializeRegistry({ schemas: [mk('Plain Old')], activeSchemaId: 's-plain-old' }, 'd').text })); const x = await P.sync.synchronize(); assert.equal(x.pull.ok, true); assert.ok(P.schemas.schemas().some((s) => s.name === 'Plain Old'));

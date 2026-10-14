@@ -1,0 +1,67 @@
+PASS UI 1: Hamburger → Schema → Pull Schema displays the GitHub repository (schema synchronization) card
+PASS UI 4: the repository configuration (values and details message) is hidden by default
+PASS UI 2: repository, branch and schema path show the required values (basware/sk-ap-sql-assistant · main · sql-assistant-data/schemas/registry.json)
+PASS UI 3: the configuration values are non-editable (read-only; typing, Backspace and Delete change nothing)
+PASS UI 3b: the browser itself refuses to fill the repository field (not editable)
+PASS UI 5: the reveal control shows the repository details message — synchronization details, no secret (the values and the message are revealed together)
+PASS UI 5b: the button hides it again and keeps working when pressed repeatedly
+PASS UI 5c: after leaving the page the configuration is hidden again (hidden by default every time)
+PASS UI 6: 'Pull Secret Vault to Repository' is available in the Schema section with its passphrase, file path and the Retrieve / Import actions
+PASS UI 6b: the Vault Sync Passphrase field is masked by default and pre-filled with the default value
+PASS UI 6c: the eye button reveals the default value and hides it again
+PASS UI 6d: the default value is never written into the rendered page markup, the visible text, browser storage or the console
+PASS UI 6e: the default value is defined in exactly ONE source file (centralized, easy to remove or rotate) and — as disclosed — ships inside the application bundle
+PASS UI 7: no separate 'Push to GitHub' action appears in Schema (tabs: Tables & Views · Stored Schemas · Pull Schema)
+PASS UI 7b: the old deep link #schema-used/push no longer opens anything push-related
+PASS UI 8: Settings → Schema Management no longer displays the 'Schema passphrase — encrypted synchronization' card or its controls
+PASS UI 9: Settings → Secret Vault no longer displays the GitHub repository (schema synchronization) card or its controls
+PASS UI 10: Settings → Secret Vault retains Push Secret Vault to Repository — as its only action (no pull / retrieve / import there)
+PASS UI 10b: the labels communicate the operation — Settings only pushes, and points to Schema → Pull Schema for the repository, the token and the pull
+PASS UI 10c: the pointer button opens Schema → Pull Schema
+PASS UI 11: all other pages and the navigation remain functional (every route renders, the 8 Settings tabs and the hamburger menu are unchanged)
+PASS Token: before a token is saved the status says there is no repository connection
+PASS Token: a wrong Admin Password is refused and the token is not saved
+PASS Token: with the Admin Password it is saved encrypted, shown masked, and the status shows the fixed repository
+PASS Token: saving the token did not change the repository values and the information message is hidden again after the re-render
+PASS Sync: schema synchronization uses the configured repository, branch and file path — the plain schema file was written to sql-assistant-data/schemas/registry.json
+PASS Sync: every request went to basware/sk-ap-sql-assistant, GETs read branch 'main', and only the schema file was written
+PASS Compatibility: a device whose stored vault names another repository / branch / path still shows and uses the fixed values (nothing stored is deleted)
+PASS Push (Settings): the passphrases must match — validated first, nothing written
+PASS Push (Settings): Push Secret Vault to Repository still works — encrypted, written once, read back and verified
+PASS Push (Settings): the repository file is AES-256-GCM ciphertext (no token, no passphrase, no Base64 of them) and no unrelated file was touched
+PASS Pull Secret Vault: with the pre-filled default passphrase it retrieves, decrypts and validates the vault — the device now holds the pushed token
+PASS Pull Secret Vault: the repository is only READ — no write request, no file changed, and only the vault file was read
+PASS Pull Secret Vault: the token is never shown and not in the storage, markup or console of the receiving device
+PASS Pull Secret Vault: the passphrase field kept its value and stays masked after the page re-rendered
+PASS Failure — wrong passphrase: 'wrong or the data was modified', nothing changed, no success message
+PASS Failure — authorization (401): the rejected token is reported, nothing changed
+PASS Failure — network error: reported ('Could not reach GitHub'), nothing changed
+PASS Loading state reflects the real operation: the button is disabled and 'Retrieving…' shows while GitHub does not answer; then the timeout is reported and the button is usable again
+PASS Failure — no vault in the repository: 'No encrypted Secret Vault found', nothing changed
+PASS No duplicate operations: a double click starts ONE retrieval (one GET, no PUT)
+PASS Failure — no access token yet: explained with the way that needs no token (Import encrypted file); the only request is an anonymous read — nothing written
+PASS Import encrypted file (same card): retrieves the vault from a file with the pre-filled passphrase — the device now holds the pushed token
+PASS Responsive (desktop 1366px): the repository card, the schema pull and the Secret Vault card fit without horizontal scroll, with the details message open
+PASS Responsive (tablet 768px): the repository card, the schema pull and the Secret Vault card fit without horizontal scroll, with the details message open
+PASS Responsive (phone 390px): the repository card, the schema pull and the Secret Vault card fit without horizontal scroll, with the details message open
+Exception in callback Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466
+handle: <Handle Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466>
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 467, in _done_callback
+    exc = future.exception()
+          ^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_browser_context.py", line 246, in _on_route
+    handled = await route_handler.handle(route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 422, in handle
+    return await self._handle_internal(route)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 464, in _handle_internal
+    return await handled_future
+           ^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+PASS No console errors or uncaught exceptions in any V17.5.4 flow
+
+47/47 V17.5.4 browser checks passed

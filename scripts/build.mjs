@@ -15,24 +15,30 @@ import { join, dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..'); const require = createRequire(import.meta.url);
-let tsc; try { tsc = require.resolve('typescript/bin/tsc'); } catch { tsc = '/opt/oai-docgen/node_modules/typescript/bin/tsc'; }
-const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); const dev = process.argv.includes('--dev');
-const outDir = join(root, dev ? 'dev-dist' : 'dist');
+const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); const dev = process.argv.includes('--dev'); const testBuild = process.argv.includes('--test'); // V17.7: --test = the browser-test build (src/testHooks.ts) → test-dist/ ONLY
+if (testBuild && dev) { console.error('::error title=Build::--test and --dev cannot be combined.'); process.exit(2); }
+// V17.6.9: the PROJECT-PINNED TypeScript (package.json devDependencies, exact version) — resolved from this project (node_modules, or $NODE_PATH), never from an environment-specific absolute path. A missing or different version stops the build with a clear message.
+let tsc; try { tsc = require.resolve('typescript/bin/tsc', { paths: [root, ...(process.env.NODE_PATH || '').split(':').filter(Boolean)] }); } catch { console.error(`::error title=Build::The project-pinned TypeScript ${pkg.devDependencies?.typescript} is not installed (run npm ci). No environment-specific fallback is used.`); process.exit(2); }
+{ const have = JSON.parse(readFileSync(join(dirname(dirname(tsc)), 'package.json'), 'utf8')).version; if (have !== pkg.devDependencies?.typescript) { console.error(`::error title=Build::TypeScript ${have} is installed but package.json pins ${pkg.devDependencies?.typescript}. Run npm ci.`); process.exit(2); } }
+const outDir = join(root, testBuild ? 'test-dist' : dev ? 'dev-dist' : 'dist'); const bundleDir = join(root, testBuild ? 'build-test' : 'build'); const tsconfig = join(root, testBuild ? 'tsconfig.test.json' : 'tsconfig.json');
 // V17.6.3: the published copy of the repository data (dist/sql-assistant-data/**, written by publish-data.yml and committed) must survive a rebuild — it is not build output.
 const keepDir = join(outDir, 'sql-assistant-data'); const kept = []; (function snap(d) { if (!existsSync(d)) return; for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) snap(p); else kept.push([p.slice(keepDir.length), readFileSync(p)]); } })(keepDir);
-rmSync(join(root, 'build'), { recursive: true, force: true }); rmSync(outDir, { recursive: true, force: true }); if (!dev) rmSync(join(root, 'release'), { recursive: true, force: true });
-execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--module', 'AMD', '--outFile', join(root, 'build/bundle.js'), ...(dev ? ['--inlineSourceMap', '--inlineSources'] : ['--removeComments'])], { stdio: 'inherit' });
-const loader = `(function(){var d={},c={};window.define=function(id,deps,f){d[id]={deps:deps,f:f};};function r(id){if(c[id])return c[id].exports;var m=d[id];if(!m)throw new Error('Module not found: '+id);var mod={exports:{}};c[id]=mod;var a=m.deps.map(function(x){return x==='require'?r:x==='exports'?mod.exports:r(x);});var v=m.f.apply(null,a);if(v!==undefined)mod.exports=v;return mod.exports;}window.__sqlaRequire=r;})();`;
+rmSync(bundleDir, { recursive: true, force: true }); rmSync(outDir, { recursive: true, force: true }); if (!dev && !testBuild) rmSync(join(root, 'release'), { recursive: true, force: true });
+execFileSync(process.execPath, [tsc, '-p', tsconfig, '--module', 'AMD', '--outFile', join(bundleDir, 'bundle.js'), ...(dev ? ['--inlineSourceMap', '--inlineSources'] : ['--removeComments'])], { stdio: 'inherit' });
+// V17.7: the module loader is CLOSURE-LOCAL. The production page exposes no global `define` and no global module registry (V17.6.9 exposed `window.__sqlaRequire`, which reached every module — the context, the store, the repository switch).
+// Only the TEST build (test-dist/) publishes the registry, and only so that src/testHooks.ts can be installed before boot.
+const loader = `var d={},c={};function define(id,deps,f){d[id]={deps:deps,f:f};}function r(id){if(c[id])return c[id].exports;var m=d[id];if(!m)throw new Error('Module not found: '+id);var mod={exports:{}};c[id]=mod;var a=m.deps.map(function(x){return x==='require'?r:x==='exports'?mod.exports:r(x);});var v=m.f.apply(null,a);if(v!==undefined)mod.exports=v;return mod.exports;}${testBuild ? 'window.__sqlaRequire=r;' : ''}`;
 const fail = `function __sqlaFail(e){try{var a=document.getElementById('app');var m=(e&&(e.message||(e.reason&&e.reason.message)))||String(e);a.innerHTML='<div class="boot boot-error"><h2>SQL Assistant could not start</h2><p>Reload the page. If it persists, clear this site\\'s stored data and reload, or use another browser.</p><pre></pre></div>';a.querySelector('pre').textContent=m;}catch(_){}}`;
-const start = `window.addEventListener('error',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.error||ev.message);});window.addEventListener('unhandledrejection',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.reason);});function __sqlaStart(){try{var p=window.__sqlaRequire('main').boot();if(p&&p.catch)p.catch(__sqlaFail);}catch(e){__sqlaFail(e);}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',__sqlaStart);else __sqlaStart();`;
+const start = `window.addEventListener('error',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.error||ev.message);});window.addEventListener('unhandledrejection',function(ev){if(!document.documentElement.getAttribute('data-sqla-ready'))__sqlaFail(ev.reason);});function __sqlaStart(){try{${testBuild ? "r('testHooks').installTestHooks();" : ''}var p=r('main').boot();if(p&&p.catch)p.catch(__sqlaFail);}catch(e){__sqlaFail(e);}}if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',__sqlaStart);else __sqlaStart();`;
 const safe = (s) => s.replace(/<\/script/gi, '<\\/script');
-const appJs = safe(`${fail}\n${loader}\n${readFileSync(join(root, 'build/bundle.js'), 'utf8')}\n${start}`);
+// V17.7: loader, bundle and start-up run inside ONE function scope: `define`, the module registry and `__sqlaFail` are not properties of `window` in the production page.
+const appJs = safe(`(function(){${fail}\n${loader}\n${readFileSync(join(bundleDir, 'bundle.js'), 'utf8')}\n${start}})();`);
 const sha = (s) => `'sha256-${createHash('sha256').update(s, 'utf8').digest('base64')}'`;
 const css = readFileSync(join(root, 'public/styles.css'), 'utf8');
 const icon = readFileSync(join(root, 'public/favicon.svg')).toString('base64');
 const csp = `default-src 'self'; script-src ${sha(appJs)}; style-src 'unsafe-inline'; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; img-src 'self' data:; object-src 'none'; base-uri 'none'`;
 const html = `<!DOCTYPE html>
-<!-- GENERATED by scripts/build.mjs — SQL Assistant ${pkg.version}${dev ? ' (development build)' : ''}. Edit src/ and run npm run build. -->
+<!-- GENERATED by scripts/build.mjs — SQL Assistant ${pkg.version}${dev ? ' (development build)' : ''}${testBuild ? ' (BROWSER-TEST BUILD with src/testHooks.ts — NOT a deployment artifact)' : ''}. Edit src/ and run npm run build. -->
 <html lang="en" data-theme="light">
 <head>
 <meta charset="UTF-8">
@@ -55,15 +61,15 @@ const html = `<!DOCTYPE html>
 if (/type="module"|<script[^>]+src=|src\/main\.ts|<link[^>]+stylesheet[^>]+href=/i.test(html)) throw new Error('Build check failed: the page must be self-contained (no module/external script, no src/main.ts, no external stylesheet).');
 if (/\bghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|\bsk-[A-Za-z0-9]{20,}/.test(html)) throw new Error('Build check failed: output contains something that looks like a credential.');
 mkdirSync(outDir, { recursive: true }); writeFileSync(join(outDir, 'index.html'), html);
-if (!dev) {
+if (!dev && !testBuild) {
   writeFileSync(join(root, 'index.html'), html); mkdirSync(join(root, 'release'), { recursive: true });
   for (const f of ['index.html', '404.html']) writeFileSync(join(root, 'release', f), html);
   writeFileSync(join(root, 'release/.nojekyll'), ''); writeFileSync(join(root, 'release/version.json'), JSON.stringify({ name: 'SQL Assistant', version: pkg.version, builtAt: new Date().toISOString() }, null, 2));
   writeFileSync(join(root, 'release/staticwebapp.config.json'), JSON.stringify({ navigationFallback: { rewrite: '/index.html' } }, null, 2));
   writeFileSync(join(root, 'release/web.config'), '<?xml version="1.0"?><configuration><system.webServer><defaultDocument><files><clear/><add value="index.html"/></files></defaultDocument><httpErrors errorMode="Custom" existingResponse="Replace"><remove statusCode="404"/><error statusCode="404" path="/index.html" responseMode="ExecuteURL"/></httpErrors><staticContent><remove fileExtension=".json"/><mimeMap fileExtension=".json" mimeType="application/json"/></staticContent></system.webServer></configuration>\n');
 }
-execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--outDir', join(root, 'build/esm')], { stdio: 'inherit' });
-(function fix(d) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { fix(p); continue; } if (!p.endsWith('.js')) continue; writeFileSync(p, readFileSync(p, 'utf8').replace(/(from\s+|import\s+)(['"])(\.{1,2}\/[^'"]+)\2/g, (m, pre, q, s) => (s.endsWith('.js') ? m : `${pre}${q}${existsSync(`${resolve(dirname(p), s)}.js`) ? `${s}.js` : `${s}/index.js`}${q}`))); } })(join(root, 'build/esm'));
-writeFileSync(join(root, 'build/esm/package.json'), '{"type":"module"}');
-for (const base of (dev ? [outDir] : [outDir, join(root, 'release')])) for (const [rel, buf] of kept) { const to = join(base, 'sql-assistant-data') + rel; mkdirSync(dirname(to), { recursive: true }); writeFileSync(to, buf); }
-console.log(`Build complete (${dev ? 'development → dev-dist/index.html' : 'production → dist/index.html, index.html, release/'}) — ${(html.length / 1024).toFixed(0)} KB, SQL Assistant ${pkg.version}`);
+if (!testBuild) execFileSync(process.execPath, [tsc, '-p', join(root, 'tsconfig.json'), '--outDir', join(root, 'build/esm')], { stdio: 'inherit' });
+if (!testBuild) (function fix(d) { for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) { fix(p); continue; } if (!p.endsWith('.js')) continue; writeFileSync(p, readFileSync(p, 'utf8').replace(/(from\s+|import\s+)(['"])(\.{1,2}\/[^'"]+)\2/g, (m, pre, q, s) => (s.endsWith('.js') ? m : `${pre}${q}${existsSync(`${resolve(dirname(p), s)}.js`) ? `${s}.js` : `${s}/index.js`}${q}`))); } })(join(root, 'build/esm'));
+if (!testBuild) writeFileSync(join(root, 'build/esm/package.json'), '{"type":"module"}');
+for (const base of (dev || testBuild ? [outDir] : [outDir, join(root, 'release')])) for (const [rel, buf] of kept) { const to = join(base, 'sql-assistant-data') + rel; mkdirSync(dirname(to), { recursive: true }); writeFileSync(to, buf); }
+console.log(`Build complete (${testBuild ? 'browser-test build → test-dist/index.html (NOT a deployment artifact)' : dev ? 'development → dev-dist/index.html' : 'production → dist/index.html, index.html, release/'}) — ${(html.length / 1024).toFixed(0)} KB, SQL Assistant ${pkg.version}`);

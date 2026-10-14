@@ -1,0 +1,109 @@
+PASS Tables: selecting a table sets the tick and the count inside the click itself
+PASS Tables: the selected-table count, the tick and the generated SQL agree a moment later
+PASS Tables: deselecting removes the tick immediately and the table leaves the SQL
+PASS Tables: several tables stay selected; count and SQL list the same tables
+PASS Race: 25 rapid clicks on one table end in the correct parity (odd → selected); no duplicates; count, ticks and SQL agree
+PASS Race: a burst of clicks on every table leaves ticks = count = tables in the state (checked through the SQL) — no stale or duplicate selection
+PASS Search: the list is filtered by the text
+PASS Search: ticks inside a filtered list are immediate and counted
+PASS Filter: tables selected while a search / module filter was active stay selected after it is cleared; count covers hidden selections
+PASS Tabs: switching tabs and returning keeps ticks, columns, options and SQL
+PASS Select all ticks every listed table at once; Clear removes them at once
+PASS Clear: no tick remains
+PASS Schema switch: tables that exist in the new schema stay ticked; the picker lists the new schema's tables
+PASS Latency (77-table schema, 4× CPU throttle): the click handler returns within 25 ms and the tick is painted in the next frame (V17.5.1 measured 47–113 ms and 34–91 ms)
+PASS Latency: after the deferred refresh, ticks = count (16) and the SQL refresh completed
+PASS Valid CASE definition: a column with a valid schema definition starts on 'From Schema', shows table.column, value count and the mapping
+PASS Valid CASE definition: the generated SQL uses it and validates
+PASS Valid DECODE definition: the same stored definition is written as DECODE on Oracle and validates
+PASS Same column name in two tables: both decoded columns get distinct, table-qualified aliases and the SQL passes all checks
+PASS Manual + schema together: a manual DECODE on one column and a schema CASE/DECODE on another both reach the SQL, once each, nothing replaced
+PASS Manual + schema together: the SQL still validates
+PASS Definitions for only some columns: a column without a definition (ORDERS.KIND) starts on Manual and 'From Schema' is disabled with the reason shown
+PASS Switching to a schema WITHOUT definitions: the open picker shows the message, 'From Schema' is disabled, and the SQL uses the plain column
+PASS Switching to a schema without definitions: the builder warns and nothing is invented
+PASS Without a schema definition the Manual option is still available
+PASS Switching to a schema with a definition for ORDERS.STATUS only: that column offers it again; CUSTOMERS.STATUS does not
+PASS Invalid definition (empty label): 'From Schema' is disabled, the reason is shown, and no SQL is generated from it
+PASS Incomplete definition (labels without a code): reported as incomplete with the unmapped labels named; not used
+PASS Invalid / incomplete: the builder shows a clear validation message and keeps the rest of the query
+PASS Describe What You Need with an invalid definition: reported in the plan and never fabricated
+PASS Switching back to the valid schema: the definition is available again and the SQL uses it
+PASS Describe What You Need with a valid definition uses it, the plan says so, and the SQL validates
+PASS Refresh: the selections and the CASE/DECODE choice survive a page reload
+PASS Device A: the repository and token entered in the Secret Vault are used by the real GitHub client (no test override)
+PASS Local edit: the confirmation says it is saved ON THIS DEVICE and NOT yet published — it does not claim remote synchronization
+PASS Sync status: the edited schema is listed as 'changes not yet published'; no publish has happened
+PASS Publish (Device A): the encrypted schema file reaches the SHARED repository through an authenticated PUT
+PASS Publish: nothing readable is in the remote — no schema name, table, column, decode label, passphrase or token
+PASS Sync status after publishing: nothing waiting; the last publish time is shown
+PASS Device B (Schema menu): no repository connection yet — the status says so and the GitHub repository card above offers the way to fix it (Set Token)
+PASS Missing credentials: pulling without an access token explains what to do and changes nothing
+PASS Missing credentials: 'Go to the GitHub repository card' leads to the token field on the same page
+PASS Device B: after configuring, the status shows the connection (Settings → Schema Management) and the Pull Schema card has no passphrase UI
+PASS Pull (Device B): ONE click retrieves the encrypted repository file, decrypts it with the saved Vault passphrase, validates it, imports and activates the schema — success is confirmed
+PASS Pull: the CASE/DECODE definition edited on Device A is present on Device B (X = Cancelled)
+PASS Pull: Manual Selectors on Device B offer the pulled definition and generate SQL from it
+PASS Pull: Device B shows nothing waiting to be published and the card still has no passphrase field
+PASS Update on Device A: the new local edit is pending again (not published)
+PASS Update on Device A: 'Sync with GitHub Now' publishes the encrypted update
+PASS Update on Device A: after publishing, nothing is pending
+PASS Update on Device B: one click applies the newer repository version
+PASS Update on Device B: the update arrived (Z = Archived)
+PASS Repeated pull: nothing to change — nothing duplicated, nothing rewritten
+PASS Conflict: a schema changed on both devices is a PARTIAL result (not 'success'), names the schema and says what to do — the local edit is kept, neither side is overwritten
+PASS Conflict: Settings → Schema Management lists it with Use Local / Use Remote and the status counts it
+PASS Conflict: 'Use Remote' applies Device A's version and clears the conflict
+PASS Failure scenarios: the Pull Schema card has no passphrase field, no Apply / Cancel / Remember controls
+PASS Failure — the Vault passphrase saved on this device does not open the repository file: clear message and next step, local schema unchanged, the passphrase is not echoed
+PASS Failure — the repository file is passphrase-protected but no Vault passphrase is saved here: reported as protected (NOT as 'missing'), local schema unchanged
+PASS Failure — authentication: the rejected token (401) is named, the next step is given, local schema unchanged
+PASS Failure — permission (403): reported with the right class and next step
+PASS Failure — network interruption: the retrieval message with a next step; local schema unchanged
+PASS Failure — timeout: a request that never answers ends with a clear message within the time limit; the app stays usable
+PASS Failure — the device cannot save the schema (storage refuses): reported as a SAVE failure (not 'validation'), the working schema is kept
+PASS After the failures the very next pull works (the synchronization queue was not blocked) — and the success is not shown for a failure
+PASS Failure — corrupted file: reported, local schema unchanged, no success message
+PASS Failure — incompatible format: says the format cannot be read and to update SQL Assistant
+PASS Failure — invalid schema content: it is not imported and the local schema is unchanged (a clear message names the problem)
+PASS Failure — no schema file in the repository: reported as 'not found yet' with the next step, not as success
+PASS Recovery: with the file restored the pull works again and no stale error remains
+PASS Secrecy: no passphrase or token reached the console, the URL or any page text in the failure flows
+PASS Plain synchronization (no schema passphrase): Device D publishes to the shared remote; the status shows the plain file
+PASS Plain synchronization: Device E retrieves it ('Sync with GitHub Now'), the schema is validated and the definition is present
+PASS Plain synchronization failure (token rejected): reported with the failing stage; local schema untouched
+PASS Hamburger menu: 'Schema' is present
+PASS Schema page: the 'Pull Schema' option is available as a tab next to Tables and Stored Schemas
+PASS V17.5.6+: the Pull Schema card has no instruction block — it is the heading, the Pull Schema button and the result
+PASS The Pull Schema card is compact (heading + one button)
+PASS Status: the connection and the sync state are shown without revealing any secret — and without the repository name or the file path (hidden until revealed)
+PASS Pull Schema from GitHub: the card contains ONLY the Pull Schema button — no passphrase field, eye button, Remember checkbox or any passphrase wording
+PASS No published schema yet: reported as 'not found yet' with the next step — not as success, no error box
+PASS A passphrase-protected file with no Vault passphrase saved on this device: reported with the next step (not as missing, nothing changed)
+PASS With the passphrase saved on the device (earlier versions saved one) the same single click pulls it — and the page never shows or asks for it
+PASS Passphrase storage (unchanged): only AES-256-GCM ciphertext on the device — never plaintext or Base64
+PASS Secrecy: the shared repository files and every request body contain no passphrase and no token
+PASS Responsive (desktop 1366px): Pull Schema with status, the CASE/DECODE controls and the Schema Management status fit without horizontal scroll
+PASS Responsive (tablet 768px): Pull Schema with status, the CASE/DECODE controls and the Schema Management status fit without horizontal scroll
+PASS Responsive (phone 390px): Pull Schema with status, the CASE/DECODE controls and the Schema Management status fit without horizontal scroll
+Exception in callback Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466
+handle: <Handle Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466>
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 467, in _done_callback
+    exc = future.exception()
+          ^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_browser_context.py", line 246, in _on_route
+    handled = await route_handler.handle(route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 422, in handle
+    return await self._handle_internal(route)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 464, in _handle_internal
+    return await handled_future
+           ^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+PASS No console errors or uncaught exceptions in any V17.5.2 flow
+
+89/89 V17.5.2 browser checks passed

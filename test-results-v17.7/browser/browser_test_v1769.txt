@@ -1,0 +1,20 @@
+PASS A0. Device A (authoritative repository answered 'no record'): state confirmed-default, Settings open with the first-time default
+PASS A1. Device A saved and synchronized a non-default password: central record revision 1, encrypted verifier only, no plaintext, read back and applied locally
+PASS B0. Device B is clean: no marker, no synchronization record
+PASS B1. BEFORE any repository connection: 'admin' is REJECTED (a new device is not an uninitialized installation), Settings stay locked, the message names the Sync button
+PASS B2. BEFORE any repository connection the lock screen does not claim that 'admin' is the password
+PASS B3. Sync retrieved and applied the central credential (state central-applied, marker = central verifier, revision 1)
+PASS B4. Settings: the centralized password is ACCEPTED, the default 'admin' is REJECTED
+PASS B5. The default basis never occurred on Device B
+PASS C1. Device C: Settings opened on the CONFIRMED default (empty authoritative repository)
+PASS C2. The central credential arrived: the session is invalidated, temporary authorization cleared, Settings RE-LOCKED
+PASS C3. After a refresh the stale session is NOT restored; 'admin' is rejected, the central password unlocks
+PASS D1. A second change is published as revision 2 (read back)
+PASS D2. Device B after Sync: revision 2 applied; the previous password and 'admin' are rejected, the new one is accepted
+PASS E1. An INVALID central record: 'admin' is rejected, Settings stay locked, nothing is applied or overwritten
+PASS F1. A FAILED remote read on a new device: 'admin' is rejected and Settings stay locked; the state is error
+PASS G1. No test password and no credential-looking string in the generated outputs
+PASS G2. The footer and the About page show the current version first; the page title is unchanged
+PASS No unexpected browser console errors or page errors
+
+18/18 V17.6.9 browser checks passed

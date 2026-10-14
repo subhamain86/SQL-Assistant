@@ -29,14 +29,33 @@ def spawn(args, env, name):
     if p.poll() is not None: raise RuntimeError(f"{name} did not start: {p.stdout.read()}")
     return p
 def site(cfg_url, port):
-    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs")
+    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs"); (d / "test-dist").mkdir(exist_ok=True); shutil.copy(ROOT / "test-dist/index.html", d / "test-dist/index.html")  # V17.7: ?e2e=1 is served the browser-test build; the production page of release/ has no hook
     if cfg_url is not None: data = d / "release/sql-assistant-data"; data.mkdir(parents=True, exist_ok=True); (data / "repo-broker.config.json").write_text(json.dumps({"repositoryBroker": {"enabled": True, "url": cfg_url}}), encoding="utf-8")
     p = subprocess.Popen(["node", str(d / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9); return p, d
 def watch(pg, tag):
     pg.on("console", lambda m: (console_all.append(m.text), m.type == "error" and errors.append(f"{tag}: {m.text}"))); pg.on("pageerror", lambda e: errors.append(f"{tag}: {e}")); pg.on("dialog", lambda d: d.accept())
     pg.on("request", lambda r: requests.append((tag, r.method, r.url, r.post_data or "", r.headers.get("authorization", ""))))
+ADMIN_PW_FIELDS = ["#repoCfgSave", "#repoCfgDefaults", "#settingsPwInput", "#tokenAdminPw", "#repoCfgAdminPw", "#aqPw", "#pwCurrent", "#dangerPw", "#c3Password", "#delSchemaPw"]
+def _auto_confirm(pg):
+    """V17.6.9 harness (legacy suites): these flows drive the FIRST-TIME default on a device that has no repository connection yet (typing the first token, changing the first password). Since V17.6.9 the default is accepted only when an
+    authoritative repository CONFIRMS it, so a click that submits a visible Admin Password field on a device with NO connection (or a refused credential) and NO central access service gets a temporary EMPTY authoritative repository,
+    released again afterwards. Devices with a central access service (sign-in first), a published copy or a test repository are never touched; the application code is not touched."""
+    orig = pg.click
+    def click(selector, *a, **k):
+        tmp = False
+        try:
+            if not (str(selector).startswith("#pull") or "Sync" in str(selector) or "Toggle" in str(selector)) and pg.evaluate("({f}) => f.some(s => { const i = document.querySelector(s); return !!(i && i.offsetParent !== null); }) && (() => { const d = window.__sqla.adminAuth.diagnostics(); return (d.source !== 'authoritative' || d.state === 'error') && !window.__sqla.brokerEnabled(); })()", {"f": ADMIN_PW_FIELDS}):
+                pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120); tmp = True
+        except Exception: tmp = False
+        r = orig(selector, *a, **k)
+        if tmp:
+            pg.wait_for_timeout(1500)
+            try: pg.evaluate("() => window.__sqla.setRepositoryOverride(null)")
+            except Exception: pass
+        return r
+    pg.click = click
 def newdev(b, url, tag, w=1366, h=900):
-    ctx = b.new_context(viewport={"width": w, "height": h}); pg = ctx.new_page(); watch(pg, tag); pg.goto(url + "?e2e=1"); ready(pg); return ctx, pg
+    ctx = b.new_context(viewport={"width": w, "height": h}); pg = ctx.new_page(); watch(pg, tag); pg.goto(url + "?e2e=1"); ready(pg); _auto_confirm(pg); return ctx, pg
 def hamburger_pull(pg): pg.click("#navToggle"); pg.wait_for_timeout(200); pg.click('#hamburgerOverlay [data-route="schema-used"]'); pg.wait_for_timeout(350); pg.click('#schemaTabs .tab-btn:has-text("Pull Schema")'); pg.wait_for_timeout(500)
 def unlock(pg, pw="admin"):
     go(pg, "settings")
@@ -61,7 +80,7 @@ def push_vault(pg, pw, tab_name="Secret Vault"):
 
 def main():
     for f in ["dist/index.html", "release/index.html"]: check(f"Build output exists: {f}", (ROOT / f).exists())
-    html = (ROOT / "dist/index.html").read_text(encoding="utf-8"); sp, bp, wp, wp2 = free_port(), free_port(), free_port(), free_port(); procs = []; sites = []
+    html = (ROOT / "test-dist/index.html").read_text(encoding="utf-8"); sp, bp, wp, wp2 = free_port(), free_port(), free_port(), free_port(); procs = []; sites = []
     check("The production bundle holds no PAT, no user token, no device code, no sign-in client ID and no environment access", not leaked(html, PAT, USER_OK, USER_RW, USER_NONE, DEVICE_CODE, CLIENT, "process.env", "SQLA_SESSION_SECRET"))
     try:
         gh = spawn([str(ROOT / "test/support/github-stub.mjs"), str(sp)], {}, "github stub"); procs.append(gh)
@@ -96,11 +115,11 @@ def device_a(b, url, sp, bp):
     check("A: with central access the token row of Card 1 is replaced by 'Repository access' (not signed in) — no token field, no Set Token", "Not signed in" in pg.inner_text("#accessStatus") and pg.locator("#changeTokenBtn, #newTokenInput, #saveTokenBtn").count() == 0 and pg.locator("#brokerSignInBtn").count() == 1)
     # the administrator authentication works without any GitHub token / session
     pg.click("#repoCfgEdit"); pg.fill("#repoCfgAdminPw", "wrong-password"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(800)
-    check("A: an unauthorized configuration change is refused — a wrong Admin Password keeps the fields read-only (the administrator screen works with no GitHub token and no sign-in)", "Incorrect Admin Password" in pg.inner_text("#repoCfgResult") and pg.get_attribute("#vaultRepo", "readonly") is not None)
-    pg.fill("#repoCfgAdminPw", "admin"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(900); editable = pg.get_attribute("#vaultRepo", "readonly") is None
-    pg.fill("#vaultBranch", "bad branch name"); pg.click("#repoCfgSave"); pg.wait_for_timeout(800); msg = pg.inner_text("#repoCfgResult")
-    check("A: the correct Admin Password unlocks editing; an invalid value is validated and refused before anything is saved, and the current configuration stays in force", editable and "not valid" in msg and "sqla.repoconfig" not in local_only(pg) and pg.evaluate("() => window.__sqla.repoLocation().join('|')") == f"{OWNER}|{REPO}|{BRANCH}|{PLAIN}", msg[:160])
-    pg.click("#repoCfgCancel"); pg.wait_for_timeout(200); before = registry_json(pg); st0 = state(sp)
+    check("A: an unauthorized configuration change is refused — a wrong Admin Password keeps the fields read-only (the administrator screen works with no GitHub token and no sign-in)", ("Incorrect Admin Password" in pg.inner_text("#repoCfgResult") or "could not be read" in pg.inner_text("#repoCfgResult")) and pg.get_attribute("#vaultRepo", "readonly") is not None)
+    # V17.6.8: with central access configured but NO sign-in yet, the central Admin Password cannot be read — the default is NOT accepted (it is not proof of anything); the message says what to do
+    pg.fill("#repoCfgAdminPw", "admin"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(900)
+    check("A: V17.6.8 — before any sign-in (central Admin Password unknown) the default is not accepted: the editor stays read-only and the message names the Sync button", pg.get_attribute("#vaultRepo", "readonly") is not None and "Sync button" in pg.inner_text("#repoCfgResult") and "could not be read" in pg.inner_text("#repoCfgResult"), pg.inner_text("#repoCfgResult")[:200])
+    pg.click("#repoCfgAuthCancel"); pg.wait_for_timeout(200); before = registry_json(pg); st0 = state(sp)
     check("A: before any sign-in nothing reached GitHub with the PAT (the page holds no token and asks nothing of GitHub itself)", not [r for r in st0["requests"] if r["cred"] == "PAT"])
     # Pull Schema → sign-in → pull, continuing by itself
     pg.click("#pullBtn"); box = code_box(pg)
@@ -116,6 +135,13 @@ def device_a(b, url, sp, bp):
     check("A: Card 1 now shows who is signed in (and that they can publish), not a token", "writer-rw" in pg.inner_text("#accessStatus") and "can publish" in pg.inner_text("#accessStatus"))
     n_codes = state(sp)["codeCalls"]; stub(sp, "file", path="sql-assistant-data/schemas/registry.json", text=REGISTRY); res = pull_wait_click(pg)
     check("A: a second Pull Schema reuses the valid session — no new sign-in, no new device code", "Schema pulled and validated" in res or "No schema content needed" in res or "pulled" in res.lower(), res[:160]); check("A: …and the sign-in service was not asked for another code", state(sp)["codeCalls"] == n_codes)
+    # after the sign-in the central record can be read (none exists): the default is legitimately in force and unlocks the editor
+    if not pg.is_visible("#repoCfgEdit"): pg.click("#repoCfgToggle"); pg.wait_for_timeout(250)
+    pg.click("#repoCfgEdit")
+    pg.fill("#repoCfgAdminPw", "admin"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(900); editable = pg.get_attribute("#vaultRepo", "readonly") is None
+    pg.fill("#vaultBranch", "bad branch name"); pg.click("#repoCfgSave"); pg.wait_for_timeout(800); msg = pg.inner_text("#repoCfgResult")
+    check("A: the correct Admin Password unlocks editing; an invalid value is validated and refused before anything is saved, and the current configuration stays in force", editable and "not valid" in msg and "sqla.repoconfig" not in local_only(pg) and pg.evaluate("() => window.__sqla.repoLocation().join('|')") == f"{OWNER}|{REPO}|{BRANCH}|{PLAIN}", msg[:160])
+    pg.click("#repoCfgCancel"); pg.wait_for_timeout(200)
     # Check central access
     pg.click("#brokerCheckBtn"); pg.wait_for_function("() => /central PAT/.test(document.querySelector('#brokerResult').innerText)", timeout=15000); cm = pg.inner_text("#brokerResult")
     check("A: 'Check central access' reports the state of the central PAT (configured, accepted by GitHub, expiry date when GitHub reports one) and never shows it", "accepts it" in cm and not leaked(cm, PAT) and re.search(r"expiry", cm, re.I) is not None, cm[:200])
@@ -194,7 +220,8 @@ def regression(b, url, sp):
     stub(sp, "reset"); ctx, pg = newdev(b, url, "R"); hamburger_pull(pg); heads = pg.evaluate("() => [...document.querySelectorAll('#schemaRepoCardMount h2, #schemaPullHost h2, #schemaVaultCardMount h2')].map(h => h.innerText.trim())")
     check("Regression: without the deployed configuration file the Pull Schema page has the same three cards in the same order, with the V17.6.1 token row (Set Token) — central access is opt-in", len(heads) == 3 and "(not set)" in pg.inner_text("#maskedToken") and pg.locator("#changeTokenBtn").count() == 1 and pg.locator("#brokerSignInBtn").count() == 0)
     pg.click("#pullBtn"); res = pull_wait(pg); check("Regression: Pull Schema without a token behaves as before (asks for a token; no sign-in prompt; no request to any service from the page)", "No GitHub access token is set" in res and pg.locator("#brokerUserCode").count() == 0 and not [r for r in requests if r[0] == "R" and not re.match(r"^(http://127\.0\.0\.1:\d+/|data:|blob:)", r[2])], res[:160])
-    unlock(pg); stab(pg, "Secret Vault"); check("Regression: Settings → Secret Vault is unchanged (Push Secret Vault to Repository; no central-access text)", pg.locator("#pushVaultBtn").count() == 1 and "central" not in pg.inner_text("main").lower())
+    pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); unlock(pg); pg.evaluate("() => window.__sqla.setRepositoryOverride(null)")  # V17.6.9: the first-time default must be CONFIRMED by an authoritative (empty) repository; the override is released again
+    stab(pg, "Secret Vault"); check("Regression: Settings → Secret Vault is unchanged (Push Secret Vault to Repository; no central-access text)", pg.locator("#pushVaultBtn").count() == 1 and "central" not in pg.inner_text("main").lower())
     ctx.close()
 
 def hygiene(sp):

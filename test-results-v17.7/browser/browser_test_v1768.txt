@@ -1,0 +1,63 @@
+PASS A0. Device A is a first-time device: the repository answered and holds no record, so the default 'admin' unlocks Settings (genuine first-time setup)
+PASS A1. Device A: Settings → Security: 'admin' → MyCentralPassword is saved and synchronized (revision 1, encrypted verifier only, no plaintext)
+PASS A2. The local marker on Device A IS the central verifier (applied only after the successful central write)
+PASS B1. Device B is clean: no marker, no synchronization record (no cached password can make the test pass)
+PASS B2. 'admin' is REJECTED on the clean Device B
+PASS B3. MyCentralPassword unlocks Settings on Device B
+PASS B4. The central verifier was applied BEFORE the final authentication (central:loaded precedes auth:accepted) and the default basis never occurred
+PASS B5. Bootstrap state on Device B is 'central-applied'; marker == central verifier; revision recorded
+PASS B6. After a refresh the central password still unlocks and 'admin' is still rejected
+PASS B7. No plaintext password in Device B's browser storage, diagnostics or the repository record
+PASS C1. A second change (→ -v2) is published as revision 2
+PASS C2. Device B still holds the revision-1 verifier until it synchronizes (stale cache)
+PASS C3. At the next check the stale verifier is refreshed: the OLD password is rejected, the NEW one unlocks
+PASS C4. A stale device (revision 1, pending) synchronizes: the newer central revision 2 is NOT overwritten (no write) and the stale device adopts revision 2
+PASS D1. Device C (the authoritative repository answered 'no record'): the default is CONFIRMED and unlocks Settings; the session basis is 'default-confirmed' (V17.6.9: there is no provisional default)
+PASS D2. The Settings session opened with 'admin' is still open (the central record has not been applied yet)
+PASS D3. The navbar Sync applied the central password: the Settings session opened with 'admin' is INVALIDATED and Settings are LOCKED again, with an explanatory message
+PASS D4. Afterwards 'admin' is rejected and the central password unlocks; the Sync status says 'Synced'
+PASS E1. Desktop (1366px): ONE clearly visible Sync button in the existing navigation bar; the existing controls are all still there
+PASS E2. While syncing the button shows 'Syncing…', is disabled and aria-busy (a syncing state is displayed)
+PASS E3. A double click runs ONE synchronization (duplicate concurrent requests are prevented): the central record was read exactly as often as in a single run
+PASS E4. The completion status is accurate: 'Synced', the button is back to its normal state
+PASS E5. The status tooltip reports every step honestly (Admin Password, Schemas and synchronization metadata, Knowledge, Admin message) and never a credential
+PASS E6. The Sync did not alter or reset unrelated application state (theme, schemas, learning, repository configuration, vault keys unchanged)
+PASS F0. (set-up) Device A changed the password again (revision 3)
+PASS F1. The navbar Sync retrieves the latest Admin Password verifier immediately (revision 3 applied on Device C; previous password rejected)
+PASS G1. A failed synchronization (repository unreachable) is reported as a FAILURE (not 'Synced') with the cause
+PASS G2. Nothing was overwritten or created centrally, no default record published, the local credential is preserved
+PASS G3. Retry works through the Sync button once the repository is back ('Synced')
+PASS G4. With no repository connection the Sync reports 'Skipped' honestly and changes nothing (no marker, no record)
+PASS H1. Responsive (390px): the navbar stays usable — the Sync control moves into the existing navigation panel (hamburger), exactly like Sync Source / Sync Time
+PASS H2. The panel shows the Sync entry with the same styling class as the other panel entries
+PASS H3. Running the Sync from the responsive panel reports the result there
+PASS H4. Tablet (800px): the navbar does not overflow horizontally
+PASS I1. Invalid central record (published copy): 'admin' is NOT accepted, Settings stay locked, the message is clear and actionable (names the Sync button)
+PASS I2. The invalid central record is neither deleted nor replaced, nothing was created on the device
+PASS J1. Startup race: while the central record is still LOADING, 'admin' is not accepted (state 'loading'; Settings stay locked)
+PASS J2. When the record arrives it is applied first; the central password then unlocks and 'admin' is rejected
+PASS K1. Existing V17.6.7 device (marker + meta from the previous version, central revision 3): its marker is unchanged by the upgrade start-up; the central password unlocks, 'admin' is rejected
+PASS L1. Generated-artifact secret scan: no credential-looking string and none of the test passwords in dist/, index.html, release/
+PASS L2. Current version in the footer, the About page (first entry), the page title and release/version.json
+PASS L3. Hygiene: no test password appears in any request URL or body sent by a page (25 requests inspected)
+Exception in callback Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466
+handle: <Handle Connection.dispatch.<locals>._done_callback(<Task cancell...ntext.py:231>>) at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466>
+Traceback (most recent call last):
+  File "/usr/lib/python3.12/asyncio/events.py", line 88, in _run
+    self._context.run(self._callback, *self._args)
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py", line 467, in _done_callback
+    exc = future.exception()
+          ^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_browser_context.py", line 246, in _on_route
+    handled = await route_handler.handle(route)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 422, in handle
+    return await self._handle_internal(route)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_helper.py", line 464, in _handle_internal
+    return await handled_future
+           ^^^^^^^^^^^^^^^^^^^^
+asyncio.exceptions.CancelledError
+PASS No unexpected browser console errors or page errors
+
+43/43 V17.6.8 browser checks passed

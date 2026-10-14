@@ -1,6 +1,6 @@
 import { test } from 'node:test'; import assert from 'node:assert/strict'; import { imp } from './helpers.mjs';
 const mem = new Map(); globalThis.localStorage = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k), key: () => null, length: 0 };
-const P = await imp('services/passwordService.js'); const CS = await imp('services/cryptoService.js');
+const P = await imp('services/passwordService.js'); /* V17.6.9: these tests exercise the LOCAL primitives; the authority here is a stub that has CONFIRMED the default (the default is a candidate only while no marker exists) */ P.setPasswordAuthority({ resolve: async () => ({ state: 'confirmed-default', defaultAllowed: P.isUsingDefaultPassword(), reason: '' }) }); const CS = await imp('services/cryptoService.js');
 const { SecretVault } = await imp('v17/services/secretVault.js'); const { memoryKeyProvider } = await imp('v17/services/cryptoBox.js'); const { memoryStore } = await imp('services/storage.js');
 test('Admin Password: default "admin" until changed; wrong password rejected; change; reset (V17.2 storage key sqla.pwvault.v15)', async () => {
   mem.clear(); assert.equal(P.isUsingDefaultPassword(), true); assert.equal(await P.verifyPassword('admin'), true); assert.equal(await P.verifyPassword('nope'), false);

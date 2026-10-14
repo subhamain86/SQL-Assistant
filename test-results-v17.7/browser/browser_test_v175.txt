@@ -1,0 +1,86 @@
+PASS Tables: the tick-mark is already set in the same task as the click — no delay, no second action needed
+PASS Tables: clicking the table name ticks it immediately and adds it to the query
+PASS Tables: clicking the checkbox itself ticks it immediately (this was the broken case)
+PASS Tables: multiple tables stay selected — selecting another never removes the previous ticks
+PASS Tables: removing a table removes its tick immediately and updates the count
+PASS Tables: removing through the row text removes the tick as well
+PASS Tables: selecting and removing tables resets neither columns, filters, joins, Advanced Options, generated SQL nor the description
+PASS Tables: the UI and the query state agree (ticks = selected tables = tables in the SQL)
+PASS Tables: the keyboard (Space) toggles the tick as well
+PASS Tables: switching tabs and coming back keeps every tick, column, filter and option
+PASS Tables: after a page refresh the ticks come back with the saved draft
+PASS Tables: Clear removes every tick immediately
+PASS Tables: Select all ticks every listed table immediately
+PASS Columns: a selected column offers 'Display as' → Column | CASE / DECODE
+PASS CASE/DECODE: the control distinguishes Manual from From Schema
+PASS CASE/DECODE: a column that has a schema definition starts on 'From Schema' and lists the definition
+PASS Schema CASE: the generated SQL uses the selected schema definition
+PASS Schema CASE: the SQL passes validation
+PASS Schema DECODE (Oracle): the same definition is written as DECODE(…) and validates
+PASS CASE/DECODE: the definition comes only from the active schema (the Explain panel lists it)
+PASS CASE/DECODE: the selected definition is preserved when switching Manual Selector tabs
+PASS CASE/DECODE: outside Oracle the definition is written as CASE and the DECODE style is not offered
+PASS Manual: choosing Manual offers to define the expression and does not use the schema definition
+PASS Manual DECODE: the existing manual builder still works and its expression reaches the SQL
+PASS Manual DECODE: the column stays ticked and shows its manual expression with an Edit button
+PASS Switching Manual → From Schema uses the schema definition
+PASS Switching back to Manual restores the manual expression (nothing is lost)
+PASS Manual CASE: the existing manual CASE builder (Advanced Options) still works
+PASS No definition: a column without a schema definition starts on Manual (nothing is made up)
+PASS No definition: 'From Schema' is not available (disabled) and the reason is shown; the SQL stays plain
+PASS No definition: the plain column is used and no CASE/DECODE is invented
+PASS Describe What You Need: the user's selected CASE/DECODE is neither overwritten nor duplicated
+PASS Describe What You Need: 'status description' selects the schema CASE/DECODE automatically and the plan says so
+PASS Describe What You Need: 'using decode' on Oracle writes DECODE
+PASS Describe What You Need: asking for a decode of a column without a definition is reported, never invented
+PASS User-modified SQL: an edited CASE/DECODE query is accepted, validated and learned together with the fact that STATUS was decoded
+PASS Learned query patterns: the learned decode is applied again, using the schema's current definition
+PASS Publish: the schema is published as an encrypted, read-back-verified file and the result says so
+PASS Publish: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata
+PASS Publish: nothing readable is in the repository — no schema, table, column, decode label, passphrase or Base64 of them
+PASS Publish: the passphrase is stored on the device only as ciphertext
+PASS Pull: Hamburger menu → Schema opens the Schema page with a 'Pull Schema' tab
+PASS Pull: the Pull Schema from GitHub card has ONE action (Pull Schema) and no passphrase field or any passphrase wording (V17.5.5)
+PASS Pull (V17.5.6+): the card has no instruction block — heading, the Pull Schema button and the result
+PASS Pull: success is confirmed with 'Schema pulled and validated successfully.' and no stale error
+PASS Pull: the schema is imported and ACTIVATED (the navbar badge and active schema show it)
+PASS Pull: structure, tables, columns, data types, relationships, CASE/DECODE definitions, version, identifier and updated time are preserved
+PASS Pull: the passphrase is never in the page text, the URL or the console
+PASS Pull: Manual Selectors use the new schema straight away (no restart)
+PASS Pull: the schema CASE/DECODE definitions of the pulled schema are available (1 = Open · 2 = Approved · 3 = Rejected)
+PASS Pull: Describe What You Need and the offline NLU use the new schema and its CASE/DECODE
+PASS Pull: the imported schema survives a page refresh
+PASS Pull: the deep link #schema-used/pull opens the Pull Schema tab
+PASS Pull: pulling again says nothing needed to change (no duplicates)
+PASS Failure — the saved Vault passphrase does not open the repository file: reported with the next step, local schema unchanged, the passphrase is not echoed
+PASS Failure — the repository file is passphrase-protected but no Vault passphrase is saved here: reported (not 'missing'), local schema unchanged
+PASS Failure — missing schema: 'No schema file was found in the repository yet' with the next step (not success), local schema intact
+PASS Failure — corrupted schema: reported, local schema intact, no success message
+PASS Failure — decryption failure (header tampered with): reported, local schema intact
+PASS Failure — unreadable file: reported, local schema intact
+PASS Failure — a plain (unencrypted) file in the encrypted location is reported, local schema intact
+PASS Failure — invalid schema: it is not imported ('failed validation … not loaded', with the location of the problem), the result is partial, the local schema is intact
+PASS Failure — network / repository failure: the retrieval message, technical detail, local schema intact
+PASS After every failed pull the user's own work is untouched
+PASS No stale errors: after a failure, a successful retry shows only the new result
+PASS Older schema: the repository copy is older than the local one — 'was not applied', reported as a partial result (never as success)
+PASS Older schema: the newer local schema is not replaced
+PASS Publish: re-publishing under a changed passphrase replaces the encrypted file (explicit replacement)
+PASS Passphrase changed by the admin: a device still holding the OLD saved passphrase is told so, with the next step — local schema unchanged
+PASS Passphrase changed by the admin: a device that holds the NEW passphrase pulls with the same single click
+PASS Existing sync: 'Sync with GitHub Now' keeps working with a saved passphrase (encrypted file)
+PASS Existing sync: the repository still holds only the encrypted file (no plain schema is written)
+PASS Existing sync: without a passphrase the classic plain synchronization works exactly as in V17.4
+PASS Existing sync: the plain file now also carries the app version and the writer stamp
+PASS Existing Secret Vault: Settings → Secret Vault keeps Push Secret Vault to Repository; the repository / token / pull controls moved to Schema → Pull Schema (V17.5.4)
+PASS Existing Settings: Admin Query Library is unchanged
+PASS Existing Settings: Manual Schema Update is unchanged
+PASS Existing Settings: AI/LLM Model is unchanged
+PASS Security: no credential, no hard-coded passphrase and no key material in the production bundle
+PASS Security: nothing the user typed as a passphrase reached any console message
+PASS Responsive (desktop 1366px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll
+PASS Responsive (tablet 768px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll
+PASS Responsive (phone 390px): Pull Schema, the CASE/DECODE controls and the Settings passphrase panel fit without horizontal page scroll
+PASS No console errors or uncaught exceptions in any V17.5 flow
+
+84/84 V17.5 browser checks passed

@@ -1,0 +1,79 @@
+PASS Cards: Hamburger → Schema → Pull Schema shows exactly three cards, in this order — GitHub repository (schema synchronization) · Pull Schema from GitHub · Pull Secret Vault to Repository
+PASS Tabs: Hamburger → Schema keeps its three tabs and has no push action
+PASS Hidden by default: neither the repository, the branch nor the schema file path appears anywhere on the page — not in the card, the status block or the instructions
+PASS Hidden by default: the reveal button says 'Show configuration' and reports aria-expanded=false
+PASS Reveal: the button shows the three configured values exactly (basware/sk-ap-sql-assistant · main · sql-assistant-data/schemas/registry.json)
+PASS Read-only even when revealed: readonly + aria-readonly on all three, typing / Backspace / Delete / paste change nothing, and the browser refuses to fill them
+PASS Reveal: the details message (which files are read and written, token permissions) appears together with the values and contains no secret
+PASS Hide / show: repeated use is reliable (6 more presses end hidden→shown→…→shown) and the values are never changed
+PASS Reveal / hide never changes the saved configuration: browser storage is byte-identical after revealing, trying to edit and hiding
+PASS Reveal state is not kept: after leaving the page the configuration is hidden again
+PASS Card 'Pull Schema from GitHub': contains ONLY the Pull Schema button (no passphrase field, eye button, remember checkbox, Apply / Cancel / Remove-passphrase button, no input at all)
+PASS Card 'Pull Schema from GitHub': no passphrase-related wording at all (instructions, status, labels, hints)
+PASS Card 'Pull Schema from GitHub' (V17.5.6+): just the heading and the button — no instruction block, no status block, no secret, repository name or path
+PASS Card 'Pull Secret Vault to Repository': the default Vault Sync Passphrase is pre-filled and masked (password field, 20 characters), with Retrieve and Import actions
+PASS Card 'Pull Secret Vault to Repository': the eye button reveals the default (xG71…) and hides it again
+PASS Card 'Pull Secret Vault to Repository': the default passphrase is not in the rendered markup, the page text, browser storage or the console
+PASS Settings → Schema Management: the 'Schema passphrase — encrypted synchronization' card and its controls are absent; every other panel is still there
+PASS Settings → Secret Vault: the GitHub repository configuration card is absent; Push Secret Vault to Repository is the only operation and its fields (passphrase, confirmation, vault file path) are there
+PASS Settings → Secret Vault: exactly one button pushes (no second push / pull action) and it says it only pushes
+PASS Identity: the application identifies itself as SQL Assistant at the current version (title, footer, About, release metadata) and the name is unchanged
+PASS Identity: the navbar still shows 'SQL Assistant' with the version and the existing controls
+PASS Setup (Device A): 'Sync with GitHub Now' publishes the plain schema file to the configured path — no passphrase involved
+PASS No token yet: Pull Schema explains what to do (set the token), sends no request, changes nothing
+PASS No token yet: the 'Go to the GitHub repository card' button moves focus to the token control on the same page
+PASS Pull Schema: ONE click retrieves and synchronizes — success is confirmed, the schema is added / updated and ACTIVE
+PASS Pull Schema uses the configured repository, branch and schema path: every request went to basware/sk-ap-sql-assistant, exactly ONE read of sql-assistant-data/schemas/registry.json on branch main, no write, no other file
+PASS Pull Schema is read-only: no file in the repository changed
+PASS Pulled schema: tables, columns and the CASE/DECODE definition edited on Device A arrived (X = Cancelled, 5 entries)
+PASS Pull Schema: after success nothing is 'not yet published' and the status shows the new last-download time — no repository name or path
+PASS Integration — schema browsing: Schema → Tables & Views lists the pulled schema's tables and the badge shows the active schema
+PASS Integration — module selection and search: the modules of the pulled schema are offered, selecting one filters the tables, searching finds tables
+PASS Integration — SQL generation and query editing: the SQL uses the pulled CASE/DECODE definition and passes validation; Advanced Options still apply
+PASS Integration — Describe What You Need and the offline NLU work on the pulled schema
+PASS Repeated pull: nothing to change — success, no duplicate schema, still exactly one read per click
+PASS Duplicate requests: six clicks in the same instant start ONE retrieval (one read, no write), the button is disabled while it runs
+PASS Duplicate requests: a double click is one retrieval too
+PASS Failure — authorization (401): the rejected token is named with the next step; local schema intact; no success; the token is not in the message
+PASS Failure — repository permission / rate limit (403): reported with the next step; local schema intact
+PASS Failure — network interruption: 'could not be retrieved' with the next step; local schema intact
+PASS Loading state is real: while GitHub does not answer the button is disabled and 'Retrieving…' shows; then the timeout is reported and the button works again; local schema intact
+PASS Failure — no schema file in the repository: 'No schema file was found … yet' with the next step (a warning, not success); local schema intact
+PASS Failure — the repository holds a passphrase-protected schema file: reported (not as 'missing'); NOT opened with the default Secret Vault passphrase; local schema intact
+PASS Failure — unreadable / damaged file: reported with the next step; local schema intact
+PASS Failure — incompatible (newer) schema format: says so and to update SQL Assistant; local schema intact
+PASS Failure — invalid schema content: it is NOT imported, the result is a partial result that names the validation failure (never 'success'); local schema intact
+PASS Failure — the device cannot save the schema (storage refuses): reported as a SAVE failure, not as validation; the working schema is kept
+PASS Recovery: with the file restored the very next pull works, shows only the new result and no stale error
+PASS Secrecy: no token or passphrase reached the console, the URL or any message in the failure flows
+PASS Push Secret Vault (Settings): works on its own — validated, encrypted, written once, read back and verified
+PASS Push Secret Vault never invokes the pull: it reads only the vault file (for its revision) and writes only the vault file — no schema file is read or written, and this device's own vault is not re-imported
+PASS Push Secret Vault: the data format is unchanged (AES-256-GCM, PBKDF2-SHA256) and the file contains no token, no passphrase and no Base64 of them; no unrelated file was touched
+PASS Push Secret Vault: it uses the repository and branch of the Schema section (every request → basware/sk-ap-sql-assistant, branch main)
+PASS Pull Secret Vault: opening the page, using the eye and leaving the default untouched does not change anything that is saved on this device
+PASS Pull Secret Vault: with the default passphrase it retrieves, decrypts and validates the vault — this device now holds the token that was pushed
+PASS Pull Secret Vault: it only READS — one read of the vault file, no write, no schema file touched; every request used the Schema section's repository and branch
+PASS Pull Secret Vault: the existing data format is read as before and the passphrase / token appear nowhere (markup, text, storage, console, URL)
+Task was destroyed but it is pending!
+task: <Task pending name='Task-479' coro=<BrowserContext._on_route() running at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_browser_context.py:246> wait_for=<Future pending cb=[Task.task_wakeup()]> cb=[Connection.dispatch.<locals>._done_callback() at /mnt/runtime-envs/oai56-py312/python/venv/lib/python3.12/site-packages/playwright/_impl/_connection.py:466]>
+PASS Default vs typed: the vault is now protected with another passphrase — the default is refused ('wrong or the data was modified'), nothing saved on the device changes, no success, the passphrase is not echoed
+PASS Default vs typed: typing the right passphrase overrides the default and the pull succeeds
+PASS Pull Secret Vault failure — authorization (401): reported, nothing saved changes, no secret in the message
+PASS Pull Secret Vault failure — network error: reported, nothing saved changes
+PASS Pull Secret Vault failure — no vault in the repository: reported, nothing saved changes
+PASS Pull Secret Vault: six clicks in the same instant start ONE retrieval (one read, no write)
+PASS One repository: schemas, knowledge, admin message, Pull Schema, Push Secret Vault and Pull Secret Vault — every one of the requests went to basware/sk-ap-sql-assistant
+PASS One branch: every read used branch main and every write was committed to branch main
+PASS One schema path: the plain schema file is sql-assistant-data/schemas/registry.json; knowledge, admin message and vault paths are siblings in the same folder tree
+PASS Secrecy: no token, no default passphrase and no Base64 of them in any repository file or request body written by any operation
+PASS Source and bundle: no GitHub token anywhere; the default passphrase is defined in ONE source file and — as disclosed — ships in the bundle
+PASS Regression: every route renders and the 8 Settings tabs are unchanged
+PASS Regression: Synchronization (sync source / time, shared location, knowledge, admin message, migrations, log), AI/LLM Model and the Admin Query Library are unchanged
+PASS Regression: Manual Schema Update still edits the schema (row editor present)
+PASS Regression: the Guided Walkthrough still starts
+PASS Responsive (desktop 1366px): the three cards fit without horizontal scroll — configuration hidden, revealed, and with a failure message shown
+PASS Responsive (tablet 768px): the three cards fit without horizontal scroll — configuration hidden, revealed, and with a failure message shown
+PASS Responsive (phone 390px): the three cards fit without horizontal scroll — configuration hidden, revealed, and with a failure message shown
+PASS No console errors or uncaught exceptions in any V17.5.5 flow
+
+75/75 V17.5.5 browser checks passed

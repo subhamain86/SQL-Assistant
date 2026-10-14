@@ -1,0 +1,35 @@
+PASS The production bundle holds no PAT, no device token, no vault passphrase other than the built-in default, and no environment access
+PASS Workflow step 1 (build-central-vault): the read-only device token is encrypted into the standard vault envelope; the log names the PUBLIC default passphrase as a warning when it is used and never prints the token
+PASS Workflow step 2 (publish-data): the marker lists the registry and the vault with SHA-256, the vault file contains no readable token or passphrase, no GITHUB PAT was needed
+PASS B: Hamburger → Schema → Pull Schema holds exactly the three cards in order: GitHub repository (schema synchronization) · Pull Schema from GitHub · Pull Secret Vault to Repository
+PASS B: a clean profile with NO token: the GitHub Access Token is populated automatically from the published central vault — 'restored automatically', masked, no one typed or copied anything
+PASS B: the token is held only as ciphertext (encrypted vault in browser storage), shown masked, and appears in no page text, markup, storage or console
+PASS B: the token went only to api.github.com (as a Bearer header) for GitHub's own validation; the site received no credential
+PASS B: the card says a token is only needed to publish, and shows the publication record (commit, files)
+PASS B: Pull Schema from GitHub works — the schema is retrieved, validated and applied, success is reported only afterwards, and the shared schema is active (no passphrase asked)
+PASS B: Settings → Secret Vault has no repository card and no token row, keeps Push Secret Vault to Repository, and explains the published copy; Schema Management has no passphrase card
+PASS C: the central vault is protected by its OWN passphrase: automatic restore does not guess — it says so and points to the Pull Secret Vault card; the token stays '(not set)' and nothing was changed
+PASS C: with NO token Pull Schema still works — read from the published copy (hash-checked), applied, shared schema active
+PASS C: …and not a single request went to GitHub for it (no api.github.com request, no credential anywhere)
+PASS C: Pull Secret Vault with the pre-filled default passphrase: refused with the real cause ('passphrase is wrong'), no other passphrase tried, the device is unchanged; the card names the source as the published copy
+PASS C: with the right passphrase the vault is retrieved from the published copy, validated, decrypted and restored — 'Secret Vault imported and validated', source = the published copy, no GitHub credential used to fetch it
+PASS C: Pull Secret Vault only READS: the stub saw no write from this device
+PASS Failure — the published registry does not match its publication record (publication in progress / tampered): refused, never applied, the local schema is unchanged, the message names the cause
+PASS Failure — the registry is not listed in the publication (missing): 'No schema file was found in the repository yet', no false success, the local schema is unchanged
+PASS Failure — a malformed registry that the publication vouches for: refused by the schema validation with the reason, the local schema is unchanged
+PASS Failure — the published vault is damaged (an HTML page instead of the file): refused before decryption, nothing restored, the device is unchanged
+PASS Failure — Push Secret Vault to Repository on a device with no token: stopped before anything is encrypted or written, with the real reason (it reads the published copy and cannot publish) and what to do
+PASS Failure — an unauthorized configuration change: a wrong Admin Password keeps the repository fields read-only (no token, no sign-in involved)
+PASS Failure — the site (backend) goes away: Pull Schema reports it could not be retrieved, no success, the local schema is unchanged
+PASS A: a device with a token (set with the Admin Password, validated by GitHub) keeps the V17.6.2 behaviour: token masked, no automatic restore attempted
+PASS A: Pull Schema uses the authenticated GitHub route (precedence: a token on the device beats the published copy): the schema file was read with the token through the API
+PASS A: …and the page did not read the registry from the site for it
+PASS Regression: a site WITHOUT the publication marker behaves as V17.6.2 — token row with 'Set Token', no 'Reading needs no token' hint, no automatic restore
+PASS Regression: Pull Schema without a token asks for a token (as before) and reads nothing
+PASS Hygiene: the page contacted only the site and api.github.com (for GitHub's own validation of a token) — never github.com, a broker or any other host
+PASS Hygiene: the only Authorization headers the page sent went to api.github.com, never to the site (the published copy is read with no credential)
+PASS Hygiene: no PAT, device token, vault passphrase or AI key in any request URL or body sent by the page
+PASS Hygiene: the stub never saw the central PAT from the page (the PAT is not used by any V17.6.3 path)
+PASS No console errors or uncaught exceptions in any V17.6.3 flow (expected network-status lines of the failure scenarios excluded); no secret in any console message
+
+33/33 V17.6.3 browser checks passed

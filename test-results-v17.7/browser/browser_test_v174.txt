@@ -1,0 +1,122 @@
+PASS Selectors: selecting a table keeps the module filter and the search text (no reset)
+PASS Selectors: selecting a table keeps the column search and the previously selected column
+PASS Selectors: selecting a second column does not reset the first
+PASS Selectors: selecting a table does not reset filters
+PASS Selectors: editing a filter does not reset the selected tables
+PASS Selectors: changing Advanced Options does not clear the selections
+PASS Selectors: switching tabs keeps the search boxes, selections and filters
+PASS Selectors: the Tables & Columns tab stays mounted — search text survives a tab round-trip
+PASS Selectors: Advanced Options keep their values when the tab is shown again
+PASS Selectors: the table list keeps its scroll position after a selection
+PASS Selectors: a page reload keeps the builder draft (tables, options, SQL)
+PASS Selectors: deselecting a table removes its columns/filters from the SQL but keeps them
+PASS Selectors: re-selecting the table brings its columns and filters back
+PASS Selectors: switching the Active Schema keeps the description, options and the selections that still exist
+PASS Describe: the example request is accepted and the active schema is used
+PASS Describe: SUM + GROUP BY + ORDER BY DESC + LIMIT 20 are inferred automatically
+PASS Describe: the generated SQL is validated before it is shown (12 checks)
+PASS Describe: Validate shows what was checked
+PASS Describe: Explain lists tables, columns, joins, aggregation, grouping, sorting and limit
+PASS Describe: the Advanced Options tab shows what was inferred automatically
+PASS Describe: unknown columns are reported and never invented
+PASS Describe: items the schema cannot provide (invoice number, gross amount) are listed as not found
+PASS Describe: works fully offline (no external AI service)
+PASS Learning: a generated (unconfirmed) query is recorded but is NOT used as a pattern
+PASS Learning: SQL that is not valid for the Active Schema cannot be accepted or learned
+PASS Learning: user-modified SQL is recorded as modified & confirmed
+PASS Learning: SQL reported as successfully executed is the strongest learned tier
+PASS Learning: a learned query is retrieved and used as a pattern for the same request
+PASS Learning: 'Report issue' removes the result from the trusted patterns
+PASS Learning: successful, modified and executed records are stored centrally (versioned structure)
+PASS Describe: the dialect decides how the limit is written (TOP for SQL Server)
+PASS Advanced: aggregation (SUM) with GROUP BY completed automatically
+PASS Advanced: aggregation COUNT
+PASS Advanced: aggregation AVG
+PASS Advanced: aggregation MIN
+PASS Advanced: aggregation MAX
+PASS Advanced: HAVING
+PASS Advanced: ORDER BY with ASC / DESC
+PASS Advanced: LIMIT (FETCH FIRST for Oracle)
+PASS Advanced: DISTINCT
+PASS Advanced: GROUP BY (manual columns)
+PASS Advanced: LEFT JOIN
+PASS Advanced: RIGHT JOIN
+PASS Advanced: FULL JOIN
+PASS Advanced: INNER JOIN
+PASS Advanced: table aliases
+PASS Advanced: every option has a short plain-language description
+PASS Advanced: the options catalog lists WHERE, AND/OR, BETWEEN, IN, LIKE, IS NULL, dates, CASE, joins, WITH, EXISTS
+PASS Advanced: WITH / CTE
+PASS Advanced: EXISTS sub-select filter (validated read-only)
+PASS Advanced: NOT EXISTS
+PASS Advanced: a destructive sub-select is rejected and the SQL is flagged
+PASS Advanced: options are limited to what the dialect supports (no FULL JOIN in MySQL)
+PASS Advanced: date filter shortcut (last 30 days)
+PASS Advanced: filter IN
+PASS Advanced: filter NOT IN
+PASS Advanced: filter LIKE
+PASS Advanced: filter NOT LIKE
+PASS Advanced: filter BETWEEN
+PASS Advanced: filter IS NULL
+PASS Advanced: filter IS NOT NULL
+PASS Advanced: filter <>
+PASS Advanced: a manual option takes precedence over the value inferred from the description
+PASS Schema: a row edit (column + table information) is saved and the Active Schema, SQL generation and NLU knowledge are refreshed
+PASS Schema: the edit survives a page reload (centralized saved schema data)
+PASS Schema: the Schema page shows the saved change
+PASS Schema: a deleted row stays deleted after reload
+PASS Schema: the builder uses the updated Active Schema (deleted column is gone)
+PASS Schema: an invalid change (empty decode code) is refused with an actionable message
+PASS Admin Library: the tab is part of Settings and starts empty
+PASS Admin Library: tables and columns are detected from the SQL
+PASS Admin Library: test / validate runs the 12 checks against the Active Schema
+PASS Admin Library: add query — saved as a draft with metadata
+PASS Admin Library: draft queries are not trusted yet
+PASS Admin Library: approve (only valid queries) — query becomes a trusted example
+PASS Admin Library: an invalid query cannot be approved (clear reason shown)
+PASS Admin Library: test shows invalid result for the broken query
+PASS Admin Library: a query containing a credential is refused
+PASS Admin Library: names are escaped (no HTML injection)
+PASS Admin Library: search
+PASS Admin Library: search with no result
+PASS Admin Library: filter by approval status, tag and dialect
+PASS Admin Library: edit query keeps the approval when only the description changes
+PASS Admin Library: editing the SQL withdraws the approval (test + approve again)
+PASS Admin Library: an approved query is found and used during SQL generation (adapted, not copied)
+PASS Admin Library: retrieval order is shown — Active Schema → Admin Query Library → learned → NLU → SQL engine
+PASS Admin Library: the pattern is adapted to the dialect (TOP for SQL Server)
+PASS Admin Library: disable
+PASS Admin Library: a disabled query is not used
+PASS Admin Library: enable
+PASS Admin Library: the library survives a page reload
+PASS Admin Library: delete requires the Admin Password and removes the query
+PASS Admin Library: learned queries are offered for review only when confirmed / executed
+PASS Knowledge sync: learned queries + the Admin Query Library are published as one versioned file
+PASS Knowledge sync: the published file holds no credentials
+PASS Knowledge sync: a second device receives the Admin Query Library
+PASS Knowledge sync: a second device receives the successfully executed learned query
+PASS Knowledge sync: the synchronized knowledge is used on the second device
+PASS Knowledge sync: a deletion made on one device reaches the other
+PASS Knowledge sync: hostile remote records (destructive SQL, credentials) are rejected, not imported
+PASS Vault: save secret — the token is encrypted at rest and never shown
+PASS Vault: push validates the secret configuration first and explains what to fix
+PASS Vault: push encrypts, prepares a repository-safe file, pushes, verifies by read-back
+PASS Vault: the repository file contains no plaintext or Base64 token (AES-256-GCM envelope)
+PASS Vault: pull — a wrong passphrase is rejected; the right one retrieves, decrypts and validates
+PASS Vault: the plaintext token is never in the UI, console or storage of the receiving device
+PASS Vault: a device without the decryption key says so clearly and keeps the old data
+PASS AI/LLM: the layered offline architecture is shown (schema engine · offline NLU · local learning · optional local LLM)
+PASS AI/LLM: offline stays primary and a local model needs no key
+PASS AI/LLM: an unreachable local model is reported and SQL generation keeps working offline
+PASS AI/LLM: with an unavailable model the offline result is still produced
+PASS Migration: V17.3.1 learned data is migrated automatically and the old data is kept
+PASS Migration: idempotent — a restart does not duplicate anything
+PASS Migration: the Synchronization tab lists the versioned migrations
+PASS Responsive (desktop 1366px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll
+PASS Responsive (tablet 768px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll
+PASS Responsive (phone 390px): builder, Advanced Options, hamburger menu and Admin Query Library fit without horizontal page scroll
+PASS Security: the production page contains no credentials and no external script
+PASS Security: a hostile description is rendered as text (no HTML injection / script execution)
+PASS No console errors or uncaught exceptions in any V17.4 flow
+
+120/120 V17.4 browser checks passed

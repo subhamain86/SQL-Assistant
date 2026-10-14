@@ -76,9 +76,10 @@ def ui(b, url):
 def location_and_sync(b, url):
     hub = Hub(); [hub.put(k, v) for k, v in UNRELATED.items()]; ctx, pg = newdev(b, url, hub, tag="sync"); pull_page(pg)
     check("Token: before a token is saved the status says there is no repository connection", "No repository connection on this device" in B.sm_status(pg) and "(not set)" in pg.inner_text("#maskedToken"))
+    tmp = B.confirm_default(pg)  # V17.6.9: the first-time default must be CONFIRMED by an authoritative repository before the card can verify it (released again after the token is saved)
     pg.click("#changeTokenBtn"); pg.fill("#newTokenInput", TOK_A); pg.fill("#tokenAdminPw", "wrong-admin-pw"); pg.click("#saveTokenBtn"); pg.wait_for_timeout(900)
     check("Token: a wrong Admin Password is refused and the token is not saved", "Incorrect Admin Password" in pg.inner_text("#vaultCfgResult") and "(not set)" in pg.inner_text("#maskedToken") and pg.evaluate("() => !localStorage.getItem('sqla.vault.local.v17')"))
-    pg.fill("#tokenAdminPw", "admin"); pg.click("#saveTokenBtn"); pg.wait_for_timeout(1400)
+    pg.fill("#tokenAdminPw", "admin"); pg.click("#saveTokenBtn"); pg.wait_for_timeout(1400); B.release_default(pg, tmp)
     st = B.sm_status(pg); store = pg.evaluate("() => JSON.stringify(Object.assign({}, localStorage))")
     check("Token: with the Admin Password it is saved encrypted, shown masked, and the status shows the fixed repository", "••••" in pg.inner_text("#maskedToken") and "token saved" in st and TOK_A not in pg.inner_text("body") and TOK_A not in store and TOK_A not in pg.content())
     check("Token: saving the token did not change the repository values and the information message is hidden again after the re-render", pg.evaluate("() => ['#vaultRepo', '#vaultBranch', '#vaultPath'].map((s) => document.querySelector(s).value)") == ["basware/sk-ap-sql-assistant", "main", "sql-assistant-data/schemas/registry.json"] and not pg.is_visible("#repoInfoMsg"))
@@ -139,7 +140,7 @@ def responsive(b, url):
         check(f"Responsive ({name} {w}px): the repository card, the schema pull and the Secret Vault card fit without horizontal scroll, with the details message open", o1 <= 2 and o2 <= 2 and all(0 <= l and r <= w + 2 for l, r in boxes), (o1, o2, boxes)); ctx.close()
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = B.free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"
     try:

@@ -7,6 +7,7 @@ import json, os, sys, time, subprocess, pathlib, socket, traceback
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 MSG = "sql-assistant-data/messages/admin-message.json"; PLAIN = "sql-assistant-data/schemas/registry.json"
 TOKEN = "ghp_" + "Z9y8X7w6V5u4T3s2R1q0P9o8N7m6L5k4J3i2"
 results, errors = [], []
@@ -28,8 +29,12 @@ def ready(pg): pg.wait_for_function("() => document.documentElement.getAttribute
 def go(pg, route): pg.evaluate(f"location.hash = '#{route}'"); pg.wait_for_timeout(300)
 def newdev(browser, url, w=1366, h=900, tag="dev"):
     ctx = browser.new_context(viewport={"width": w, "height": h}); pg = ctx.new_page(); watch(pg, tag); pg.goto(url); ready(pg); return ctx, pg
+def confirm_default(pg):  # V17.6.9: a device with NO repository connection never accepts the default; these suites test the first-time default, which the AUTHORITATIVE (empty) repository confirms
+    try:
+        if pg.evaluate("() => window.__sqla.adminAuth.diagnostics().source") == "none": pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120)
+    except Exception: pass
 def unlock(pg, pw="admin"):
-    go(pg, "settings")
+    confirm_default(pg); go(pg, "settings")
     if pg.locator("#settingsPwInput").count(): pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(1000)
 def stab(pg, name): pg.click(f'.tab-btn:has-text("{name}")'); pg.wait_for_timeout(350)
 def repo(pg, files):
@@ -61,7 +66,7 @@ def admin_panel(b, url):
     a.fill("#adminMsgText", "  Planned maintenance\n tonight 22:00–23:00 CET —  schema sync may be unavailable.  "); a.select_option("#adminMsgLevel", "info"); a.click("#adminMsgPublish"); a.wait_for_timeout(900); res = a.inner_text("#adminMsgResult"); f = a.evaluate("(p) => window.__repo.files.get(p)?.text || ''", MSG)
     check("Admin: publishing succeeds and says the other devices will receive it at their next synchronization or when they open the app", "was published" in res and "next synchronization" in res and "open SQL Assistant" in res, res[:200])
     j = json.loads(f) if f else {}
-    check("Admin: the repository gets one small versioned plain-JSON file next to the schemas (same repository, separate file)", j.get("format") == "sqla-admin-message" and j.get("formatVersion") == 1 and j.get("active") is True and j.get("level") == "info" and j.get("appVersion") == "17.6.5" and j.get("text") == "Planned maintenance tonight 22:00–23:00 CET — schema sync may be unavailable." and "updatedAt" in j and "id" in j, list(j.keys()))
+    check("Admin: the repository gets one small versioned plain-JSON file next to the schemas (same repository, separate file)", j.get("format") == "sqla-admin-message" and j.get("formatVersion") == 1 and j.get("active") is True and j.get("level") == "info" and j.get("appVersion") == VERSION and j.get("text") == "Planned maintenance tonight 22:00–23:00 CET — schema sync may be unavailable." and "updatedAt" in j and "id" in j, list(j.keys()))
     check("Admin: the message is normalised to one clean line (spaces, line breaks and tabs collapsed)", j.get("text", "").count("  ") == 0 and "\n" not in j.get("text", ""))
     check("Admin: the file contains no credential, passphrase or token", TOKEN not in f and "ghp_" not in f)
     check("Admin: the publisher sees the banner immediately, inside the navbar", bar(a).count() == 1 and a.evaluate("() => !!document.querySelector('#mainNavbar #adminMsgBar')") and "Message from the administrator" in bar_text(a) and "Planned maintenance tonight" in bar_text(a))
@@ -128,8 +133,9 @@ def failures(b, url):
     stab(pg, "Synchronization"); check("Offline publish: after that the 'not yet published' mark is gone", "not yet published" not in pg.inner_text("#adminMsgCurrent"))
     # a device that already shows a message keeps it through every failure
     X, x = newdev(b, url, tag="quiet"); share(x, pg); x.evaluate("() => window.__sqla.services().adminMessage.synchronize()"); x.wait_for_timeout(400); assert "Notice written while offline" in bar_text(x)
+    unlock(x)  # V17.6.8: Settings are opened while the (shared test) repository is reachable — a device whose central Admin Password cannot be read is not unlocked with the default
     x.evaluate("() => window.__sqla.setRepositoryOverride({ describe: 'down', read: async () => { throw new Error('Could not reach GitHub (network down).'); }, write: async () => { throw new Error('x'); } })")
-    unlock(x); stab(x, "Schema Management"); x.click("#simpleSyncBtn"); x.wait_for_timeout(1500); go(x, "quickstart")
+    stab(x, "Schema Management"); x.click("#simpleSyncBtn"); x.wait_for_timeout(1500); go(x, "quickstart")
     check("Failure: when the repository cannot be reached the banner already on screen stays — no error, no flicker", "Notice written while offline" in bar_text(x) and "admin message" not in x.inner_text("#toastHost").lower())
     repo(x, {MSG: "{this is not json"}); x.evaluate("() => window.__sqla.services().adminMessage.synchronize()"); x.wait_for_timeout(400)
     check("Failure: a damaged or hostile message file in the repository is ignored; the current banner stays", "Notice written while offline" in bar_text(x))
@@ -146,7 +152,7 @@ def failures(b, url):
 
 def regression_and_layout(b, url):
     ctx, pg = newdev(b, url, tag="regress"); repo(pg, {})
-    check("Regression: with no message the navbar is exactly the V17.5 navbar (no banner element, no extra row)", pg.locator("#adminMsgBar").count() == 0 and "17.6.5" in pg.inner_text("footer") and pg.locator("#navToggle").count() == 1)
+    check("Regression: with no message the navbar is exactly the V17.5 navbar (no banner element, no extra row)", pg.locator("#adminMsgBar").count() == 0 and VERSION in pg.inner_text("footer") and pg.locator("#navToggle").count() == 1)
     unlock(pg); stab(pg, "Schema Management"); stab(pg, "Synchronization"); check("Regression: the existing Synchronization content (sync source/time, shared location, knowledge, migrations, conflicts, log) is all still there", all(x in pg.inner_text("main") for x in ["Sync Source", "Shared Location", "Central knowledge", "Data migrations", "Conflict Management", "Synchronization Log"]))
     stab(pg, "Schema Management"); check("Regression: Schema Management keeps its V17.5 content (repository sync, stored schemas); the Schema passphrase card was removed in V17.5.4", all(x in pg.inner_text("main") for x in ["Repository synchronization", "Stored Schemas"]))
     ctx.close()
@@ -165,7 +171,7 @@ def regression_and_layout(b, url):
 
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"; st = {}
     try:

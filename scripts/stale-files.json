@@ -1,0 +1,301 @@
+{
+ "description": "REVIEWED list of files that earlier versions left in the repository and that V17.6.9 does not contain. Removed ONLY by `npm run prune-stale -- --delete` (explicit), never automatically. Source: the GitHub Actions log logs_104051351287 (54 orphaned TypeScript files reported by the orphan check + 5 failing historical test files) compared with the V17.6.8 package, which contains none of them and passes 266/266 tests without them.",
+ "reviewedIn": "17.6.9",
+ "files": [
+  {
+   "path": "src/components/columnPicker.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/conflictBanner.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/dataTable.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/filterBuilder.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/hamburgerNav.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/icons.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/logoMark.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/manualExprBuilder.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/modal.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/schemaNameModal.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/sqlCodeBlock.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/syncLogPanel.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/tablePicker.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/tabs.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/theme.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/toast.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/components/tourOverlay.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/engines/crNlpEngine.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/engines/decodeEngine.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/engines/schemaIntegrityEngine.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/engines/schemaSyncMerge.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/engines/schemaVersionEngine.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/layouts/appShell.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/aboutPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/crBuilderPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/errorRectifierPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/quickstartPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/readOnlyBuilderPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/schemaEditorSection.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/schemaPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/pages/settingsPage.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/aiService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/autoSyncService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/copilotNlpService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/githubApiService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/msalAuthService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/nlpOrchestrator.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/onlineNlpService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/secretVaultService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/syncCoordination.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/services/syncService.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/state/store.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/types/app.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/adminCredentialSync.ts",
+   "kind": "orphan-source",
+   "reason": "Earlier Admin Password synchronization UI helper; superseded by AdminPasswordService (src/v17/services/adminPassword.ts). Nothing imports it."
+  },
+  {
+   "path": "src/ui/pages/schemaPassphraseAdmin.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/template.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/tour.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/views/builder.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/views/other.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/ui/views/settings.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/utils/sqlIdentifier.ts",
+   "kind": "orphan-source",
+   "reason": "Left-over of an earlier version (copying a package over a repository never deletes files). Not reachable from src/main.ts; fails strict compilation against the current contracts (see the GitHub Actions log: missing exports / removed types)."
+  },
+  {
+   "path": "src/v17/services/adminCredential.ts",
+   "kind": "orphan-source",
+   "reason": "Earlier Admin Password implementation (V17.6.x development); superseded by src/v17/services/adminPassword.ts + src/services/passwordService.ts. Nothing imports it."
+  },
+  {
+   "path": "src/v17/services/adminCredentialService.ts",
+   "kind": "orphan-source",
+   "reason": "Earlier Admin Password implementation (V17.6.x development); superseded by src/v17/services/adminPassword.ts + src/services/passwordService.ts. Nothing imports it."
+  },
+  {
+   "path": "src/v17/services/hostedVault.ts",
+   "kind": "orphan-source",
+   "reason": "V17.5.8 same-origin \"hosted vault\" reader; superseded in V17.6.3 by the published copy (src/v17/services/publishedData.ts) read through src/v17/services/vaultRetrieval.ts (via \"repository-published\"). Nothing in src/main.ts reaches it."
+  },
+  {
+   "path": "test/engines.test.mjs",
+   "kind": "stale-test",
+   "reason": "Test file of an earlier version that is not part of the V17.6.8/V17.6.9 package; fails as a whole in CI ('test failed') — it exercises the removed src/engines/* and src/services/* generation."
+  },
+  {
+   "path": "test/v1756.test.mjs",
+   "kind": "stale-test",
+   "reason": "V17.5.6 historical test that reads the CURRENT package.json as if it were V17.5.6 and calls the removed default-password mechanism; not part of the V17.6.8/V17.6.9 package."
+  },
+  {
+   "path": "test/v1758.test.mjs",
+   "kind": "stale-test",
+   "reason": "V17.5.8 historical test of src/v17/services/hostedVault.ts (orphaned, superseded by publishedData.ts + vaultRetrieval.ts); reads package.json as if it were V17.5.8; not part of the package."
+  },
+  {
+   "path": "test/v1759.test.mjs",
+   "kind": "stale-test",
+   "reason": "Historical test file that fails as a whole in CI; it imports modules that no longer exist in the production graph; not part of the package."
+  },
+  {
+   "path": "test/v176.test.mjs",
+   "kind": "stale-test",
+   "reason": "V17.6.0 historical test of the removed hostedVault module and 'Hosted Secret Vault' messages; reads package.json as if it were V17.6.0; not part of the package."
+  }
+ ]
+}

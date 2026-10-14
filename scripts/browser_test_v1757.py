@@ -14,6 +14,7 @@ import browser_test_v1754 as T
 B = T.B
 from playwright.sync_api import sync_playwright
 ROOT = B.ROOT; PLAIN = B.PLAIN; TOK_A, TOK_B, TOK_BAD, TOK_RO = B.TOK_A, B.TOK_B, B.TOK_BAD, B.TOK_RO; DEFAULT_PASS = T.DEFAULT_PASS; VPATH = T.VPATH
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 check, go, unlock, stab, newdev, configure, section = B.check, B.go, B.unlock, B.stab, B.newdev, B.configure, B.section
 DEF = "basware/sk-ap-sql-assistant"; ALT = "acme/alt-repo"; PUB = "acme/public-repo"; CUSTOM = "a-different-vault-passphrase-2027"; TOK_NEW = "ghp_" + "Nn1Ee2Ww3Tt4Oo5Kk6Ee7Nn8Aa9Bb0Cc1Dd2"
 DEFAULT_CFG = [DEF, "main", PLAIN]; ALT_CFG = [ALT, "release", "data/schemas/reg.json"]
@@ -130,7 +131,10 @@ def one_configuration(b, url, st):
     hub.valid.discard(TOK_A); pg.fill("#vaultBranch", "release"); pg.click("#repoCfgSave"); pg.wait_for_timeout(1200); t = pg.inner_text("#repoCfgResult"); hub.valid.add(TOK_A)
     check("Live check — the saved token is rejected by GitHub: refused, NOT saved, the editor stays open", "rejected" in t.lower() and "not saved" in t.lower() and ro(pg) == [False, False, False] and "sqla.repoconfig" not in storage(pg), t[:200])
     hub.mode = "down"; pg.click("#repoCfgSave"); pg.wait_for_timeout(1500); t = pg.inner_text("#repoCfgResult"); hub.mode = "ok"
-    check("Live check — GitHub unreachable: refused with an explanation (a value that cannot be verified is not saved)", "could not be verified" in t.lower() and "sqla.repoconfig" not in storage(pg), t[:200])
+    check("Live check — GitHub unreachable: refused with an explanation (a value that cannot be verified is not saved)", ("could not be verified" in t.lower() or "could not be read" in t.lower()) and "sqla.repoconfig" not in storage(pg), t[:200])
+    # V17.6.8: the refused check (central Admin Password unreadable while GitHub is down) locks the editor, like any failed authorization — unlock it again now that GitHub answers
+    if pg.is_visible("#repoCfgEdit"): pg.click("#repoCfgEdit"); pg.fill("#repoCfgAdminPw", "admin"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(1200)  # V17.6.9: whether the editor was locked by the refused check depends on how the first-time default was confirmed in this harness
+    pg.fill("#vaultBranch", "release")
     hub.clear(); pg.fill("#vaultRepo", f"https://github.com/{ALT}.git"); pg.fill("#vaultPath", "data/schemas/reg.json"); pg.click("#repoCfgSave"); pg.wait_for_timeout(1500); t = pg.inner_text("#repoCfgResult"); kinds = [l[2] for l in hub.log if l[1] == ALT]
     check("Valid change by the administrator (a pasted GitHub URL is accepted): repository → branch → file are verified, then saved — 'Pull Schema, Sync with GitHub Now and Push Secret Vault now use it'", "validated and saved" in t and "Push Secret Vault now use it" in t and kinds[:3] == ["repo", "branches", "contents"] and "sqla.repoconfig" in storage(pg), (t[:200], kinds))
     check("After saving the configuration is hidden again, read-only again, and shows the new values on reveal", not pg.is_visible("#vaultRepo") and (reveal(pg) or True) and vals(pg) == ALT_CFG and ro(pg) == [True, True, True], vals(pg))
@@ -178,7 +182,8 @@ def token_validation(b, url, st):
     check("A rejected token never replaces a WORKING saved token: 'the token already saved was kept', vault byte-identical", "not saved" in t and "already saved was kept" in t and TOK_A[-4:] in pg.inner_text("#maskedToken") and pg.evaluate("() => localStorage.getItem('sqla.vault.local.v17')") == blob1, t[:240])
     hub.mode = "down"; t = set_token(TOK_NEW); hub.mode = "ok"
     check("GitHub unreachable: the token cannot be checked — it is saved with the message 'saved anyway' (offline setup keeps working), not silently trusted", "saved (encrypted)" in t and "could not be reached" in t and "saved anyway" in t and TOK_NEW[-4:] in pg.inner_text("#maskedToken"), t[:300])
-    hub.mode = "http404"; t = set_token(TOK_A); hub.mode = "ok"; check("Token that cannot see the repository (404 / 403): saved with an explanation — a hidden repository is not the same as an invalid token", "saved (encrypted)" in t and ("cannot see the configured repository" in t or "not allowed" in t), t[:300])
+    hub.mode = "http404"; pg._force_confirm = True; t = set_token(TOK_A); pg._force_confirm = False; hub.mode = "ok";  # V17.6.9: a repository the token cannot see can never CONFIRM the default — the harness confirms it for this token-card scenario
+    check("Token that cannot see the repository (404 / 403): saved with an explanation — a hidden repository is not the same as an invalid token", "saved (encrypted)" in t and ("cannot see the configured repository" in t or "not allowed" in t), t[:300])
     check("No token appears in the page, storage, console or any URL during these checks", TOK_A not in pg.inner_text("body") and TOK_A not in storage(pg) and not [x for x in B.console_all if "ghp_" in x] and not [u for m, u in hub.urls if "ghp_" in u]); ctx.close()
 
 # ───────────────────────────── 5. Cross-device recovery on TWO separate browser profiles ─────────────────────────────
@@ -289,7 +294,7 @@ def push_safety(b, url, st):
 # ───────────────────────────── 8. Regression, layout ─────────────────────────────
 def regression(b, url):
     hub = Hub7(); ctx, pg = newdev(b, url, hub, tag="reg")
-    check("Version 17.6.5 in the footer; the About page lists 17.6.5 first, then 17.5.7", "17.6.5" in pg.inner_text("footer") and (go(pg, "about") or True) and pg.inner_text("main").index("17.6.5") < pg.inner_text("main").index("17.5.7") < pg.inner_text("main").index("17.5.5"))
+    check("Current version in the footer; the About page lists it first, then 17.5.7", VERSION in pg.inner_text("footer") and (go(pg, "about") or True) and pg.inner_text("main").index(VERSION) < pg.inner_text("main").index("17.5.7") < pg.inner_text("main").index("17.5.5"))
     ok = True
     for r in ["quickstart", "readonly", "cr", "schema-used", "schema-used/pull", "error-rectifier", "settings", "about"]: go(pg, r); ok = ok and pg.inner_text("main").strip() != ""
     check("Every route renders", ok)
@@ -310,7 +315,7 @@ def responsive(b, url):
         check(f"Responsive ({name}): the three cards, the revealed configuration, the open editor with its message, a pull result, a vault error and a token-validation message all fit without horizontal scrolling", all(open_ok) and all(editor_ok) and all(rest_ok) and all(tok_ok), (open_ok, editor_ok, rest_ok, tok_ok)); ctx.close()
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = B.free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"; st = {}
     try:

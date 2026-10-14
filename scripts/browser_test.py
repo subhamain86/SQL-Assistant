@@ -3,6 +3,7 @@
 import json, os, sys, time, subprocess, pathlib, tempfile, threading, functools, http.server, socketserver, socket
 from playwright.sync_api import sync_playwright
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 AP77 = json.loads((ROOT / "test/fixtures/ap-schema-77.legacy.json").read_text(encoding="utf-8"))
 PATH = "sql-assistant-data/schemas/registry.json"
 def tiny(n): return {"id": "s-" + n.lower().replace(" ", "-"), "name": n, "tables": [{"name": "T1", "module": "M", "description": "", "columns": [{"name": "ID", "type": "NUMBER", "nullable": False, "isPrimaryKey": True, "description": ""}]}], "relationships": []}
@@ -27,8 +28,12 @@ def watch(pg, tag):
 def ready(pg): pg.wait_for_function("() => document.documentElement.getAttribute('data-sqla-ready') === '1'", timeout=20000); pg.wait_for_timeout(150)
 def go(pg, route): pg.evaluate(f"location.hash = '#{route}'"); pg.wait_for_timeout(250)
 def repo(pg, files): pg.evaluate("(f) => { const r = window.__sqla.memoryRepository(f); window.__repo = r; window.__sqla.setRepositoryOverride(r); window.__sqla.render(); }", files); pg.wait_for_timeout(150)
+def confirm_default(pg):  # V17.6.9: a device with NO repository connection never accepts the default; these suites test the first-time default, which the AUTHORITATIVE (empty) repository confirms
+    try:
+        if pg.evaluate("() => window.__sqla.adminAuth.diagnostics().source") == "none": pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120)
+    except Exception: pass
 def unlock(pg, pw="admin"):
-    go(pg, "settings"); pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900)
+    confirm_default(pg); go(pg, "settings"); pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900)
 def tab(pg, name): pg.click(f'.tab-btn:has-text("{name}")'); pg.wait_for_timeout(250)
 def sql(pg): return pg.inner_text("#sqlBlockMount .sql-output")
 def describe(pg, text, dialect=None):
@@ -58,7 +63,7 @@ def main():
                     go(pg, r); pg.reload(); ready(pg); ok = ok and pg.inner_text("main").strip() != ""
                 check(f"{label}: every route renders and survives refresh", ok); ctx.close()
             ctx = b.new_context(viewport={"width": 1366, "height": 900}); pg = ctx.new_page(); watch(pg, "app"); pg.goto(pages + "?e2e=1"); ready(pg)
-            check("Version 17.6.5 in footer; no old product name", "17.6.5" in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
+            check("Current version in footer; no old product name", VERSION in pg.inner_text("footer") and "AP-SQL" not in pg.content() and "AP_SQL" not in pg.inner_text("body"))
             pg.click("#navToggle"); pg.wait_for_timeout(150); pg.click(".hb-group-toggle"); pg.wait_for_timeout(100); pg.click('#hamburgerOverlay [data-route="readonly"]'); pg.wait_for_timeout(300)
             check("Hamburger navigation works", "Read Only Query Builder" in pg.inner_text("main") and pg.locator("#hamburgerOverlay").count() == 0)
             bx = [pg.locator(".builder-grid-top .builder-panel").nth(i).bounding_box() for i in range(2)]
@@ -77,7 +82,7 @@ def main():
             go(pg, "cr"); pg.fill("#crNlDesc", "Update invoice 1234 status to Approved"); pg.click("#crNlBuildBtn"); pg.wait_for_timeout(400)
             check("Query Builder for CR", "INVOICE_ID = 1234" in pg.inner_text("#crSqlMount"))
             # ── PASSWORD SECTION ──
-            go(pg, "settings")
+            confirm_default(pg); go(pg, "settings")
             check("Settings locked: password screen shown, tabs hidden", pg.locator("#settingsPwInput").count() == 1 and pg.locator(".tab-btn").count() == 0 and pg.inner_html("#settingsPwError").strip() == "")
             pg.fill("#settingsPwInput", "wrong-pass"); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(900)
             check("Wrong password rejected; Settings stay locked", "Incorrect password" in pg.inner_text("#settingsPwError") and pg.locator(".tab-btn").count() == 0)
@@ -114,7 +119,7 @@ def main():
             pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1500); r = pg.inner_text("main")
             check("Sync #1: legacy AP schema 77 migrated, nothing rejected", "Migration successful" in r and "failed validation" not in r, r[:500])
             pub = json.loads(pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)); ap = next(x for x in pub["schemas"] if x["name"] == "AP schema 77")
-            check("Republished: writer 17.6.5, all 437 decode entries", "17.6.5" in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
+            check("Republished: writer = current version, all 437 decode entries", VERSION in pub["writtenBy"] and sum(len(c.get("decode") or []) for t in ap["tables"] for c in t["columns"]) == 437)
             for n in (2, 3):
                 pg.click("#simpleSyncBtn"); pg.wait_for_timeout(1000); check(f"Sync #{n}: success, no re-migration", "Migration successful" not in pg.inner_text("main") and "failed validation" not in pg.inner_text("main"))
             corrected = pg.evaluate("(p) => window.__repo.files.get(p).text", PATH)

@@ -16,7 +16,6 @@
  *   GET  /v1/contents?owner&repo&branch&path     → { text, sha }        read one file below an allowed folder
  *   PUT  /v1/contents    {owner,repo,branch,path,text,sha,message} → { sha }   write one JSON file below an allowed folder (only for callers who can write to the repository)
  *
- * V17.6.5: a write to sql-assistant-data/security/admin-credential.json must be a valid encrypted Admin Password record (see validateAdminCredential); anything else at that path is refused with 422 credential-record-invalid.
  * What it refuses: any repository that is not in SQLA_ALLOWED_REPOSITORIES; any path outside SQLA_ALLOWED_PATH_PREFIXES (default sql-assistant-data/) — so .github/workflows can never be written —; non-JSON
  * or oversized bodies; a body that contains a GitHub token / private key (or the PAT itself); callers without a valid, unexpired session; writes by callers whose GitHub account has no write permission.
  * What it never does: log bodies, tokens, codes or file contents; return the PAT; keep the caller's GitHub token (it is used for two checks and dropped); use the PAT for anything but the file operations above.
@@ -49,29 +48,6 @@ const GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
 export const validRepoPath = (p, prefixes) => typeof p === 'string' && p.length > 0 && p.length <= 255 && /^[A-Za-z0-9._\-/]+$/.test(p) && !p.startsWith('/') && !p.endsWith('/') && !p.includes('//')
   && !p.split('/').some((s) => s === '.' || s === '..' || s.startsWith('.')) && /\.json$/i.test(p) && prefixes.some((x) => p.startsWith(x));
 const validBranch = (b) => typeof b === 'string' && b.length > 0 && b.length <= 255 && !/[\s\x00-\x1f\x7f~^:?*[\\]/.test(b) && !b.includes('..') && !b.includes('@{') && !b.includes('//') && !/^[/.-]/.test(b) && !/[/.]$/.test(b) && !/\.lock$/i.test(b);
-
-
-// ───────────────────────────── V17.6.5 — the central Admin Password record ─────────────────────────────
-// sql-assistant-data/security/admin-credential.json holds ONLY the encrypted verification marker (PBKDF2-SHA-256 150 000 → AES-256-GCM over a fixed text) in a versioned envelope — never the password.
-// The same strict check runs in the browser (src/v17/services/adminCredential.ts), in scripts/publish-data.mjs and in scripts/security_check.mjs; this is the server's copy, so the one trusted write path
-// refuses anything else at that path: a password-like field, plaintext, another cipher, a record whose isDefault flag does not match its marker. It cannot (and does not claim to) stop someone with write
-// access from replacing the record with another VALID one — see docs/SECURITY.md.
-export const ADMIN_CREDENTIAL_PATH = 'sql-assistant-data/security/admin-credential.json';
-const AC_MARKER = 'sqla-verified-marker-v15'; const AC_DEFAULT = 'admin';
-const AC_TOP = ['format', 'formatVersion', 'revision', 'updatedAt', 'updatedBy', 'isDefault', 'marker'];
-const acKeys = (o, keys) => { const k = Object.keys(o); return k.length === keys.length && keys.every((x) => k.includes(x)); };
-const acB64 = (s) => Buffer.from(s, 'base64').toString('base64') === s;
-const acOpens = (m, password) => { try { const key = crypto.pbkdf2Sync(password, Buffer.from(m.salt, 'base64'), 150000, 32, 'sha256'); const ct = Buffer.from(m.ciphertext, 'base64'); const d = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(m.iv, 'base64')); d.setAuthTag(ct.subarray(ct.length - 16)); return Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]).toString('utf8') === AC_MARKER; } catch { return false; } };
-export function validateAdminCredential(text) {
-  const bad = (reason) => ({ ok: false, reason }); const t = String(text ?? '').replace(/^\uFEFF/, ''); if (!t.trim() || Buffer.byteLength(t, 'utf8') > 4096) return bad('empty or larger than 4 KB');
-  let o; try { o = JSON.parse(t); } catch { return bad('not valid JSON'); } if (!o || typeof o !== 'object' || Array.isArray(o)) return bad('not a JSON object');
-  if (o.format !== 'sqla-admin-credential' || o.formatVersion !== 1) return bad('not an Admin Password record of format version 1'); if (!acKeys(o, AC_TOP)) return bad('unexpected or missing fields');
-  if (!Number.isSafeInteger(o.revision) || o.revision < 1 || o.revision > 1e9) return bad('revision'); if (typeof o.updatedAt !== 'string' || !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(o.updatedAt) || Number.isNaN(Date.parse(o.updatedAt)) || new Date(o.updatedAt).toISOString() !== o.updatedAt) return bad('updatedAt');
-  if (typeof o.updatedBy !== 'string' || !/^[A-Za-z0-9_-]{1,40}$/.test(o.updatedBy)) return bad('updatedBy'); if (typeof o.isDefault !== 'boolean') return bad('isDefault');
-  const m = o.marker; if (!m || typeof m !== 'object' || Array.isArray(m) || !acKeys(m, ['salt', 'iv', 'ciphertext'])) return bad('marker fields');
-  if (typeof m.salt !== 'string' || !/^[A-Za-z0-9+/]{22}==$/.test(m.salt) || !acB64(m.salt) || typeof m.iv !== 'string' || !/^[A-Za-z0-9+/]{16}$/.test(m.iv) || !acB64(m.iv) || typeof m.ciphertext !== 'string' || !/^[A-Za-z0-9+/]{54}==$/.test(m.ciphertext) || !acB64(m.ciphertext)) return bad('marker is not an AES-256-GCM marker of the expected size');
-  if (acOpens(m, AC_DEFAULT) !== o.isDefault) return bad('isDefault does not match the marker'); return { ok: true, record: o };
-}
 
 export function createBroker(env = process.env) {
   const pat = String(env.SQLA_GITHUB_PAT || '').trim();
@@ -234,7 +210,6 @@ export function createBroker(env = process.env) {
         const text = b.json.text; if (typeof text !== 'string' || !text) return send(400, { error: 'bad-request' }); if (Buffer.byteLength(text, 'utf8') > MAX_WRITE) return send(413, { error: 'too-large' });
         const sha = b.json.sha === null || b.json.sha === undefined ? null : b.json.sha; if (sha !== null && !(typeof sha === 'string' && /^[0-9a-f]{40,64}$/i.test(sha))) return send(400, { error: 'bad-request' });
         try { JSON.parse(text); } catch { return send(422, { error: 'not-json' }); }
-        if (t.path === ADMIN_CREDENTIAL_PATH || /(^|\/)security\/admin-credential\.json$/.test(t.path)) { const v = validateAdminCredential(text); if (!v.ok) { note({ event: 'write', login: s.login, repo: `${t.rp.o}/${t.rp.r}`, path: t.path, outcome: 'credential-record-invalid' }); return send(422, { error: 'credential-record-invalid' }); } }
         if (CRED.test(text) || (pat && text.includes(pat))) { note({ event: 'write', login: s.login, repo: `${t.rp.o}/${t.rp.r}`, path: t.path, outcome: 'secret-in-content' }); return send(422, { error: 'secret-in-content' }); }
         if (!pat) return send(503, { error: 'pat-missing' });
         const msg = `${String(b.json.message || 'SQL Assistant update').replace(/[\r\n]+/g, ' ').replace(CRED, '[redacted]').slice(0, 160)} (via repository broker · ${s.login})`;

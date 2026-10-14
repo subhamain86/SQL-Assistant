@@ -7,6 +7,7 @@ import json, os, sys, time, subprocess, pathlib, socket, traceback, base64
 from playwright.sync_api import sync_playwright
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
+VERSION = json.loads((ROOT / "package.json").read_text())["version"]  # V17.6.9: the CURRENT version comes from package.json — suites never pin it with a literal
 ENC = "sql-assistant-data/schemas/registry.enc.json"; PLAIN = "sql-assistant-data/schemas/registry.json"
 PASS = "violet-harbour-2026-lantern"; NEWPASS = "amber-meadow-2027-compass"
 results, errors, console_all = [], [], []
@@ -30,8 +31,12 @@ def go(pg, route): pg.evaluate(f"location.hash = '#{route}'"); pg.wait_for_timeo
 def sql(pg): return pg.inner_text("#sqlBlockMount .sql-output")
 def newdev(browser, url, w=1366, h=900, tag="dev"):
     ctx = browser.new_context(viewport={"width": w, "height": h}); pg = ctx.new_page(); watch(pg, tag); pg.goto(url); ready(pg); return ctx, pg
+def confirm_default(pg):  # V17.6.9: a device with NO repository connection never accepts the default; these suites test the first-time default, which the AUTHORITATIVE (empty) repository confirms
+    try:
+        if pg.evaluate("() => window.__sqla.adminAuth.diagnostics().source") == "none": pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120)
+    except Exception: pass
 def unlock(pg, pw="admin"):
-    go(pg, "settings")
+    confirm_default(pg); go(pg, "settings")
     if pg.locator("#settingsPwInput").count(): pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(1000)
 def stab(pg, name): pg.click(f'.tab-btn:has-text("{name}")'); pg.wait_for_timeout(350)
 def btab(pg, which): pg.click(f'[data-tour="tab-{which}"]'); pg.wait_for_timeout(250)
@@ -165,7 +170,7 @@ def publish_from_a(b, url):
     pr = a.evaluate("async (p) => { const sv = window.__sqla.services(); await sv.passphrase.set(p); const r = await sv.sync.push({ allowReplacingInvalidRemote: true, replaceUndecryptable: true }); return JSON.stringify({ ok: r.ok, m: r.messages, p: r.problems }); }", PASS); pr = json.loads(pr); res = " ".join(pr["m"] + pr["p"]); f = repofile(a, ENC)
     check("Publish: the schema is published as an encrypted, read-back-verified file and the result says so", pr["ok"] and "encrypted file" in res and "verified" in res and f != "", res[:200])
     h = json.loads(f) if f else {}
-    check("Publish: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata", h.get("format") == "sqla-schema-sync" and h.get("cipher", {}).get("alg") == "AES-256-GCM" and h.get("cipher", {}).get("kdf") == "PBKDF2-SHA256" and h.get("appVersion") == "17.6.5" and h.get("schemaFormatVersion") == 2 and h.get("formatVersion") == 1 and "writtenAt" in h and h.get("schemaCount") >= 1, list(h.keys()))
+    check("Publish: the repository file is real AES-256-GCM (PBKDF2) with versioned header metadata", h.get("format") == "sqla-schema-sync" and h.get("cipher", {}).get("alg") == "AES-256-GCM" and h.get("cipher", {}).get("kdf") == "PBKDF2-SHA256" and h.get("appVersion") == VERSION and h.get("schemaFormatVersion") == 2 and h.get("formatVersion") == 1 and "writtenAt" in h and h.get("schemaCount") >= 1, list(h.keys()))
     check("Publish: nothing readable is in the repository — no schema, table, column, decode label, passphrase or Base64 of them", all(x not in f for x in ["Finance Ops", "ORDERS", "CUSTOMER", "Approved", PASS, base64.b64encode(b"Finance Ops").decode(), base64.b64encode(PASS.encode()).decode()]) and PLAIN not in a.evaluate("() => [...window.__repo.files.keys()]"))
     stored = a.evaluate("() => localStorage.getItem('sqla.schemapass.v175')")
     check("Publish: the passphrase is stored on the device only as ciphertext", stored and PASS not in stored and base64.b64encode(PASS.encode()).decode() not in stored and "AES-256-GCM" in stored)
@@ -262,7 +267,7 @@ def classic_and_secrecy(b, url):
     ctx, pg = newdev(b, url, tag="classic"); repo(pg, {}); install_finance(pg); unlock(pg); stab(pg, "Schema Management"); pg.click("#simpleSyncBtn"); pg.wait_for_timeout(2500)
     files = pg.evaluate("() => [...window.__repo.files.keys()]")
     check("Existing sync: without a passphrase the classic plain synchronization works exactly as in V17.4", files == [PLAIN] and "Finance Ops" in repofile(pg, PLAIN) and "failed" not in pg.inner_text("#simpleSyncResult").lower(), files)
-    pub = json.loads(repofile(pg, PLAIN)); check("Existing sync: the plain file now also carries the app version and the writer stamp", pub.get("appVersion") == "17.6.5" and pub.get("writtenBy", "").startswith("SQL Assistant 17.6") and pub.get("formatVersion") == 2)
+    pub = json.loads(repofile(pg, PLAIN)); check("Existing sync: the plain file now also carries the app version and the writer stamp", pub.get("appVersion") == VERSION and pub.get("writtenBy", "").startswith("SQL Assistant 17.") and pub.get("formatVersion") == 2)
     stab(pg, "Secret Vault"); check("Existing Secret Vault: Settings → Secret Vault keeps Push Secret Vault to Repository; the repository / token / pull controls moved to Schema → Pull Schema (V17.5.4)", pg.locator("#pushVaultBtn").count() == 1 and pg.locator("#pullVaultBtn").count() == 0 and pg.locator("#changeTokenBtn").count() == 0 and pg.locator("#vaultRepo").count() == 0)
     stab(pg, "Admin Query Library"); check("Existing Settings: Admin Query Library is unchanged", pg.locator("#aqAdd").count() == 1)
     stab(pg, "Manual Schema Update"); check("Existing Settings: Manual Schema Update is unchanged", pg.locator("#editorSchemaSelect").count() == 1)
@@ -282,7 +287,7 @@ def responsive(b, url):
 
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"; state = {}
     try:

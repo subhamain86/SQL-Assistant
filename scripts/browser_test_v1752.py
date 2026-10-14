@@ -79,10 +79,41 @@ def settle(pg, ms=450): pg.wait_for_timeout(ms)  # the SQL / validation refresh 
 def newdev(browser, url, hub=None, w=1366, h=900, tag="dev"):
     ctx = browser.new_context(viewport={"width": w, "height": h})
     if hub: ctx.route("https://api.github.com/**", hub.handler)
-    pg = ctx.new_page(); watch(pg, tag); pg.goto(url); ready(pg); return ctx, pg
+    pg = ctx.new_page(); watch(pg, tag); pg.goto(url); ready(pg); _auto_confirm(pg); return ctx, pg
+ADMIN_PW_FIELDS = ["#repoCfgSave", "#repoCfgDefaults", "#settingsPwInput", "#tokenAdminPw", "#repoCfgAdminPw", "#aqPw", "#pwCurrent", "#dangerPw", "#c3Password", "#delSchemaPw"]
+def _auto_confirm(pg):
+    """V17.6.9 harness: these legacy suites drive the FIRST-TIME default on devices that have no repository connection (or whose credential is refused) yet. Since V17.6.9 the default is accepted only when an authoritative
+    repository CONFIRMS it, so a click that submits a visible Admin Password field gets a temporary EMPTY authoritative repository (released again afterwards: the real GitHub client / 'no token' behaviour under test is unchanged). The application code is not touched."""
+    orig = pg.click
+    def click(selector, *a, **k):
+        tmp = False
+        try:
+            if not (str(selector).startswith("#pull") or "Sync" in str(selector) or "Toggle" in str(selector)) and pg.evaluate("({f, force}) => f.some(s => { const i = document.querySelector(s); return !!(i && i.offsetParent !== null); }) && (force || (() => { const d = window.__sqla.adminAuth.diagnostics(); return d.source !== 'authoritative' || d.state === 'error'; })())", {"f": ADMIN_PW_FIELDS, "force": bool(getattr(pg, "_force_confirm", False))}):
+                pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120); tmp = True
+        except Exception: tmp = False
+        special = tmp and selector in ("#saveTokenBtn", "#repoCfgSave", "#repoCfgUnlock")
+        if special:  # these handlers decide AFTER the password check whether to ask GitHub ("is a test repository set?") or run an inactivity timer: the temporary connection is released exactly when the verifier check has decrypted (deterministic); a 4 s timer is the safety net
+            pg.evaluate("() => { const sub = crypto.subtle; const g = (window.__ch0 = window.__ch0 || { od: sub.decrypt.bind(sub), ok: sub.deriveKey.bind(sub) }); if (window.__ch) { clearTimeout(window.__ch.t); } const me = { t: 0, keys: new WeakSet() }; window.__ch = me; const done = () => { if (window.__ch === me) { try { window.__sqla.setRepositoryOverride(null); } catch (e) {} sub.decrypt = g.od; sub.deriveKey = g.ok; window.__ch = null; } }; sub.deriveKey = async (alg, ...r) => { const k = await g.ok(alg, ...r); if (alg && alg.name === 'PBKDF2' && alg.iterations === 150000) me.keys.add(k); return k; }; sub.decrypt = async (alg, key, ...r) => { let out; try { out = await g.od(alg, key, ...r); } catch (e) { if (me.keys.has(key)) done(); throw e; } try { if (new TextDecoder().decode(out) === 'sqla-verified-marker-v15') done(); } catch (e) {} return out; }; me.t = setTimeout(done, 6000); }")  # ONE hook at a time: the temporary connection is released exactly when the ADMIN verifier check has finished — the marker decrypted successfully, or a decrypt with a password-derived key failed (wrong password); other decrypts (vault, schema) never release; a 6 s timer is the safety net
+        r = orig(selector, *a, **k)
+        if tmp and not special:
+            pg.wait_for_timeout(1500)
+            try: pg.evaluate("() => window.__sqla.setRepositoryOverride(null)")
+            except Exception: pass
+        return r
+    pg.click = click
+def confirm_default(pg):  # returns True when a temporary connection was set (release_default removes it again)
+    try:
+        if pg.evaluate("() => window.__sqla.adminAuth.diagnostics().source") == "none": pg.evaluate("() => window.__sqla.setRepositoryOverride(window.__sqla.memoryRepository({}))"); pg.wait_for_timeout(120); return True
+    except Exception: pass
+    return False
+def release_default(pg, tmp):
+    if tmp:
+        try: pg.evaluate("() => window.__sqla.setRepositoryOverride(null)")
+        except Exception: pass
 def unlock(pg, pw="admin"):
-    go(pg, "settings")
+    tmp = confirm_default(pg); go(pg, "settings")
     if pg.locator("#settingsPwInput").count(): pg.fill("#settingsPwInput", pw); pg.click("#settingsUnlockBtn"); pg.wait_for_timeout(1000)
+    release_default(pg, tmp)
 def stab(pg, name): pg.click(f'.tab-btn:has-text("{name}")'); pg.wait_for_timeout(350)
 def btab(pg, which): pg.click(f'[data-tour="tab-{which}"]'); pg.wait_for_timeout(250)
 def registry_json(pg): return pg.evaluate("() => JSON.stringify(window.__sqla.services().schemas.registry())")
@@ -100,7 +131,7 @@ def section(name, fn, *a):
     try: fn(*a)
     except Exception as ex: check(f"{name}: section completed", False, f"{type(ex).__name__}: {str(ex)[:260]} | {traceback.format_exc().splitlines()[-3][:150]}")
 def configure(pg, token, admin="admin"):  # V17.5.4: the real UI — Schema → Pull Schema → GitHub repository card (repository / branch / path are fixed and read-only); the app then builds its real GitHub client from it
-    pg.evaluate("location.hash = '#schema-used/pull'"); pg.wait_for_timeout(600); pg.click("#changeTokenBtn"); pg.fill("#newTokenInput", token); pg.fill("#tokenAdminPw", admin); pg.click("#saveTokenBtn"); pg.wait_for_timeout(1400)
+    tmp = confirm_default(pg); pg.evaluate("location.hash = '#schema-used/pull'"); pg.wait_for_timeout(600); pg.click("#changeTokenBtn"); pg.fill("#newTokenInput", token); pg.fill("#tokenAdminPw", admin); pg.click("#saveTokenBtn"); pg.wait_for_timeout(1400); release_default(pg, tmp)
 def publish_enc(pg, passphrase):  # V17.5.4: the Schema-passphrase card and the Push tab were removed from the UI; the shared SyncService.push() is still the real publication code path (read-back verified)
     r = pg.evaluate("async (p) => { const sv = window.__sqla.services(); await sv.passphrase.set(p); const r = await sv.sync.push({ allowReplacingInvalidRemote: true, replaceUndecryptable: true }); return JSON.stringify({ ok: r.ok, m: r.messages, p: r.problems }); }", passphrase); pg.wait_for_timeout(300); return json.loads(r)
 def edit_decode(pg, text):  # Manual Schema Update → INVOICE_HEADER.STATUS decode
@@ -324,7 +355,7 @@ def responsive(b, url):
 
 
 def main():
-    if not (ROOT / "dist/index.html").exists(): print("Run npm run build first."); sys.exit(2)
+    if not (ROOT / "dist/index.html").exists() or not (ROOT / "test-dist/index.html").exists(): print("Run npm run build and npm run build:test first."); sys.exit(2)  # V17.7: the suites load the browser-test build (test-dist/); production is built separately
     port = free_port(); serve = subprocess.Popen(["node", str(ROOT / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/SQL-Assistant/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9)
     url = f"http://127.0.0.1:{port}/SQL-Assistant/?e2e=1"; hub = Hub(); st = {}
     try:

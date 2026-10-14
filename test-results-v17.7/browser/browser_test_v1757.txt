@@ -1,0 +1,114 @@
+PASS Schema → Pull Schema holds exactly the three cards in order: GitHub repository (schema synchronization) · Pull Schema from GitHub · Pull Secret Vault to Repository
+PASS Default: the repository, branch and schema path are hidden — nowhere on the page until 'Show configuration'
+PASS Reveal shows the three default values: basware/sk-ap-sql-assistant · main · sql-assistant-data/schemas/registry.json
+PASS Ordinary user: all three fields are read-only and the only way to change them is the 'Edit configuration (administrator)' button
+PASS Ordinary user: typing, selecting-and-deleting and fill() change nothing (the browser refuses to edit a read-only field)
+PASS Edit asks for the Admin Password first — the fields stay read-only while the password prompt is open
+PASS Wrong Admin Password: refused with a message, the fields stay read-only, no save button, nothing stored
+PASS Empty Admin Password is refused too
+PASS Correct Admin Password: the three fields become editable and Save / Restore defaults / Cancel appear; the password field is cleared
+PASS Validation before saving — empty repository: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — no owner: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — bad branch (space and ..): refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — path outside the repository: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — path that is not .json: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — encrypted twin as path: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — path with a leading slash: refused with a specific message; browser storage and the location in force are unchanged
+PASS Validation before saving — owner with a space: refused with a specific message; browser storage and the location in force are unchanged
+PASS Cancel: the typed values are discarded, the original values are back and the fields are read-only again
+PASS Hiding the configuration while editing cancels the edit: read-only again, original values, nothing stored
+PASS An unlocked editor locks itself again after the inactivity period (5 minutes in production): read-only again, original values, a message says so, nothing stored
+PASS Nothing in the stored data of an ordinary session contains a repository override or a password
+PASS Token set through the repository card (Admin Password) — masked, not in storage
+PASS Live check — repository does not exist: refused ('repository was not found'), NOT saved, the token is not in the message
+PASS Live check — branch does not exist: refused, NOT saved
+PASS Live check — the saved token is rejected by GitHub: refused, NOT saved, the editor stays open
+PASS Live check — GitHub unreachable: refused with an explanation (a value that cannot be verified is not saved)
+PASS Valid change by the administrator (a pasted GitHub URL is accepted): repository → branch → file are verified, then saved — 'Pull Schema, Sync with GitHub Now and Push Secret Vault now use it'
+PASS After saving the configuration is hidden again, read-only again, and shows the new values on reveal
+PASS Persisted in the existing browser-storage architecture as one small record with NO secret (no token, no password)
+PASS Pull Schema uses the saved configuration: it reads ONLY acme/alt-repo → data/schemas/reg.json on branch 'release' (no request to the default repository) and succeeds
+PASS …and the pulled schema is the one from the alternative repository (active schema)
+PASS Sync with GitHub Now (Settings → Schema Management) uses the same configuration — every request goes to acme/alt-repo
+PASS Push Secret Vault (Settings) uses the same configuration: it writes the vault to acme/alt-repo (branch release) and nowhere else
+PASS The pushed vault contains no token, no passphrase and no Base64 of them
+PASS Another device without an administrator change uses the defaults (the override is per device)
+PASS Persistence: after a reload the saved configuration is still in force and still read-only
+PASS …and the Settings → Schema Management banner shows the same repository, branch and path (one source)
+PASS Restore application defaults (administrator): the defaults are back, the override record is removed
+PASS Tampered storage: a stored record that fails validation is ignored — the defaults stay in force and the page says so
+PASS Tampered storage: unreadable data never breaks the page (defaults in force)
+PASS No token, password or Vault passphrase reached the console, a URL or the page during the configuration flows
+PASS 'Pull Schema from GitHub' contains only the Pull Schema action button — no input, checkbox, select, eye button or link
+PASS …and nothing else: no instructions, no status block, no passphrase wording — just the heading and the button
+PASS Pull without a token: a clear message (no token set) — nothing requested a passphrase
+PASS Token that GitHub REJECTS (401): not saved, with a clear message; nothing stored; the token is not in the message
+PASS Wrong Admin Password: refused BEFORE any request is sent to GitHub
+PASS Token with READ-ONLY access: saved, and the message says it can pull but publishing / pushing will fail until it has 'Contents: Read and write'
+PASS The check is a single authenticated read of the configured repository (no write, nothing else)
+PASS Token with read and write access: saved, the message confirms read and write; it replaces the read-only one
+PASS A rejected token never replaces a WORKING saved token: 'the token already saved was kept', vault byte-identical
+PASS GitHub unreachable: the token cannot be checked — it is saved with the message 'saved anyway' (offline setup keeps working), not silently trusted
+PASS Token that cannot see the repository (404 / 403): saved with an explanation — a hidden repository is not the same as an invalid token
+PASS No token appears in the page, storage, console or any URL during these checks
+PASS Device A: token validated and stored (Schema → Pull Schema), then the encrypted vault is pushed through Settings → Secret Vault with the administrator's own passphrase
+PASS The repository holds ONLY ciphertext (AES-256-GCM / PBKDF2): no token, no passphrase, no Base64 or URL-encoded form of either
+PASS Device B (a different browser profile) starts with no token, no saved vault, the default configuration — and nothing from device A in its storage
+PASS Device B: 'Retrieve from Repository' without a token reaches the configured (private) repository anonymously and is told, honestly, that the vault file is needed — it does not claim success and says no token has to be set first
+PASS Device B: the default passphrase does NOT open a vault pushed with another passphrase — clear message, nothing saved, no token appears, the passphrase is not echoed
+PASS Device B: with the passphrase supplied by the user the vault is decrypted and validated locally, GitHub is asked about the token, and the token is restored — the message says so without showing it
+PASS Device B: the repository configuration was NOT revealed by the import (still hidden, still read-only, no override stored)
+PASS Device B: the token is held only as ciphertext (masked ••••, last 4 characters), identical to device A's; it is not in the page, markup, storage, any URL or the console
+PASS Device B: the restored token is used internally — Pull Schema works at once (authenticated), no passphrase asked, and device A's schema arrives and becomes active
+PASS Device B: Push Secret Vault works with the restored token (same repository, no confirmation needed because the vault in the repository is identical) — import and push stayed separate operations
+PASS A device that already has a token can 'Retrieve from Repository' directly (authenticated read of the vault file only); the vault's token replaces its own as an explicit import
+PASS Recovery that is not possible says so: the vault holds a token GitHub rejects (revoked / expired) → 'recovery is not possible', what to do next, nothing saved
+PASS Failure-free reuse: after the failed attempts the vault file in the repository is unchanged by any import (only device A's / B's explicit pushes wrote it)
+PASS Setup: a vault pushed with the DEFAULT passphrase (Settings → Secret Vault)
+PASS Pushing with the built-in default passphrase is allowed (existing workflow) but the result carries an honest warning: it is built into the application and is not secret; use your own passphrase for a confidential token
+PASS Import with a wrong passphrase: 'wrong or the data was modified', nothing saved, no token appears, the passphrase is not echoed
+PASS Import of a file that is not a Secret Vault (a schema registry): clear message, nothing saved
+PASS Import of a damaged / non-JSON file: clear message, nothing saved
+PASS Import of an empty file: clear message, nothing saved
+PASS Import of a tampered ciphertext: rejected (authenticated encryption), nothing saved
+PASS None of the failed imports left a token, a stale success message or a changed vault behind
+PASS Import of the valid file on a device with NO token: succeeds, says the GitHub access token was saved (encrypted) and that Pull Schema / Push can be used now — without setting the token first
+PASS …the card shows the token masked (last 4 only), 'Change Token', and — although the configuration had been revealed before — it is hidden again (an import never exposes the administrative configuration)
+PASS Right after the import Pull Schema works with the imported token — no repeat of the import
+PASS A vault with NO token imported onto a device that has one: the saved token is kept, the AI key is imported, a warning explains it
+PASS A vault whose token is malformed (spaces): refused, saved token kept, vault byte-identical, the value is not echoed
+PASS A vault whose token GitHub REJECTS: not applied, saved working token kept, vault byte-identical, a clear 'recovery is not possible' message with the next step
+PASS A vault whose token has READ-ONLY access: imported (pull works) with a visible warning that publishing / pushing will fail
+PASS A device whose own saved vault can no longer be opened (device key lost) can still import — the old data is kept as a backup copy
+PASS Administrator sets a PUBLIC repository on a device with no token: saved, with the note that it could not be checked online without a token
+PASS 'Retrieve from Repository' with no token works for a public repository (anonymous read): the vault is decrypted and the token populated
+PASS Push: first push creates the vault file (encrypted, verified), no default-passphrase warning with an own passphrase
+PASS Push again with the same passphrase over a readable, identical vault: no confirmation is needed and the push is verified
+PASS Push with a DIFFERENT passphrase over an existing vault: the user must confirm — it names the problem — and declining writes NOTHING (no PUT, the repository file is unchanged)
+PASS …accepting replaces it (explicitly confirmed), verified by read-back
+PASS Push refuses a vault file path that would overwrite another synchronized file (the schema registry): validated before anything is encrypted or written
+PASS …and with the proper path the push works again
+PASS Push from a device that has no AI/LLM key over a repository vault that holds one: the user is told it would be REMOVED and must confirm; declining writes nothing
+PASS …accepting performs the push (verified)
+PASS Push with a READ-ONLY token: GitHub's refusal is reported with a clear cause, nothing is written, no secret in the message
+PASS Push without any secret saved: refused at step 1, nothing written
+PASS Push with only an AI key and no GitHub token: stops before encryption — 'no GitHub access token is saved … Schema → Pull Schema' — nothing written
+PASS Duplicate clicks: five clicks in the same instant start ONE push (one write)
+PASS Settings → Secret Vault: contains Push Secret Vault to Repository (the only push) and NO repository configuration card, token editor or import / retrieve controls; no repository name is displayed
+PASS …and it points to Schema → Pull Schema for the repository configuration
+PASS Settings → Schema Management: the 'Schema passphrase — encrypted synchronization' card is gone; every other function remains (sync, stored schemas, add / import, advanced recovery); no passphrase input anywhere in it (the read-only status chip is not a control)
+PASS Settings tabs unchanged (8)
+PASS No duplicate or conflicting synchronization actions: each control exists exactly once on Schema → Pull Schema, and there is no push control there
+PASS Current version in the footer; the About page lists it first, then 17.5.7
+PASS Every route renders
+PASS SQL generation (Describe What You Need, offline NLU) is unchanged: aggregation, grouping, date range, limit, validation
+PASS Manual Selectors (table + column) are unchanged
+PASS Advanced Options are unchanged
+PASS Schema keeps its three tabs; the hamburger menu behaves as before
+PASS Schema import (Settings → Schema Management) still works
+PASS Responsive (desktop): the three cards, the revealed configuration, the open editor with its message, a pull result, a vault error and a token-validation message all fit without horizontal scrolling
+PASS Responsive (tablet 768px): the three cards, the revealed configuration, the open editor with its message, a pull result, a vault error and a token-validation message all fit without horizontal scrolling
+PASS Responsive (phone 390px): the three cards, the revealed configuration, the open editor with its message, a pull result, a vault error and a token-validation message all fit without horizontal scrolling
+PASS No console errors or uncaught exceptions in any V17.5.7 flow
+
+112/112 V17.5.7 browser checks passed

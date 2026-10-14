@@ -16,7 +16,7 @@ const state = (st, canWrite = null) => async () => ({ state: st, canWrite, messa
 const snapshot = (store) => JSON.stringify([...store.keys()].sort().map((k) => [k, store.get(k)]));
 const CFG = { clientId: CLIENT, relayUrl: 'https://relay.example.org/github' };
 
-test('V17.6.1 version is stamped everywhere (package.json = APP_VERSION = writer label)', () => { const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url))); assert.match(pkg.version, /^17\.6\.[1-9]\d*$/, 'V17.6.1 or a later 17.6.x patch (V17.6.2 keeps every V17.6.1 behaviour tested below)'); assert.equal(F.APP_VERSION, pkg.version); assert.equal(F.WRITER_LABEL, `SQL Assistant ${pkg.version}`); });
+test('V17.6.1 version is stamped everywhere (package.json = APP_VERSION = writer label)', () => { const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url))); assert.match(pkg.version, /^17\.(6\.[1-9]\d*|[7-9]\.\d+)$/, 'V17.6.1 or a later 17.6.x patch (V17.6.2 keeps every V17.6.1 behaviour tested below)'); assert.equal(F.APP_VERSION, pkg.version); assert.equal(F.WRITER_LABEL, `SQL Assistant ${pkg.version}`); });
 
 // ───────────────────────────── the sign-in configuration (administrator-controlled, public values only) ─────────────────────────────
 test('V17.6.1 sign-in configuration: off by default; enabled only with a valid public client ID and an https relay (http only for localhost); everything else is off or reported', () => {

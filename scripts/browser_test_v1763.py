@@ -29,7 +29,7 @@ def make_published(sp, vault_pass, allow_default, root_name):
     rc2, out2 = run([str(ROOT / "scripts/publish-data.mjs"), "--src", str(src), "--dest", str(dest), "--commit", COMMIT, "--repository", DEF]); assert rc2 == 0, out2
     return src, dest, out
 def site(pub_dest, port):
-    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs")
+    d = pathlib.Path(tempfile.mkdtemp(prefix="sqla-site-")); shutil.copytree(ROOT / "release", d / "release"); (d / "scripts").mkdir(); shutil.copy(ROOT / "scripts/serve.mjs", d / "scripts/serve.mjs"); (d / "test-dist").mkdir(exist_ok=True); shutil.copy(ROOT / "test-dist/index.html", d / "test-dist/index.html")  # V17.7: ?e2e=1 is served the browser-test build; the production page of release/ has no hook
     if pub_dest is not None: shutil.copytree(pub_dest / "sql-assistant-data", d / "release/sql-assistant-data", dirs_exist_ok=True)
     p = subprocess.Popen(["node", str(d / "scripts/serve.mjs")], env={**os.environ, "PORT": str(port), "BASE": "/"}, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL); time.sleep(0.9); return p, d
 def gh_route(sp):
@@ -42,8 +42,11 @@ def gh_route(sp):
         except urllib.error.HTTPError as e: st, body = e.code, e.read(); extra = {}
         route.fulfill(status=st, body=body, headers={"content-type": "application/json", **CORS, **extra})
     return h
+AUTO_CONFIRM = True  # V17.6.9 harness switch: the dedicated authentication suites (browser_test_v1767) turn it off so nothing masks the policy under test
 def newdev(b, url, tag, sp, w=1366, h=900):
-    ctx = b.new_context(viewport={"width": w, "height": h}); ctx.route("https://api.github.com/**", gh_route(sp)); pg = ctx.new_page(); T.watch(pg, tag); pg.goto(url + "?e2e=1"); T.ready(pg); return ctx, pg
+    ctx = b.new_context(viewport={"width": w, "height": h}); ctx.route("https://api.github.com/**", gh_route(sp)); pg = ctx.new_page(); T.watch(pg, tag); pg.goto(url + "?e2e=1"); T.ready(pg)
+    if AUTO_CONFIRM: T._auto_confirm(pg)
+    return ctx, pg
 def masked(pg): return pg.inner_text("#maskedToken")
 def auto_text(pg, timeout=20000):
     pg.wait_for_function("() => { const r = document.querySelector('#autoTokenResult'); return r && r.innerText.trim().length > 0; }", timeout=timeout); return pg.inner_text("#autoTokenResult")
@@ -53,7 +56,7 @@ def fp(pg): return pg.evaluate("() => JSON.stringify(window.__sqla.services().sc
 def blob(pg): return pg.evaluate("() => localStorage.getItem('sqla.vault.local.v17')")
 
 def main():
-    html = (ROOT / "dist/index.html").read_text(encoding="utf-8")
+    html = (ROOT / "test-dist/index.html").read_text(encoding="utf-8")
     check("The production bundle holds no PAT, no device token, no vault passphrase other than the built-in default, and no environment access", not T.leaked(html, PAT, USER_OK, USER_RW, USER_NONE, OWN, "process.env"))
     sp = free_port(); procs = []; dirs = []; p1, p2, p3 = free_port(), free_port(), free_port()
     try:
@@ -124,7 +127,7 @@ def device_c(b, url, sp, port, site_dir, site_proc):
     pt = pg.inner_text("#v17VaultResult")
     check("Failure — Push Secret Vault to Repository on a device with no token: stopped before anything is encrypted or written, with the real reason (it reads the published copy and cannot publish) and what to do", "holds no GitHub access token" in pt and "cannot publish" in pt and "Nothing was written" in pt, pt[:260])
     pg.evaluate("location.hash = '#schema-used/pull'"); pg.wait_for_timeout(500); pg.click("#repoCfgToggle"); pg.click("#repoCfgEdit"); pg.fill("#repoCfgAdminPw", "not-the-admin-password"); pg.click("#repoCfgUnlock"); pg.wait_for_timeout(900)
-    check("Failure — an unauthorized configuration change: a wrong Admin Password keeps the repository fields read-only (no token, no sign-in involved)", "Incorrect Admin Password" in pg.inner_text("#repoCfgResult") and pg.get_attribute("#vaultRepo", "readonly") is not None and "sqla.repoconfig" not in T.local_only(pg))
+    check("Failure — an unauthorized configuration change: a wrong Admin Password keeps the repository fields read-only (no token, no sign-in involved)", "Incorrect Admin Password" in pg.inner_text("#repoCfgResult") and pg.get_attribute("#vaultRepo", "readonly") is not None and "sqla.repoconfig" not in T.local_only(pg), pg.inner_text("#repoCfgResult")[:240])
     site_proc.terminate(); site_proc.wait(timeout=5); time.sleep(0.4); pg.click("#pullBtn"); res = T.pull_wait(pg)
     check("Failure — the site (backend) goes away: Pull Schema reports it could not be retrieved, no success, the local schema is unchanged", "pulled and validated" not in res and ("could not be retrieved" in res or "could not be reached" in res or "Detail" in res) and intact(), res[:240])
     ctx.close()

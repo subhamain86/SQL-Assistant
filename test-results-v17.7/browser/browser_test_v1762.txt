@@ -1,0 +1,66 @@
+PASS Build output exists: dist/index.html
+PASS Build output exists: release/index.html
+PASS The production bundle holds no PAT, no user token, no device code, no sign-in client ID and no environment access
+PASS A: Hamburger → Schema → Pull Schema holds exactly the three cards in the required order: GitHub repository (schema synchronization) · Pull Schema from GitHub · Pull Secret Vault to Repository
+PASS A: Card 2 holds only the Pull Schema action and its status area — no passphrase field, no input of any kind
+PASS A: Card 1 shows the configured repository read-only by default: basware/sk-ap-sql-assistant · main · sql-assistant-data/schemas/registry.json — all three fields read-only, no editing control visible to an ordinary user except the administrator's Edit button
+PASS A: with central access the token row of Card 1 is replaced by 'Repository access' (not signed in) — no token field, no Set Token
+PASS A: an unauthorized configuration change is refused — a wrong Admin Password keeps the fields read-only (the administrator screen works with no GitHub token and no sign-in)
+PASS A: V17.6.8 — before any sign-in (central Admin Password unknown) the default is not accepted: the editor stays read-only and the message names the Sync button
+PASS A: before any sign-in nothing reached GitHub with the PAT (the page holds no token and asks nothing of GitHub itself)
+PASS A: Pull Schema with no authorization starts the supported sign-in: the card shows the user code and the real github.com address with Cancel — the page never shows a device code, token or the PAT
+PASS A: while it waits NOTHING is authorized: no PAT use, the local schema is unchanged
+PASS A: after approval the page continues by itself: the schema is retrieved through the central service, validated and applied — 'Schema pulled and validated successfully', the shared schema is active
+PASS A: the schema file was read by the service with the PAT (registry.json of the configured repository and branch); the sign-in token only reached GitHub for the two sign-in checks
+PASS A: Pull Schema never asked for a Secret Vault passphrase and never touched the vault file
+PASS A: the page holds only a short-lived broker session (sessionStorage; not a GitHub token) — no PAT, user token or device code anywhere in browser storage; nothing token-like in localStorage
+PASS A: Card 1 now shows who is signed in (and that they can publish), not a token
+PASS A: a second Pull Schema reuses the valid session — no new sign-in, no new device code
+PASS A: …and the sign-in service was not asked for another code
+PASS A: the correct Admin Password unlocks editing; an invalid value is validated and refused before anything is saved, and the current configuration stays in force
+PASS A: 'Check central access' reports the state of the central PAT (configured, accepted by GitHub, expiry date when GitHub reports one) and never shows it
+PASS A: Settings → Secret Vault keeps Push Secret Vault to Repository and holds NO copy of the repository configuration (no repository / branch / schema-path fields, no token row)
+PASS A: Settings → Schema Management no longer has the 'Schema passphrase — encrypted synchronization' card (its unrelated functions remain)
+PASS A: Push Secret Vault to Repository works through the central mechanism: signed in as writer-rw, written by the service with the PAT, read back and verified — 'pushed to the repository (ciphertext only)'
+PASS A: the repository holds ONLY the encrypted envelope — no PAT, no GitHub token, no AI key, no passphrase (own or default), no Base64 / URL-encoded copy of any of them
+PASS A: the commit names the signed-in user and carries no secret
+PASS B: a clean profile — nothing saved, no token, no vault, no session, nothing from device A
+PASS B: the Secret Vault passphrase is pre-filled with the default (xG71…), masked, and still editable; the card says the direction is repository → this device
+PASS B: Retrieve from Repository on a clean profile: the sign-in starts automatically (no token had to be copied from device A), the vault is read through the service, and a WRONG passphrase is refused with the real cause
+PASS B: …nothing on this device was changed by the failed attempt (local data byte-identical apart from the sign-in session), the passphrase is not echoed
+PASS B: the sign-in (one device code) was done once; correcting the passphrase does not need another
+PASS B: with the right passphrase the vault is retrieved through the service, validated (structure, version), decrypted, and restored — 'Secret Vault imported and validated'; the AI key is restored
+PASS B: …without another sign-in, and the result names the source (the central repository access service — no token stored on this device)
+PASS B: no GitHub token of any kind exists on this device afterwards (the vault held none; central access does not restore one)
+PASS B: the repository was only READ by the vault retrieval (no write at all happened since device A's push)
+PASS B: Pull Schema works on this clean profile with the same session — the shared schema arrives and becomes active; no second sign-in
+PASS B: a read-only GitHub account cannot publish: Push Secret Vault to Repository is refused with the reason, and the repository is unchanged (the service never reached GitHub with a write)
+PASS B: end to end, only the service's PAT and the users' sign-in tokens ever authenticated to GitHub; the service's PAT was used only for contents / branch / repository requests
+PASS Failure — an invalid, expired or revoked PAT: Pull Schema says so (the administrator must fix the secret), never reports success, the local schema is unchanged, and the message holds no secret
+PASS Failure — a PAT that cannot see the repository / lacks privileges: Pull Schema says so (the administrator must fix the secret), never reports success, the local schema is unchanged, and the message holds no secret
+PASS Failure — a GitHub rate limit: Pull Schema says so (the administrator must fix the secret), never reports success, the local schema is unchanged, and the message holds no secret
+PASS Failure — GitHub unreachable from the service: Pull Schema reports it, no success, local schema unchanged
+PASS Failure — missing schema registry: 'No schema file was found in the repository yet', local schema unchanged, no false success
+PASS Failure — malformed schema registry: refused by validation with the reason, local schema unchanged
+PASS Failure — missing vault: 'No encrypted Secret Vault was found', device unchanged
+PASS Failure — corrupted vault (damaged (incomplete envelope)): refused before decryption with its own reason, nothing restored, device unchanged
+PASS Failure — corrupted vault (an HTML page instead of the file): refused before decryption with its own reason, nothing restored, device unchanged
+PASS Failure — corrupted vault (not a vault): refused before decryption with its own reason, nothing restored, device unchanged
+PASS Failure — corrupted vault (a newer / unknown version): refused before decryption with its own reason, nothing restored, device unchanged
+PASS Failure — rejected PAT during Retrieve: the vault card names the PAT (administrator action), device unchanged, no secret
+PASS Failure — an expired / missing session: the next repository action asks for a new GitHub sign-in (no silent fall-back to any token)
+PASS Cancel ends the sign-in at once: 'Sign-in cancelled', nothing changed
+PASS Failure — the sign-in is denied on GitHub: reported, nothing authorized, nothing changed
+PASS Failure — a GitHub account that cannot read the repository gets no access, whatever the PAT can do (no session is created)
+PASS Failure — the repository access service is down (network / backend failure): Pull Schema says it could not be reached, no success, local schema unchanged
+PASS Failure — missing PAT secret: signing in works, but Pull Schema says the central access has no PAT and an administrator must configure the GitHub Actions secret SQLA_GITHUB_PAT; local schema unchanged
+PASS Failure — 'Check central access' reports the missing PAT too
+PASS Regression: without the deployed configuration file the Pull Schema page has the same three cards in the same order, with the V17.6.1 token row (Set Token) — central access is opt-in
+PASS Regression: Pull Schema without a token behaves as before (asks for a token; no sign-in prompt; no request to any service from the page)
+PASS Regression: Settings → Secret Vault is unchanged (Push Secret Vault to Repository; no central-access text)
+PASS Hygiene: the page itself never contacted github.com or api.github.com — every request went to the site or the central repository access service
+PASS Hygiene: the only Authorization header the page ever sent is the broker session (never a GitHub token or the PAT), and only to the service's /v1/ routes
+PASS Hygiene: no PAT, user token, device code, vault passphrase or AI key appears in any request URL or body sent by the page
+PASS No console errors or uncaught exceptions in any V17.6.2 flow (the expected network-status lines of the failure scenarios excluded); no secret in any console message
+
+64/64 V17.6.2 browser checks passed
