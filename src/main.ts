@@ -1,3 +1,4 @@
+
 /**
  * SQL Assistant entry point (V17.4 on the V17.3.1 baseline and V17.2 UI). Start-up order:
  *   1. render the app shell (navbar, main, footer, toasts) — needs no services
