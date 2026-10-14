@@ -2,8 +2,6 @@ name: Publish SQL Assistant data (reads need no token)
 # Mirrors sql-assistant-data/** of this PRIVATE repository into dist/sql-assistant-data/ — the folder the site is served from — so that SQL Assistant on any device can READ the schema registry, the encrypted
 # Secret Vault, the knowledge file and the admin message from the site, with NO GitHub credential: no PAT, no sign-in, no approval, no SSO, nothing copied between devices.
 # This workflow uses only the built-in GITHUB_TOKEN (permissions below). It never needs the central PAT.
-# V17.6.5: the central Admin Password record  sql-assistant-data/security/admin-credential.json  is published like every other file of the folder (that is how a device with NO token verifies the Admin Password). A push that changes it
-#         starts this workflow (the trigger `sql-assistant-data/**` covers `sql-assistant-data/security/**`). Only a VALID encrypted-marker record is published (scripts/publish-data.mjs); the last step says so by name.
 #
 #   Automatic:  every push to main that changes sql-assistant-data/**  (the commit it makes does not re-trigger it: pushes by GITHUB_TOKEN never start workflows)
 #   Manual:     Actions → "Publish SQL Assistant data" → Run workflow
@@ -36,7 +34,7 @@ jobs:
           SQLA_REPOSITORY: ${{ github.repository }}
           SQLA_BRANCH: ${{ github.event.repository.default_branch }}
         run: node scripts/build-central-vault.mjs
-      - name: Mirror sql-assistant-data/ (including security/admin-credential.json) into dist/sql-assistant-data/ (marker last)
+      - name: Mirror sql-assistant-data/ into dist/sql-assistant-data/ (marker last)
         run: node scripts/publish-data.mjs --src . --dest dist --commit "$GITHUB_SHA" --repository "$GITHUB_REPOSITORY"
       - name: Commit the publication
         id: commit
@@ -51,10 +49,3 @@ jobs:
         if: ${{ steps.commit.outputs.changed == 'true' && vars.SQLA_SITE_PUBLISH_WORKFLOW != '' }}
         env: { GH_TOKEN: '${{ github.token }}', WF: '${{ vars.SQLA_SITE_PUBLISH_WORKFLOW }}' }
         run: gh workflow run "$WF" --ref "${{ github.event.repository.default_branch }}"
-      - name: Check that the central Admin Password record is published (devices with no token verify against it)
-        run: |
-          if [ -f sql-assistant-data/security/admin-credential.json ]; then
-            node -e "const m=JSON.parse(require('fs').readFileSync('dist/sql-assistant-data/published.json','utf8')); if(!m.files['sql-assistant-data/security/admin-credential.json']){console.error('::error title=Admin Password record::sql-assistant-data/security/admin-credential.json is NOT published: it is not a valid encrypted-marker record. Devices keep their last good record. Replace it with a record saved from Settings > Security, or delete sql-assistant-data/security/ to return every device to its local password.'); process.exit(1);} console.log('The Admin Password record is published and listed in the publication marker.');"
-          else
-            echo "There is no central Admin Password record in the repository: devices use their local Admin Password (V17.6.4 behaviour)."
-          fi

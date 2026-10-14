@@ -1,85 +1,88 @@
-
 name: Deploy the repository access service (holds the central PAT)
-
+# The GitHub Actions secret SQLA_GITHUB_PAT can only be used by a trusted execution environment. This workflow delivers it — as an application setting, never in the repository, a log or an artifact —
+# to the host that runs server/repo-broker.mjs. REFERENCE IMPLEMENTATION for Azure App Service (Node 20); the broker is a plain Node 20 program (no dependencies): on another host, replace the two Azure steps
+# by that host's "deploy" and "set environment variables" steps and keep everything else.
+#
+# Repository SECRETS  (Settings → Secrets and variables → Actions → Secrets)
+#   SQLA_GITHUB_PAT            fine-grained PAT, ONE repository, Contents: Read and write   ← the central PAT
+#   SQLA_SESSION_SECRET        ≥ 32 random characters (signs broker sessions; without it sessions end whenever the service restarts)
+#   AZURE_CREDENTIALS          service principal JSON for azure/login (only if you use the Azure steps)
+# Repository VARIABLES (… → Variables)
+#   SQLA_GITHUB_CLIENT_ID      public client ID of the GitHub App / OAuth App (device flow enabled)
+#   SQLA_ALLOWED_ORIGINS       origin that serves SQL Assistant, e.g. https://basware.github.io
+#   SQLA_BROKER_APP_NAME       Azure App Service name (Azure steps only)
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '.github/workflows/deploy-broker.yml'
+  push: { branches: [main], paths: ['server/**', '.github/workflows/deploy-broker.yml'] }
   workflow_dispatch: {}
-
-permissions:
-  contents: read
-
-concurrency:
-  group: deploy-broker
-  cancel-in-progress: false
-
+permissions: { contents: read }
+concurrency: { group: deploy-broker, cancel-in-progress: false }
 jobs:
   deploy:
+    # V17.6.4 — a push that touches server/** only deploys the service when it is configured (the repository variable SQLA_BROKER_APP_NAME exists); otherwise the job is SKIPPED instead of failing every push.
+    # A manual run (workflow_dispatch) always runs and says, by name, what is missing.
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.SQLA_BROKER_APP_NAME != '' }}
     runs-on: ubuntu-latest
-    environment: central-repository-access
-
+    environment: central-repository-access     # optional protection rules (required reviewers) apply to the job that sees the secret
     steps:
       - uses: actions/checkout@v5
-
       - uses: actions/setup-node@v5
-        with:
-          node-version: 24
-
-      - name: Validate required secrets and variables
+        with: { node-version: 24 }
+      - name: Preflight — refuse to deploy without the required secret / variables (names only, never values)
+        id: preflight
         env:
           PAT: ${{ secrets.SQLA_GITHUB_PAT }}
-          SESSION_SECRET: ${{ secrets.SQLA_SESSION_SECRET }}
           CLIENT: ${{ vars.SQLA_GITHUB_CLIENT_ID }}
           ORIGINS: ${{ vars.SQLA_ALLOWED_ORIGINS }}
+          APP: ${{ vars.SQLA_BROKER_APP_NAME }}
+          AZURE: ${{ secrets.AZURE_CREDENTIALS }}
         run: |
-          [ -n "$PAT" ] || { echo "::error::SQLA_GITHUB_PAT is not set."; exit 1; }
-          [ -n "$SESSION_SECRET" ] || { echo "::error::SQLA_SESSION_SECRET is not set."; exit 1; }
-          [ "${#SESSION_SECRET}" -ge 32 ] || { echo "::error::SQLA_SESSION_SECRET must contain at least 32 characters."; exit 1; }
-          [ -n "$CLIENT" ] || { echo "::error::SQLA_GITHUB_CLIENT_ID is not set."; exit 1; }
-          [ -n "$ORIGINS" ] || { echo "::error::SQLA_ALLOWED_ORIGINS is not set."; exit 1; }
-
-      - name: Verify the PAT before deployment
-        env:
-          SQLA_GITHUB_PAT: ${{ secrets.SQLA_GITHUB_PAT }}
-          SQLA_REPOSITORY: ${{ github.repository }}
+          # V17.6.9 — every missing item is reported at once, by NAME, with the stage, the component, the retry rule and where to fix it. A missing item blocks the deployment: there is no fallback and Azure authentication is never bypassed.
+          missing=""
+          need() { # $1 = kind (secret|variable)   $2 = key name   $3 = value (tested for emptiness only; never printed)   $4 = where to configure it
+            if [ -z "$3" ]; then
+              missing="$missing $2"
+              echo "::error title=Deployment blocked - $2 is not configured::Deployment blocked: $2 is not configured. Stage: preflight. Component: repository access service (deploy-broker.yml). Missing $1: $2. Retry: not retryable until it is set; re-run this workflow afterwards. Fix: $4. Reference: docs/DEPLOYMENT.md → Repository access service."
+            fi
+          }
+          need variable SQLA_BROKER_APP_NAME "$APP" "Settings → Secrets and variables → Actions → Variables (the Azure App Service name)"
+          need secret   AZURE_CREDENTIALS    "$AZURE" "Settings → Secrets and variables → Actions → Secrets, as a repository secret or as a secret of the environment central-repository-access (service principal JSON for azure/login)"
+          need secret   SQLA_GITHUB_PAT      "$PAT" "Settings → Secrets and variables → Actions → Secrets (fine-grained PAT, one repository, Contents: Read and write)"
+          need variable SQLA_GITHUB_CLIENT_ID "$CLIENT" "Settings → Secrets and variables → Actions → Variables (public client ID of the GitHub App with device flow enabled)"
+          need variable SQLA_ALLOWED_ORIGINS "$ORIGINS" "Settings → Secrets and variables → Actions → Variables (the origin that serves SQL Assistant)"
+          if [ -n "$missing" ]; then
+            { echo "## Deployment blocked — required configuration is missing"; echo; for k in $missing; do echo "- \`$k\` is not configured"; done; echo; echo "Nothing was deployed and nothing was bypassed. Add the item(s) above and re-run the workflow. No secret value was printed."; } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+      - name: Verify the PAT before it is delivered
+        env: { SQLA_GITHUB_PAT: '${{ secrets.SQLA_GITHUB_PAT }}', SQLA_REPOSITORY: '${{ github.repository }}' }
         run: node scripts/verify-pat.mjs
-
-      - name: Validate broker configuration
-        env:
-          SQLA_GITHUB_CLIENT_ID: ${{ vars.SQLA_GITHUB_CLIENT_ID }}
-          SQLA_ALLOWED_ORIGINS: ${{ vars.SQLA_ALLOWED_ORIGINS }}
+      - name: Start-up self test (the service refuses to start without its public settings)
+        env: { SQLA_GITHUB_CLIENT_ID: '${{ vars.SQLA_GITHUB_CLIENT_ID }}', SQLA_ALLOWED_ORIGINS: '${{ vars.SQLA_ALLOWED_ORIGINS }}' }
+        run: node -e "import('./server/repo-broker.mjs').then(m => { m.createBroker(process.env); console.log('configuration accepted'); })"
+      - uses: azure/login@v2
+        with: { creds: '${{ secrets.AZURE_CREDENTIALS }}' }
+      - name: Deliver the secret and the public settings as application settings
+        uses: azure/appservice-settings@v1
+        with:
+          app-name: ${{ vars.SQLA_BROKER_APP_NAME }}
+          app-settings-json: |
+            [
+              { "name": "SQLA_GITHUB_PAT",        "value": "${{ secrets.SQLA_GITHUB_PAT }}",     "slotSetting": false },
+              { "name": "SQLA_SESSION_SECRET",    "value": "${{ secrets.SQLA_SESSION_SECRET }}", "slotSetting": false },
+              { "name": "SQLA_GITHUB_CLIENT_ID",  "value": "${{ vars.SQLA_GITHUB_CLIENT_ID }}",  "slotSetting": false },
+              { "name": "SQLA_ALLOWED_ORIGINS",   "value": "${{ vars.SQLA_ALLOWED_ORIGINS }}",   "slotSetting": false },
+              { "name": "SQLA_ALLOWED_REPOSITORIES", "value": "${{ github.repository }}",        "slotSetting": false }
+            ]
+      - name: Package the service (one file, no dependencies)
         run: |
-          node -e "import('./server/repo-broker.mjs').then(m => { m.createBroker(process.env); console.log('Configuration accepted'); })"
-
-      - name: Package the service
-        run: |
-          mkdir -p pkg
-          cp server/repo-broker.mjs pkg/server.mjs
+          mkdir -p pkg && cp server/repo-broker.mjs pkg/server.mjs
           printf '{ "name": "sql-assistant-repo-broker", "private": true, "type": "module", "scripts": { "start": "node server.mjs" }, "engines": { "node": ">=20" } }\n' > pkg/package.json
-
-      # Add your hosting provider's deployment steps here.
-      # Configure these environment variables securely on the host:
-      # SQLA_GITHUB_PAT
-      # SQLA_SESSION_SECRET
-      # SQLA_GITHUB_CLIENT_ID
-      # SQLA_ALLOWED_ORIGINS
-      # SQLA_ALLOWED_REPOSITORIES=${{ github.repository }}
-
-      - name: Deployment instructions
+      - uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.SQLA_BROKER_APP_NAME }}
+          package: pkg
+      - name: Health check (no secret is returned — only whether a PAT is configured)
         run: |
-          echo "Package created in pkg/."
-          echo "Configure the host environment variables and deploy pkg/ using your hosting provider."
-
-      # Enable this check after deployment and configure the actual service URL.
-      # - name: Health check
-      #   env:
-      #     BROKER_URL: ${{ vars.SQLA_BROKER_URL }}
-      #   run: |
-      #     curl -fsS "$BROKER_URL/healthz" -o health.json
-      #     grep -q '"patConfigured":true' health.json || {
-      #       echo "::error::The service reports that no PAT is configured."
-      #       exit 1
-      #     }
+          sleep 20
+          curl -fsS "https://${{ vars.SQLA_BROKER_APP_NAME }}.azurewebsites.net/healthz" | tee health.json
+          grep -q '"patConfigured":true' health.json || { echo "::error::The service reports that no PAT is configured."; exit 1; }

@@ -1,0 +1,85 @@
+name: Build, test and deploy SQL Assistant to GitHub Pages
+# V17.6.9 — every stage is its own step, so a failure names the stage; no step is allowed to fail silently and the deploy job cannot start unless the whole build job — including the tests — succeeded.
+#   Order: checkout → setup Node → install (project-pinned TypeScript 5.8.3) → typecheck → lint → repository hygiene (orphaned / stale files, reported separately) → production build → security scan → artifact verification → tests → final build → publish → deploy.
+#   Typecheck, lint, security and the tests all start from the production entry point src/main.ts (tsconfig.json: files = [src/main.ts]); they never see files that the application does not reach.
+#   Each failing step writes a GitHub Actions error annotation (::error title=…) and, at the end, a job summary that names the failing stage and what to do. Secret values are never printed.
+# One-time setting (Settings → Pages → Build and deployment → Source = "GitHub Actions"): the deploy job says so, by name, if it is missing.
+on: { push: { branches: [main] }, workflow_dispatch: {} }
+permissions: { contents: read, pages: write, id-token: write }
+concurrency: { group: pages, cancel-in-progress: true }
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24 }
+      - name: Toolchain versions
+        run: node --version && npm --version
+      - name: Install (package-lock.json when present, otherwise package.json — TypeScript is pinned there)
+        id: install
+        run: |
+          if [ -f package-lock.json ]; then npm ci --no-audit --no-fund; else npm install --no-audit --no-fund; fi
+          npm run check:toolchain
+      - name: Typecheck
+        id: typecheck
+        run: npm run typecheck
+      - name: Lint
+        id: lint
+        run: npm run lint
+      - name: Repository hygiene (orphaned / stale files — reported by name, never deleted here)
+        id: hygiene
+        run: npm run check:stale
+      - name: Build (dist/index.html, release/)
+        id: build
+        run: npm run build
+      - name: Security check (scans the source and every generated output)
+        id: security
+        run: npm run security
+      - name: Verify the generated artifact (root index.html = dist/index.html = release/, structure, no secret)
+        id: artifact
+        run: npm run verify:artifact
+      - name: Tests
+        id: tests
+        run: npm test
+      - name: Final production build
+        id: final
+        run: npm run build
+      # V17.6.2 — central repository access: publish the PUBLIC address of the repository access service next to index.html (a repository VARIABLE, not a secret). Without the variable nothing is published
+      # and SQL Assistant behaves as in V17.6.1 (token on the device). The PAT itself is never part of this site: it is the secret SQLA_GITHUB_PAT, used only by the service (deploy-broker.yml).
+      - name: Publish the repository-access configuration
+        if: ${{ vars.SQLA_BROKER_URL != '' }}
+        env: { BROKER_URL: '${{ vars.SQLA_BROKER_URL }}' }
+        run: |
+          mkdir -p release/sql-assistant-data
+          node -e "require('fs').writeFileSync('release/sql-assistant-data/repo-broker.config.json', JSON.stringify({ repositoryBroker: { enabled: true, url: process.env.BROKER_URL } }, null, 2) + '\n')"
+      - name: Verify the artifact that will be published
+        id: artifact-final
+        run: npm run verify:artifact
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: release }
+      - name: Explain the failure (stage, component, retry, guidance)
+        if: ${{ failure() }}
+        env: { STEPS: '${{ toJSON(steps) }}' }
+        run: |
+          node -e "
+          const s = JSON.parse(process.env.STEPS || '{}'); const names = { install: 'Install / toolchain', typecheck: 'Typecheck', lint: 'Lint', hygiene: 'Repository hygiene (orphaned / stale files)', build: 'Production build', security: 'Security check', artifact: 'Artifact verification', tests: 'Tests', final: 'Final production build', 'artifact-final': 'Artifact verification (published output)' };
+          const bad = Object.entries(s).filter(([, v]) => v.outcome === 'failure').map(([k]) => names[k] || k);
+          const guide = { 'Repository hygiene (orphaned / stale files)': 'Files of an earlier version are still in the repository. Review the annotated names, then run: node scripts/prune-orphans.mjs --delete && node scripts/prune-stale.mjs --delete, and commit the deletion.', Tests: 'Fix the failing tests; they are not skipped and the deployment will not start while any fails.', 'Install / toolchain': 'The installed TypeScript must equal the version pinned in package.json (5.8.3).' };
+          const lines = ['## Build failed — nothing was deployed', '', ...bad.map((b) => '- **Stage:** ' + b + (guide[b] ? ' — ' + guide[b] : '')), '', 'Retry: re-run the workflow after the cause above is fixed. No secret value is printed by this workflow.'];
+          require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join('\n') + '\n'); console.log('::error title=Build failed::Failing stage(s): ' + bad.join(', ') + ' — see the job summary.');
+          "
+  deploy:
+    needs: build
+    if: ${{ needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: { name: github-pages, url: '${{ steps.d.outputs.page_url }}' }
+    steps:
+      - name: Check that GitHub Pages is enabled for this repository
+        env: { GH_TOKEN: '${{ github.token }}', REPO: '${{ github.repository }}' }
+        run: |
+          code=$(gh api "repos/$REPO/pages" --silent -i 2>/dev/null | head -1 | awk '{print $2}')
+          if [ "$code" = "404" ]; then echo "::error title=Deployment blocked::GitHub Pages is not enabled for $REPO. Open Settings → Pages → Build and deployment → Source and choose \"GitHub Actions\", then re-run this workflow."; exit 1; fi
+          echo "Pages configuration check returned HTTP ${code:-unknown} (only 404 is treated as 'not enabled')."
+      - id: d
+        uses: actions/deploy-pages@v4
