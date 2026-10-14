@@ -3,7 +3,7 @@ import { SchemaService } from '../services/schemaService';
 import { browserStore, type KeyValueStore } from '../services/storage';
 import { SecretVault, EMPTY_SECRETS, type VaultSecrets } from '../v17/services/secretVault';
 import { indexedDbKeyProvider } from '../v17/services/cryptoBox';
-import { githubRepository, validateTokenAccess, type SchemaRepository } from '../v17/services/githubClient';
+import { githubRepository, type SchemaRepository } from '../v17/services/githubClient';
 import { fetchPublishedMarker, publishedRepository, type PublishedState } from '../v17/services/publishedData';
 import { fetchBrokerConfig, brokerRepository, BrokerSessionStore, type BrokerConfigState, type BrokerSession, type BrokerRepoInput } from '../v17/services/repoBroker';
 import { loadRepositoryConfig, applyRepositoryConfig, DEFAULT_REPOSITORY, type RepositoryConfig } from '../v17/services/repositoryConfig';
@@ -15,13 +15,11 @@ import { runMigrations, type MigrationState } from '../v17/services/migrations';
 import { SchemaPassphraseStore } from '../v17/services/schemaPassphrase';
 import { encryptedPathFor } from '../v17/services/schemaCrypto';
 import { AdminMessageService, adminMessagePathFor } from '../v17/services/adminMessage';
-import { loadAiConfig, DEFAULT_AI_CONFIG, type AiLlmConfig } from '../v17/services/aiLlmService';
-import { AdminCredentialService, type WriteRoute } from '../v17/services/adminCredentialService';
-import { setCentralProvider } from '../services/passwordService';
-import { deviceTag } from '../services/storage';
+import { AdminPasswordService, adminPasswordPathFor, type CentralSource } from '../v17/services/adminPassword'; import { setPasswordAuthority } from '../services/passwordService'; import { checkRepositoryLocation } from '../v17/services/githubClient';
+import { loadAiConfig, DEFAULT_AI_CONFIG, type AiLlmConfig } from '../v17/services/aiLlmService'; import { CentralSync, type VaultReport } from '../v17/sync/centralSync'; import { validateVaultPayload } from '../v17/services/vaultRetrieval';
 import { APP_NAME, APP_VERSION } from '../v17/sync/schemaFormat';
 export const APP = { name: APP_NAME, version: APP_VERSION };
-export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; admin: AdminQueryLibrary; knowledge: KnowledgeSync; migrations: MigrationState; sync: SyncService; /** V17.5: the passphrase saved on this device for the synchronized (encrypted) schema */ passphrase: SchemaPassphraseStore; /** V17.5.1: the short cross-device administrator message shown in the navbar */ adminMessage: AdminMessageService; /** V17.6.5: the central Admin Password record (refresh, Save, Reset) */ credential: AdminCredentialService; }
+export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; admin: AdminQueryLibrary; knowledge: KnowledgeSync; migrations: MigrationState; sync: SyncService; /** V17.5: the passphrase saved on this device for the synchronized (encrypted) schema */ passphrase: SchemaPassphraseStore; /** V17.5.1: the short cross-device administrator message shown in the navbar */ adminMessage: AdminMessageService; /** V17.6.5: the centralized, synchronized Admin Password */ adminPassword: AdminPasswordService; /** V17.6.8: the navigation-bar Sync button — one run of the existing centralized synchronization (it adds no synchronization logic of its own) */ centralSync: CentralSync; }
 let svc: Services | null = null;
 /** V17.5.6: the ONE repository configuration (defaults, or the administrator's saved override — see repositoryConfig.ts). Every synchronization reads its location from `secrets`, which is derived from this. */
 export let repoConfig: RepositoryConfig = { ...DEFAULT_REPOSITORY }; export let repoConfigCustom = false; export let repoConfigProblem: string | null = null;
@@ -68,29 +66,43 @@ export function repository(): SchemaRepository | null {
   if (!secrets.githubToken || !secrets.githubOwner || !secrets.githubRepo) return publishedEnabled() ? publishedRepo() : null; return githubRepository({ owner: secrets.githubOwner, repo: secrets.githubRepo, branch: secrets.githubBranch || 'main', token: secrets.githubToken });
 }
 /**
- * V17.6.5 — the AUTHENTICATED route only (no published copy): the test repository, the broker session, or the token on this device. The central Admin Password record is read fresh through it when this device has one,
- * and it is the ONLY route a change of that record is written through. Nothing here falls back to another credential.
+ * V17.6.6 — the repository the ADMIN PASSWORD record is read through. It is `repository()` — except when that is the PUBLISHED COPY: the copy is described by a marker that the page reads once at start-up, so a page
+ * that stays open would never see a record published later (Sync with GitHub Now / the unlock check would report "does not match its publication record"). For this one file the marker is therefore read again before
+ * every read; the shared published state of the other features is NOT touched. Writes and every other kind of connection are unchanged.
  */
-export function authenticatedRepository(): SchemaRepository | null {
-  if (override) return override;
-  if (brokerConfig.state === 'enabled') { const i = brokerInput(); return i && i.owner && i.repo && brokerSession() ? brokerRepository(i) : null; }
-  if (!secrets.githubToken || !secrets.githubOwner || !secrets.githubRepo) return null; return githubRepository({ owner: secrets.githubOwner, repo: secrets.githubRepo, branch: secrets.githubBranch || 'main', token: secrets.githubToken });
+function passwordRepository(): SchemaRepository | null {
+  const r = repository(); if (!r) return null;
+  const viaPublished = !override && brokerConfig.state !== 'enabled' && !(secrets.githubToken && secrets.githubOwner && secrets.githubRepo) && publishedEnabled(); if (!viaPublished) return r;
+  return { describe: r.describe, write: (p, t, sha, m) => r.write(p, t, sha, m), async read(path: string) { const st = await fetchPublishedMarker(); return (st.state === 'available' ? publishedRepository(st.marker) : r).read(path); } };
 }
-export function writeRoute(): WriteRoute | null {
-  const repo = authenticatedRepository(); if (!repo) return null; if (override) return { repo, kind: 'test', canWrite: true };
-  if (brokerConfig.state === 'enabled') return { repo, kind: 'broker', canWrite: brokerSession()?.canWrite ?? false };
-  return { repo, kind: 'token', canWrite: null };
+/**
+ * V17.6.8 — what the Admin Password authority needs to know about the repository connection of THIS moment (decided here, in the one place that decides — repository() above):
+ *   authoritative — the real repository: the central access service (with a sign-in), a saved token, or a test repository;   published — only the read-only published copy (it can be older than the repository);   none — no connection.
+ * standalone — this device has NO central source to ask at all: no central access service (config file absent), no publication marker, no token. Only then may the default password be provisional (it is needed to configure the repository);
+ * a device of a centrally managed deployment that merely cannot reach it right now is NOT standalone, and the default is not accepted there.
+ */
+function passwordSource(): CentralSource { if (!repository()) return 'none'; if (override || brokerConfig.state === 'enabled' || (secrets.githubToken && secrets.githubOwner && secrets.githubRepo)) return 'authoritative'; return 'published'; }
+function passwordStandalone(): boolean { return !override && brokerConfig.state === 'disabled' && publishedState.state === 'none' && !secrets.githubToken; }
+/** Gives the authorization path one more chance before a decision is taken: the access-service configuration and the publication marker are read again when they were not found at start-up (a transient failure at start-up must not turn a managed device into a "standalone" one). */
+async function rediscoverAuthorization(): Promise<void> { if (override) return; if (brokerConfig.state !== 'enabled') await refreshBrokerConfig(); if (brokerConfig.state !== 'enabled' && publishedState.state !== 'available') await refreshPublished(); }
+/** An absent central record is believed only when GitHub really answered for this repository and branch (a token that cannot see a private repository gets "not found", exactly like a missing file). The central access service and test repositories need no check. */
+async function confirmRepositoryReachable(): Promise<boolean> {
+  if (override || brokerConfig.state === 'enabled') return true; if (!secrets.githubToken || !secrets.githubOwner || !secrets.githubRepo) return false;
+  return (await checkRepositoryLocation({ owner: secrets.githubOwner, repo: secrets.githubRepo, branch: secrets.githubBranch || 'main', token: secrets.githubToken, path: secrets.schemaPath })).ok;
 }
-/** "File not found" is final for the test repository and the broker (it tells a missing file from an invisible repository); for a bare token only when GitHub shows the repository itself to that token. */
-async function tokenAbsenceIsFinal(): Promise<boolean> { if (override || brokerConfig.state === 'enabled') return true; const a = await validateTokenAccess({ owner: secrets.githubOwner, repo: secrets.githubRepo, token: secrets.githubToken }); return a.state === 'ok'; }
-async function probeTokenWrite(route: WriteRoute): Promise<boolean | null> { if (route.kind !== 'token') return route.canWrite; const a = await validateTokenAccess({ owner: secrets.githubOwner, repo: secrets.githubRepo, token: secrets.githubToken }); return a.state === 'ok' ? a.canWrite : a.state === 'no-access' || a.state === 'rejected' ? false : null; }
+/** V17.6.8: read-only look at the repository Secret Vault file for the report of the manual Sync (it is never imported by Sync — that needs the passphrase). */
+async function vaultReport(): Promise<VaultReport> {
+  const r = repository(); if (!r) return { present: false, valid: false, message: 'No repository connection.' };
+  try { const f = await r.read(secrets.vaultPath); if (!f) return { present: false, valid: false, message: 'The repository holds no Secret Vault file.' }; const v = validateVaultPayload(f.text); return { present: true, valid: v.ok, message: v.ok ? 'The repository holds an encrypted Secret Vault.' : `The repository vault file is not usable (${v.message}).` }; }
+  catch (e) { return { present: false, valid: false, message: `The repository vault file could not be read (${(e as Error).message}).` }; }
+}
 export function initServices(): Services {
   if (svc) return svc; const store = browserStore(); const migrations = runMigrations(store); const schemas = new SchemaService(store); const vault = new SecretVault(store, indexedDbKeyProvider); vault.setLocator(locate);
   { const r = loadRepositoryConfig(store); repoConfig = r.config; repoConfigCustom = r.custom; repoConfigProblem = r.problem; secrets = locate(secrets); }
   const passphrase = new SchemaPassphraseStore(store, indexedDbKeyProvider); const learning = new LearningStore(store); const admin = new AdminQueryLibrary(store, () => store.get('sqla.adminname.v174') || 'Administrator');
-  const credential = new AdminCredentialService({ store, deviceId: () => deviceTag(store), authRepo: authenticatedRepository, authAbsentIsFinal: tokenAbsenceIsFinal, publishedRepo: () => (publishedState.state === 'available' ? publishedRepo() : null), writeRoute, probeWrite: probeTokenWrite, beforeUnlockRefresh: async () => { await refreshPublished(); }, secrets: () => [...vault.knownSecrets(), ...passphrase.known()] });
-  svc = { store, schemas, vault, credential, learning, admin, migrations, knowledge: new KnowledgeSync(learning, admin, repository, store, () => knowledgePathFor(secrets.schemaPath), () => vault.knownSecrets()), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => [...vault.knownSecrets(), ...passphrase.known()], { passphrase: () => passphrase.get(), path: () => encryptedPathFor(secrets.schemaPath), saved: () => passphrase.hasSaved() }), passphrase, adminMessage: new AdminMessageService(store, repository, () => adminMessagePathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]) };
-  setCentralProvider(() => svc!.credential.view());
+  svc = { centralSync: null as unknown as CentralSync, store, schemas, vault, learning, admin, migrations, knowledge: new KnowledgeSync(learning, admin, repository, store, () => knowledgePathFor(secrets.schemaPath), () => vault.knownSecrets()), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => [...vault.knownSecrets(), ...passphrase.known()], { passphrase: () => passphrase.get(), path: () => encryptedPathFor(secrets.schemaPath), saved: () => passphrase.hasSaved() }), passphrase, adminMessage: new AdminMessageService(store, repository, () => adminMessagePathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]), adminPassword: new AdminPasswordService(store, passwordRepository, () => adminPasswordPathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()], { source: passwordSource, standalone: passwordStandalone, rediscover: rediscoverAuthorization, confirmRepository: confirmRepositoryReachable }) };
+  svc.centralSync = new CentralSync({ adminPassword: svc.adminPassword, schemas: svc.sync, knowledge: svc.knowledge, adminMessage: svc.adminMessage, hasRepository: () => !!repository(), vaultReport, secrets: () => [...vault.knownSecrets(), ...passphrase.known()] });
+  setPasswordAuthority({ resolve: () => svc!.adminPassword.resolve() }); // V17.6.8: EVERY Admin Password check asks the central state first (start-up bootstrap awaited, stale verifier refreshed) — see passwordService.verifyPassword
   aiConfig = loadAiConfig(store); return svc;
 }
 export function services(): Services { if (!svc) throw new Error('Services are not initialised yet.'); return svc; }

@@ -1,10 +1,38 @@
-## SQL Assistant — V17.6.5
+## SQL Assistant — V17.7
 
 SQL Assistant writes read-only and Change Request SQL from your **Active Schema**.
 Its primary engine is an **offline, self-training natural-language model** that also learns from SQL you confirm and from an **Admin Query Library** of trusted queries. An AI/LLM Model (including a model running on your own computer) can optionally be added; nothing requires it.
 
-### What is new in V17.6.5
-* **One Admin Password for all devices.** Settings → Security → **Save (all devices)** keeps the encrypted verification marker (never the password) in `sql-assistant-data/security/admin-credential.json`; devices refresh it at start, when the tab becomes visible, at the scheduled sync, on *Sync with GitHub Now* and once when an unlock fails. **Reset to default** sets `admin` centrally (current password, or a GitHub sign-in with write access). Rollback protection, strict parsing, lock-out after 5 wrong attempts. Without a central record the app behaves as V17.6.4. See `docs/CHANGELOG_V17.6.5.md`, `docs/TEST_REPORT_V17.6.5.md`, `docs/SECURITY.md`, `docs/DEPLOYMENT.md`.
+### What is new in V17.7
+* **Fix — the Admin Password authority confirms the default by evidence, and the production page has no test back door.** The browser-test hooks (`window.__sqla`, reachable in V17.6.9 through `?e2e=1`) moved to `src/testHooks.ts`, which is compiled only into the separate test build (`npm run build:test` → `test-dist/`); the production page runs in one function scope (no global `define` / module registry) and `npm run verify:artifact` fails on any trace of a hook. The default `admin` has one door (`verifyDefault`, only from the confirmed-default state); an empty marker, a marker that vanished after a central verifier was applied, a central record that vanished from the repository, a pending local "reset" and a missing marker can no longer turn into "use admin", and synchronization never publishes a reset.
+* **No NPM at runtime.** Password retrieval / synchronization / validation / change / reset use only the repository, central access service or published copy; verified against plain static hosting (`scripts/browser_test_v177.py`).
+* **Error logs reviewed** — `docs/ERROR_LOG_REVIEW_V17.7.md` separates the repository defect (59 stale files, remove once) from the external blockers (`AZURE_CREDENTIALS`, PAT Conditional Access 403).
+* Stamped `17.7.0`. See `docs/CHANGELOG_V17.7.md`, `docs/RELEASE_NOTES_V17.7.md`, `docs/VERIFICATION_REPORT_V17.7.md`, `docs/TEST_REPORT_V17.7.md`, `docs/ERROR_LOG_REVIEW_V17.7.md`, `docs/STALE_FILES_V17.7.md`, `docs/ROLLBACK_V17.7.md`, `docs/CHANGED_FILES_V17.7.md`, `docs/ADMIN_PASSWORD.md`.
+
+### What was new in V17.6.9
+* **Fix — the default `admin` is confirmed, never presumed.** `admin` is accepted only in the explicit state `confirmed-default`: an administrator reset record, or the authoritative repository answering that no Admin Password was ever set. A new device, a missing connection, a refused credential, a failed read, an invalid record, a published copy that lists no record, or a synchronization in progress never enable it. States: `loading → central-applied | local-fallback | confirmed-default | error`. Storage keys, record format, revisions and the publish-first order are unchanged. See `docs/ADMIN_PASSWORD.md`.
+* **Pipeline.** Tests, lint, security and the build start from `src/main.ts`; orphaned / stale files are detected separately (`npm run check:stale`, reviewed list `scripts/stale-files.json`, explicit removal); the project-pinned TypeScript 5.8.3 is used everywhere (no absolute path); `npm run verify:artifact` checks the generated outputs; deployment cannot start after a failed stage; missing deployment configuration (`AZURE_CREDENTIALS` …) blocks with `Deployment blocked: <KEY> is not configured.`; an HTTP 403 PAT check is a failed verification with the upstream diagnostic.
+* **Tests.** Current-version assertions live in one place (since V17.7: `test/v177.test.mjs`); historical tests use explicit fixtures.
+* See `docs/CHANGELOG_V17.6.9.md`, `docs/RELEASE_NOTES_V17.6.9.md`, `docs/VERIFICATION_REPORT_V17.6.9.md`, `docs/TEST_REPORT_V17.6.9.md`, `docs/STALE_FILES_V17.6.9.md`, `docs/ROLLBACK_V17.6.9.md`, `docs/CHANGED_FILES_V17.6.9.md`, `docs/DEPLOYMENT.md`.
+
+### What was new in V17.6.8
+* **Fix — the centralized Admin Password is enforced at the authentication boundary.** Every Admin Password check (Settings unlock, Security, repository configuration, token change, Admin Query Library) ends in ONE function, `verifyPassword()`, which asks the central-password authority first and obeys it. The default `admin` is accepted only for a central reset record, a repository (or published copy) that answered "no record exists", a standalone device that has no central source at all, or a device whose own repository credential is refused (it must be repairable) — never because a device is new, still loading, unable to read the record, or reading an invalid one. Settings open only with the one-time ticket of a successful check; no UI component compares passwords.
+* **Explicit start-up states** `loading → central-applied | local-fallback | default-unverified | error` (renamed `confirmed-default` in V17.6.9); a check that arrives while the central record is loading waits. A central verifier that replaces a different one invalidates every Settings session (and the repository-configuration editor) at once.
+* **Central changes publish first**: a new password or a reset is written to `sql-assistant-data/security/admin-password.json` (revision + 1, read back) and applied locally only after that succeeded; a stale device can never overwrite a newer revision; an unreachable repository never creates a default record. Formats, keys (`sqla.pwvault.v15`, `sqla.adminpwmeta.v1765`) and paths are unchanged.
+* **Sync button in the navigation bar** — one run of the existing centralized synchronization (Admin Password, schemas and metadata, knowledge, admin message; the Secret Vault is reported, never changed). It reuses the existing repository authorization path, refuses duplicate runs, shows a syncing state and reports success / partial / skipped / failure honestly. In the responsive layout it is the first entry of the navigation panel's sync block.
+* **CI build fix** for the supplied GitHub Actions log (247 TypeScript errors in 33 files that exist only in the repository: `src/components/*`, `src/pages/*`, `src/state/store.ts`, `src/ui/adminCredentialSync.ts`, `src/v17/services/adminCredential*.ts` …): `tsconfig.json` compiles from `src/main.ts` (all strict options unchanged), lint / security scan the same set and **name** every leftover; `npm run prune-orphans` lists them and `-- --delete` removes them. `node scripts/verify-no-npm.mjs` runs the whole verification without npm.
+* See `docs/CHANGELOG_V17.6.8.md`, `docs/VERIFICATION_REPORT_V17.6.8.md`, `docs/TEST_REPORT_V17.6.8.md`, `docs/REGRESSION_BASELINE_V17.6.8.md`, `docs/ADMIN_PASSWORD.md`.
+
+### What was new in V17.6.7
+* **Fix — the default `admin` can no longer stay authorized after the central Admin Password exists.** A Settings session opened with the default on a device that could not yet reach the central record (no connection configured yet, or the read failed) is **locked again** when the central password is applied (start-up, scheduled sync, *Sync with GitHub Now*, or when Settings is shown); the unlock says honestly when the central record could not be checked; the lock screen asks for the central record straight away and drops the now-wrong "default password is admin" hint. Diagnostics: `docs/ADMIN_PASSWORD.md`. Nothing else changed. See `docs/CHANGELOG_V17.6.7.md`, `docs/TEST_REPORT_V17.6.7.md`, `docs/REGRESSION_BASELINE_V17.6.7.md`.
+
+### What was new in V17.6.6
+* **Fix — a new device now uses the central Admin Password.** A device that has no local Admin Password yet asks the central record (`sql-assistant-data/security/admin-password.json`) before it accepts anything, so the default `admin` is rejected whenever a valid central password exists; the unlock check waits for a synchronization that is already running instead of skipping it; a central record that cannot be read is reported (never as "synchronized") and changes nothing; and a repository connection that appears after start-up (GitHub sign-in, token / vault restore) is used by the very next unlock check. Nothing else changed. See `docs/CHANGELOG_V17.6.6.md`, `docs/TEST_REPORT_V17.6.6.md`, `docs/REGRESSION_BASELINE_V17.6.6.md`.
+
+### What was new in V17.6.5
+* **The Admin Password is central.** One encrypted record in the repository (`sql-assistant-data/security/admin-password.json`, no password in it) is the single authority; every device applies it at start-up, at every synchronization, on *Sync with GitHub Now* and — for a device that has not synchronized yet — at the unlock check. A change or reset on one device reaches all of them; no device can keep a different password after it synchronizes. Fresh installs and V17.6.4 upgrades are supported; the local marker keeps its V17.6.4 format (rollback-safe). See `docs/ADMIN_PASSWORD.md`.
+* **Settings → Security → Reset Admin Password to Default** — confirmation dialog, password `admin`, published to the central repository at once, Settings lock again, a warning that the default is insecure. No other setting changes. Forgotten password and no device unlocked: `npm run reset-admin-password` (docs).
+* Everything else is unchanged. See `docs/CHANGELOG_V17.6.5.md`, `docs/TEST_REPORT_V17.6.5.md`, `docs/REGRESSION_BASELINE_V17.6.5.md`.
 
 ### What was new in V17.6.4
 * **Deployment fix, no feature or UI change.** The GitHub Pages workflow builds before its security check, runs each stage as its own named step, installs deterministically and checks that Pages is enabled; TypeScript is pinned to 5.8.3; the repository-access-service workflow is skipped on a push until it is configured. See `docs/CHANGELOG_V17.6.4.md`, `docs/TEST_REPORT_V17.6.4.md`, `docs/REGRESSION_BASELINE_V17.6.4.md`.
@@ -77,12 +105,14 @@ npm run diagnose -- path/to/registry.json   # check a repository schema file wit
 The browser tests need `pip install playwright && playwright install chromium`; alternatively set `CHROME_PATH` to an installed Chrome / Chromium.
 
 ### Settings and the Admin Password
-Settings are locked behind the **Admin Password** (default `admin` — change it under **Settings → Security**; they lock again after 5 minutes of inactivity). Tabs: Security · Manual Schema Update · Schema Management · Secret Vault · Synchronization · Admin Query Library · AI/LLM Model · Danger Zone.
+Settings are locked behind the **Admin Password** (default `admin` — change it under **Settings → Security**, where it can also be reset to the default; since V17.6.5 it is one central password synchronized to every device; they lock again after 5 minutes of inactivity). Tabs: Security · Manual Schema Update · Schema Management · Secret Vault · Synchronization · Admin Query Library · AI/LLM Model · Danger Zone.
 
 ### Documents
 
 | File | Contents |
 |---|---|
+| `docs/ADMIN_PASSWORD.md` | Centralized Admin Password: file format, rules, reset, recovery, limitations (V17.6.5) |
+| `docs/CHANGELOG_V17.6.5.md`, `docs/TEST_REPORT_V17.6.5.md`, `docs/REGRESSION_BASELINE_V17.6.5.md` | V17.6.5 changes, test results, protected functionality |
 | `docs/CHANGELOG_V17.5.7.md` | Everything that changed in V17.5.7 (files, reasons, security, limitations) |
 | `docs/CHANGELOG_V17.5.5.md` | Everything that changed in V17.5.5 (files, reasons, security, limitations) |
 | `docs/CHANGELOG_V17.5.4.md` | Everything that changed in V17.5.4 |
@@ -99,3 +129,4 @@ Settings are locked behind the **Admin Password** (default `admin` — change it
 | `docs/DEPLOYMENT.md` | Upgrade and deployment steps |
 | `docs/SOURCE_PROVENANCE.md` | Which baseline was used and what could not be accessed |
 | `docs/CHANGELOG_V17.4.md`, `docs/CHANGELOG_V17.3.1.md`, `docs/ROOT_CAUSE_V17.3.1.md` | History |
+

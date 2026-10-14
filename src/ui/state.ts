@@ -2,7 +2,7 @@
  * UI state (V17.2 AppStore): route, theme, toasts, and the password-protected Settings session.
  * Settings lock automatically after 5 minutes without activity (V17.2 behaviour).
  */
-import { makeId } from '../utils/id';
+import { makeId } from '../utils/id'; import { takeUnlockTicket, clearSessionBasis, type AuthBasis } from '../services/passwordService';
 export type Route = 'quickstart' | 'readonly' | 'cr' | 'schema-used' | 'error-rectifier' | 'settings' | 'about';
 export type Theme = 'system' | 'light' | 'dark';
 export interface ToastMessage { id: string; kind: 'success' | 'error' | 'info' | 'warning'; text: string; }
@@ -23,8 +23,9 @@ class AppStore {
   setTheme(t: Theme): void { this.theme = t; set('sqla.theme.v15', t); this.notify(); }
   markWalkthroughSeen(): void { this.hasSeenWalkthrough = true; set('sqla.tourseen.v15', '1'); }
   pushToast(kind: ToastMessage['kind'], text: string): void { const t = { id: makeId('toast'), kind, text }; this.toasts.push(t); this.notify(); setTimeout(() => { this.toasts = this.toasts.filter((x) => x.id !== t.id); this.notify(); }, kind === 'error' ? 9000 : 4500); }
-  unlockSettings(): void { this.settingsUnlocked = true; this.bumpActivity(); this.notify(); }
-  lockSettings(): void { this.settingsUnlocked = false; if (this.timer) { clearTimeout(this.timer); this.timer = null; } this.notify(); }
+  /** V17.6.8: Settings open ONLY with the one-time ticket of a successful authoritative check (passwordService.verifyPassword(…, 'settings-unlock')). Without it nothing happens — no UI or route can bypass the central verification. Returns the basis the session was opened on, or null when refused. */
+  unlockSettings(): AuthBasis | null { const basis = takeUnlockTicket(); if (!basis) return null; this.settingsUnlocked = true; this.bumpActivity(); this.notify(); return basis; }
+  lockSettings(): void { this.settingsUnlocked = false; clearSessionBasis(); if (this.timer) { clearTimeout(this.timer); this.timer = null; } this.notify(); }
   private bumpActivity(): void { if (!this.settingsUnlocked) return; if (this.timer) clearTimeout(this.timer); this.timer = setTimeout(() => { this.lockSettings(); this.pushToast('info', 'Settings locked automatically after inactivity.'); }, SETTINGS_INACTIVITY_MS); }
 }
 export const store = new AppStore();

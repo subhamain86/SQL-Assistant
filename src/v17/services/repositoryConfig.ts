@@ -11,7 +11,7 @@
  * Responsibilities stay separate: this module = location + authorization of changes; secretVault.ts = encryption / decryption of the vault; githubClient.ts = network and token checks.
  */
 import { KEYS, readJson, writeJson, type KeyValueStore } from '../../services/storage';
-import { verifyPassword } from '../../services/passwordService';
+import { verifyPassword, authBlockedMessage } from '../../services/passwordService';
 import { LOCKED_REPOSITORY } from './repositoryDefaults';
 import type { VaultSecrets } from './secretVault';
 export interface RepositoryConfig { owner: string; repo: string; branch: string; schemaPath: string; }
@@ -59,7 +59,7 @@ export interface SaveConfigOptions {
 /** Persists a new configuration. Order: Admin Password → validation → live check → single write (+ read-back). A refusal changes nothing. Saving the defaults removes the override. */
 export async function saveRepositoryConfig(store: KeyValueStore, input: Partial<RepositoryConfig>, adminPassword: string, o: SaveConfigOptions = {}): Promise<SaveConfigResult> {
   let ok = false; try { ok = await (o.verify || verifyPassword)(String(adminPassword ?? '')); } catch { ok = false; }
-  if (!ok) return { ok: false, kind: 'unauthorized', message: 'Incorrect Admin Password — the repository configuration was not changed.', problems: [] };
+  if (!ok) return { ok: false, kind: 'unauthorized', message: authBlockedMessage() ? `${authBlockedMessage()} The repository configuration was not changed.` : 'Incorrect Admin Password — the repository configuration was not changed.', problems: [] };
   const c = clean(input); const problems = validateRepositoryConfig(c); if (problems.length) return { ok: false, kind: 'invalid', message: 'The repository configuration is not valid — nothing was saved.', problems };
   const notes: string[] = []; if (o.liveCheck) { const r = await o.liveCheck(c); notes.push(...r.notes); if (r.refuse) return { ok: false, kind: 'unverified', message: r.refuse, problems: [] }; }
   const isDefault = sameRepositoryConfig(c, DEFAULT_REPOSITORY);

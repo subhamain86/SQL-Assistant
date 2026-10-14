@@ -86,7 +86,6 @@ const CODE: Record<string, { kind: RepositoryErrorKind; message: string }> = {
   'too-large': { kind: 'http', message: 'the file is larger than the repository access service allows.' },
   'secret-in-content': { kind: 'http', message: 'the repository access service refused the file because it appears to contain a token or key in readable form. Nothing was written.' },
   'not-json': { kind: 'http', message: 'the repository access service accepts only JSON files. Nothing was written.' },
-  'credential-record-invalid': { kind: 'http', message: 'the repository access service refused the Admin Password record because it is not an encrypted verification marker in the expected format. Nothing was written.' },
   'not-a-file': { kind: 'http', message: 'the repository path is not a file.' },
   'bad-request': { kind: 'config', message: 'the repository access service refused the request (repository, branch or file path is not an allowed value).' },
 };

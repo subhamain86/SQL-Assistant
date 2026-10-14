@@ -1,6 +1,6 @@
 /** Settings → Admin Query Library (V17.4). Trusted, administrator-approved SQL examples that the offline NLU uses as PATTERNS (never copied). */
 import { icon } from '../components/icons'; import { openModal } from '../components/modal'; import { store } from '../state'; import { services, secrets } from '../context'; import { ensureRepositoryAccess } from '../repoAccess'; import { e } from '../dom'; import { downloadBlob } from '../../utils/dom';
-import { verifyPassword, lockNote } from '../../services/passwordService'; import { validateAdminQuery, schemaCompatible, type AdminQuery, type AdminInput, type AdminValidation, type AdminDialect } from '../../v17/services/adminLibrary';
+import { verifyPassword, authBlockedMessage } from '../../services/passwordService'; import { validateAdminQuery, schemaCompatible, type AdminQuery, type AdminInput, type AdminValidation, type AdminDialect } from '../../v17/services/adminLibrary';
 import { extractSqlPattern } from '../../v17/engines/sqlPatterns'; import { parseKnowledge, sanitizeAdmin, KNOWLEDGE_FORMAT } from '../../v17/services/knowledgeSync'; import { TIER_LABEL, tierOf, weightOf } from '../../v17/services/learningStore'; import { redactSecrets } from '../../v17/errors/appErrors';
 import type { Dialect } from '../../types';
 const box = (kind: 'ok' | 'warn' | 'err', html: string) => `<div class="issue-box ${kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : ''} mini">${icon(kind === 'ok' ? 'check' : 'alert-triangle', 14)}<div>${html}</div></div>`;
@@ -11,7 +11,7 @@ const checksHtml = (v: AdminValidation) => `<ul class="check-list">${v.checks.ma
 async function confirmPassword(title: string, message: string, then: () => void): Promise<void> {
   const m = openModal(`${icon('trash', 18)} ${title}`, `<p>${message}</p><label class="block-label">Admin Password<input type="password" id="aqPw" autocomplete="off"></label><div id="aqPwErr"></div><div class="modal-actions"><button type="button" class="btn btn-ghost" id="aqPwCancel">Cancel</button><button type="button" class="btn btn-primary" id="aqPwOk">Confirm</button></div>`, { closeOnBackdrop: false });
   m.element.querySelector('#aqPwCancel')!.addEventListener('click', () => m.close());
-  m.element.querySelector('#aqPwOk')!.addEventListener('click', async () => { if (!(await verifyPassword((m.element.querySelector('#aqPw') as HTMLInputElement).value))) { m.element.querySelector('#aqPwErr')!.innerHTML = box('err', `Incorrect Admin Password — nothing was changed.${lockNote() ? ` ${lockNote()}` : ''}`); return; } m.close(); then(); });
+  m.element.querySelector('#aqPwOk')!.addEventListener('click', async () => { if (!(await verifyPassword((m.element.querySelector('#aqPw') as HTMLInputElement).value))) { m.element.querySelector('#aqPwErr')!.innerHTML = box('err', authBlockedMessage() ? `${e(authBlockedMessage()!)} Nothing was changed.` : 'Incorrect Admin Password — nothing was changed.'); return; } m.close(); then(); });
 }
 export function adminLibraryTab(p: HTMLElement): void {
   const { admin, learning, knowledge, store: kv } = services(); const s = services().schemas.active(); const c = admin.counts(); const re = () => adminLibraryTab(p);

@@ -14,7 +14,7 @@
 import { icon } from '../components/icons'; import { passphraseFieldHtml, wirePassphraseFields } from '../components/passphraseField'; import { store } from '../state';
 import { services, secrets, reloadSecrets, repository, repoConfig, repoConfigCustom, repoConfigProblem, refreshRepositoryConfig, hasRepositoryOverride, brokerEnabled, brokerInput, brokerSession, clearBrokerSession } from '../context'; import { ensureRepositoryAccess } from '../repoAccess';
 import { brokerCheckLocation, brokerStatus } from '../../v17/services/repoBroker'; import { publishedEnabled, publishedRepo, publishedState } from '../context'; import { describePublication } from '../../v17/services/publishedData'; import { e } from '../dom';
-import { verifyPassword, lockNote } from '../../services/passwordService'; import { maskSecret, type VaultImportReport } from '../../v17/services/secretVault'; import { redactSecrets } from '../../v17/errors/appErrors';
+import { verifyPassword, onAdminSessionInvalidated, authBlockedMessage } from '../../services/passwordService'; import { maskSecret, type VaultImportReport } from '../../v17/services/secretVault'; import { redactSecrets } from '../../v17/errors/appErrors';
 import { DEFAULT_VAULT_PASSPHRASE, isDefaultVaultPassphrase } from '../../v17/services/repositoryDefaults'; import { DEFAULT_REPOSITORY, repositoryLabel, parseRepositoryLabel, saveRepositoryConfig, type RepositoryConfig } from '../../v17/services/repositoryConfig';
 import { checkRepositoryLocation, validateTokenAccess } from '../../v17/services/githubClient';
 import { retrieveVaultFile, retrieveVaultAuthorized, validateVaultPayload, SIGN_IN_CAN_HELP, type VaultRetrieval, type VaultRetrievalVia } from '../../v17/services/vaultRetrieval'; import { fetchBootstrapConfig, runDeviceFlow, type BootstrapConfig, type DeviceCode } from '../../v17/services/bootstrapAuth';
@@ -64,6 +64,8 @@ export function wireRepoCard(root: HTMLElement, onChange: () => void): void {
   let unlockedPw: string | null = null; // held in memory only while editing is unlocked; the service verifies it again when saving
   let relock: ReturnType<typeof setTimeout> | null = null; const AUTO_LOCK_MS = 5 * 60 * 1000; // an unlocked editor locks itself after 5 minutes (like Settings)
   const lock = (restore: boolean) => { unlockedPw = null; if (relock) { clearTimeout(relock); relock = null; } const c = repoConfig; const v = [repositoryLabel(c), c.branch, c.schemaPath]; inputs().forEach((i, n) => { i.readOnly = true; i.setAttribute('aria-readonly', 'true'); i.setAttribute('data-locked', ''); if (restore) i.value = v[n]; }); q('#repoCfgAuth').hidden = true; q('#repoCfgEditActions').hidden = true; q('#repoCfgEditRow').hidden = false; q<HTMLInputElement>('#repoCfgAdminPw').value = ''; };
+  // V17.6.8: a central Admin Password that replaces the one this editor was unlocked with locks the editor at once (the password held in memory is dropped); the listener ends with the card.
+  const offInvalidated = onAdminSessionInvalidated(() => { if (!root.isConnected) { offInvalidated(); return; } if (unlockedPw !== null || !q('#repoCfgAuth').hidden) { lock(true); cfgMsg('warn', 'The central Admin Password changed, so editing was locked. Select <em>Edit configuration</em> and unlock it with the current Admin Password.'); } });
   tgl.addEventListener('click', () => { if (!panel.hidden) { lock(true); cfgOut.innerHTML = ''; } panel.hidden = !panel.hidden; tgl.setAttribute('aria-expanded', String(!panel.hidden)); lbl.textContent = panel.hidden ? 'Show configuration' : 'Hide configuration'; });
   q('#repoCfgEdit').addEventListener('click', () => { q('#repoCfgEditRow').hidden = true; q('#repoCfgAuth').hidden = false; cfgOut.innerHTML = ''; q<HTMLInputElement>('#repoCfgAdminPw').focus(); });
   q('#repoCfgAuthCancel').addEventListener('click', () => { lock(true); cfgOut.innerHTML = ''; });
@@ -71,7 +73,7 @@ export function wireRepoCard(root: HTMLElement, onChange: () => void): void {
   let unlocking = false;
   q('#repoCfgUnlock').addEventListener('click', async () => {
     if (unlocking) return; unlocking = true; try {
-      const pw = q<HTMLInputElement>('#repoCfgAdminPw').value; if (!(await verifyPassword(pw))) { cfgMsg('err', `Incorrect Admin Password — the repository configuration stays read-only.${lockNote() ? ` ${lockNote()}` : ''}`); return; }
+      const pw = q<HTMLInputElement>('#repoCfgAdminPw').value; if (!(await verifyPassword(pw))) { cfgMsg('err', authBlockedMessage() ? `${e(authBlockedMessage()!)} The repository configuration stays read-only.` : 'Incorrect Admin Password — the repository configuration stays read-only.'); return; }
       unlockedPw = pw; relock = setTimeout(() => { if (root.isConnected) { lock(true); cfgMsg('warn', 'Editing was locked after 5 minutes of inactivity. Select <em>Edit configuration</em> to unlock it again.'); } else unlockedPw = null; }, AUTO_LOCK_MS); q<HTMLInputElement>('#repoCfgAdminPw').value = ''; q('#repoCfgAuth').hidden = true; q('#repoCfgEditActions').hidden = false; inputs().forEach((i) => { i.readOnly = false; i.setAttribute('aria-readonly', 'false'); i.removeAttribute('data-locked'); }); cfgOut.innerHTML = ''; inputs()[0].focus();
     } finally { unlocking = false; } });
   let saving = false;
@@ -109,7 +111,7 @@ export function wireRepoCard(root: HTMLElement, onChange: () => void): void {
     if (busy) return; const t = q<HTMLInputElement>('#newTokenInput').value.trim(); const pw = q<HTMLInputElement>('#tokenAdminPw').value;
     if (!t) { out(false, 'Enter a token.'); return; } if (/\s/.test(t)) { out(false, 'The token must not contain spaces.'); return; }
     busy = true; try {
-      if (!(await verifyPassword(pw))) { out(false, `Incorrect Admin Password — the token was not changed.${lockNote() ? ` ${lockNote()}` : ''}`); return; }
+      if (!(await verifyPassword(pw))) { out(false, authBlockedMessage() ? `${authBlockedMessage()} The token was not changed.` : 'Incorrect Admin Password — the token was not changed.'); return; }
       // V17.5.7 — ask GitHub whether the token works for the configured repository BEFORE it replaces anything. Only a definite rejection (401) blocks the save; "cannot be checked" (offline) and "no access" are reported with the token saved.
       let note = ''; if (!hasRepositoryOverride()) { out(true, 'Checking the token with GitHub…'); const a = await validateTokenAccess({ owner: secrets.githubOwner, repo: secrets.githubRepo, token: t });
         if (a.state === 'rejected') { out(false, `${a.message} The token was not saved${secrets.githubToken ? ' — the token already saved was kept' : ''}.`); return; } note = ` ${a.message}${a.state === 'unverified' ? ' It was saved anyway.' : a.canWrite === false ? ' Publishing and pushing will fail until it has Contents: Read and write.' : ''}`; }
