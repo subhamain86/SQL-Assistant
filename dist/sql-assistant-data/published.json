@@ -1,8 +1,8 @@
 {
   "format": "sqla-published-data",
   "formatVersion": 1,
-  "publishedAt": "2026-10-12T11:40:57.459Z",
-  "sourceCommit": "4c8abf9f14d26f82a806c388a6895b08d294d3b5",
+  "publishedAt": "2026-10-29T18:31:06.538Z",
+  "sourceCommit": "392e16180cbe34d8e651ad432887d6dc4d934b95",
   "sourceRepository": "subhamain86/SQL-Assistant",
   "files": {
     "sql-assistant-data/knowledge/knowledge.json": "a52135cbcf1804e55d00066a24eb9e5acf3515320739b8144a540f3fe716cdee",
@@ -10,6 +10,7 @@
     "sql-assistant-data/schema-registry.json": "62b209e3d792c74649e2fa9b005ffd97299c9316161de3ea432e79828881b2e7",
     "sql-assistant-data/schemas/registry.enc.json": "507920babae725f5f119d0d4dedd4c8c953b60161aa216a5d6e2a2b91d8b37fb",
     "sql-assistant-data/schemas/registry.json": "9ee070c037837aaef5e5e070ee312de20e4e8abe21c6b7767c60734af517bc50",
+    "sql-assistant-data/security/admin-password.json": "2d5204cf6589699108f72fdd992d7de55187f5913491e828cab4fdd375979442",
     "sql-assistant-data/vault/secret-vault.enc.json": "85f32919040e2ca04501a8c1140e65a246296a37d10a01fff7a8ab7696e4b1bb",
     "sql-assistant-data/vault/secret-vault.v17.enc.json": "d3d9a61091bcb9f4c875e48bbc8e870f25fd840aac9d346beef599ae75005176"
   }
