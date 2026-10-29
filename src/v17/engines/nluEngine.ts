@@ -7,7 +7,7 @@ import { agoExpr, startOfExpr, todayExpr, dateLiteral } from './dateExpressions'
 import { countryNameToIso2 } from './countryCodes';
 import { tokenize } from './textTokens';
 import { decodeDefinition, decodeUnavailableMessage } from './decodeDefinition';
-export const NLU_ENGINE_VERSION = 'offline-nlu-17.7.0';
+export const NLU_ENGINE_VERSION = 'offline-nlu-17.7.1';
 export interface AutoOption { kind: string; description: string; }
 export interface LearnedHint {
   patternId: string; similarity: number; tables: string[]; columns: { table: string; column: string }[]; options: { limit?: number | null; sorts?: { table: string; column: string; direction: 'ASC' | 'DESC' }[] };

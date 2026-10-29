@@ -7,7 +7,7 @@
  */
 import { icon } from '../components/icons'; import { store } from '../state'; import { services } from '../context'; import { e } from '../dom';
 import { redactSecrets } from '../../v17/errors/appErrors'; import { repoCardHtml, wireRepoCard, vaultPullCardHtml, wireVaultPullCard } from './schemaRepoCards';
-import type { PullOutcome } from '../../v17/sync/syncService'; import { ensureRepositoryAccess } from '../repoAccess'; import { brokerEnabled, publishedEnabled, secrets } from '../context';
+import type { PullOutcome } from '../../v17/sync/syncService'; import { ensureRepositoryAccess } from '../repoAccess'; import { brokerEnabled, publishedEnabled, secrets } from '../context'; import { setGithubPullNote, type PullNote } from '../githubState';
 const UNCHANGED = 'The existing local schema has not been changed.';
 export const PULL_MESSAGES = {
   unavailable: 'The synchronized schema could not be retrieved. Please verify the repository connection and try again.',
@@ -62,6 +62,27 @@ function resultHtml(o: PullOutcome): string {
   const tail = '<br><span class="hint">Manual Selectors, Describe What You Need, the offline NLU, SQL generation and the schema CASE/DECODE definitions now use the active schema.</span>';
   return box(partial ? 'warn' : 'ok', `<strong>${e(partial ? PULL_MESSAGES.partial : PULL_MESSAGES.success)}</strong><br>${detail}${tail}`);
 }
+/** V17.7.1 — the short, plain-text result of a pull (no HTML, no token): shown on Home and on the GitHub Repository page, and survives the page re-render a successful pull causes. */
+export function pullSummary(o: PullOutcome | null): PullNote {
+  const at = new Date().toISOString(); if (!o) return { kind: 'err', text: PULL_MESSAGES.unavailable, at };
+  if (o.ok) { if (o.remoteMissing) return { kind: 'warn', text: `No schema file was found in the repository yet. ${UNCHANGED}`, at }; const partial = o.localAhead.filter((n) => !o.unchanged.includes(n)).length > 0 || o.conflicts.length > 0 || o.rejected.length > 0; return { kind: partial ? 'warn' : 'ok', text: partial ? PULL_MESSAGES.partial : PULL_MESSAGES.success, at }; }
+  const byKind: Record<string, string> = { signin: PULL_MESSAGES.signin, 'pat-missing': PULL_MESSAGES.patMissing, 'pat-rejected': PULL_MESSAGES.patRejected, 'pat-insufficient': PULL_MESSAGES.patInsufficient, config: brokerEnabled() ? PULL_MESSAGES.signin : PULL_MESSAGES.noToken, auth: PULL_MESSAGES.auth, permission: PULL_MESSAGES.permission, timeout: PULL_MESSAGES.timeout, 'passphrase': `The protected repository file could not be opened with the secret saved on this device. ${UNCHANGED}`, decryption: PULL_MESSAGES.decryption, incompatible: PULL_MESSAGES.incompatible, validation: PULL_MESSAGES.validation, storage: PULL_MESSAGES.storage };
+  return { kind: 'err', text: byKind[String(o.errorKind)] || `${PULL_MESSAGES.unavailable} ${UNCHANGED}`, at };
+}
+/**
+ * V17.7.1 — "Pull Schema" from the Home page. The SAME sequence as the Pull Schema tab (repository authorization first, then SyncService.pullSchema() — validated, transactional, a failure never changes the local schemas);
+ * only the display differs: a short result in the shared GitHub state. `accessHost` returns the element that shows the GitHub sign-in prompt when central access needs one.
+ */
+export async function pullSchemaFromHome(accessHost: () => HTMLElement | null): Promise<void> {
+  if (busy) return; busy = true; setGithubPullNote({ kind: 'running', text: 'Pulling the schema from GitHub…', at: null });
+  try {
+    const acc = await ensureRepositoryAccess({ show: (html) => { const h = accessHost(); if (h) h.innerHTML = html; return h; } });
+    if (!acc.ok) { setGithubPullNote({ kind: acc.cancelled ? 'warn' : 'err', text: acc.message, at: new Date().toISOString() }); return; }
+    const out = await services().sync.pullSchema(); const n = pullSummary(out); setGithubPullNote(n);
+    if (out.ok && !out.remoteMissing) store.pushToast(n.kind === 'warn' ? 'warning' : 'success', n.text);
+  } catch (err) { setGithubPullNote({ kind: 'err', text: redactSecrets((err as Error)?.message || 'unexpected error', services().vault.knownSecrets()).slice(0, 240), at: new Date().toISOString() }); }
+  finally { busy = false; }
+}
 /** The card currently on screen. A successful pull changes the schema registry, which makes the page re-render while the pull is still finishing — so the card is always looked up again, never kept across an await. */
 const liveHost = (fallback?: HTMLElement) => document.querySelector<HTMLElement>('#schemaPullHost') || fallback || null;
 async function pull(): Promise<void> {
@@ -74,6 +95,7 @@ async function pull(): Promise<void> {
     view = box('warn', 'Retrieving the schema from GitHub, validating it and synchronizing this device…'); paint();
     out = await services().sync.pullSchema(); view = out.ok ? resultHtml(out) : problemHtml(out); }
   catch (err) { view = problemHtml({ ok: false, stage: null, fileProblem: redactSecrets((err as Error)?.message || 'unexpected error', services().vault.knownSecrets()), errorKind: null } as PullOutcome); }
+  setGithubPullNote(pullSummary(out)); // V17.7.1: Home / GitHub Repository show the same result
   if (out?.ok && !out.remoteMissing) store.pushToast(view.includes('issue-box warn') ? 'warning' : 'success', view.includes('issue-box warn') ? PULL_MESSAGES.partial : PULL_MESSAGES.success);
   busy = false; const h = liveHost(); if (h) renderPullPanel(h); // re-render: the status chips (last download, nothing waiting …) now reflect the real result
 }

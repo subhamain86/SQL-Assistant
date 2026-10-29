@@ -1,4 +1,3 @@
-
 /**
  * SQL Assistant entry point (V17.4 on the V17.3.1 baseline and V17.2 UI). Start-up order:
  *   1. render the app shell (navbar, main, footer, toasts) — needs no services
@@ -9,7 +8,7 @@
 import { APP, initServices, services, reloadSecrets, repository, refreshBrokerConfig, refreshPublished } from './ui/context';
 import { store, ROUTES, type Route } from './ui/state'; import { e } from './ui/dom'; import { icon } from './ui/components/icons';
 import { renderNavbar } from './ui/components/navbar'; import { mountToastContainer } from './ui/components/toast'; import { GuidedTour } from './ui/components/tourOverlay';
-import { renderReadOnlyPage } from './ui/pages/readonly'; import { renderQuickstartPage, renderCrPage, renderSchemaPage, renderErrorRectifierPage, renderAboutPage } from './ui/pages/other'; import { renderSettingsPage } from './ui/pages/settings';
+import { renderReadOnlyPage } from './ui/pages/readonly'; import { renderQuickstartPage, renderCrPage, renderSchemaPage, renderErrorRectifierPage, renderAboutPage } from './ui/pages/other'; import { renderSettingsPage } from './ui/pages/settings'; import { renderGithubPage } from './ui/pages/githubRepository'; import { renderQueryAddPage, renderQueryLibraryPage } from './ui/pages/queryLibrary'; import { startGithubConnection } from './ui/githubState';
 import { startSyncScheduler, getSyncPrefs } from './ui/syncPrefs'; import { onAdminSessionInvalidated, authTrace } from './services/passwordService';
 const ALIASES: Record<string, Route> = { builder: 'readonly', crbuilder: 'cr', usedschema: 'schema-used', schema: 'schema-used', errorrectifier: 'error-rectifier', home: 'quickstart' };
 export function parseRoute(hash: string): Route { const h = hash.replace(/^#!?\/?/, '').split(/[?/]/)[0]; const r = (ALIASES[h] || h) as Route; return ROUTES.includes(r) ? r : 'quickstart'; }
@@ -18,7 +17,7 @@ function renderPage(force = false): void {
   const route = parseRoute(location.hash); const changedRoute = route !== store.route; store.route = route;
   const key = `${route}|${store.settingsUnlocked}`; if (!force && !changedRoute && key === lastRendered) return; lastRendered = key;
   if (!ready) { main.innerHTML = '<div class="page"><p class="hint">Starting…</p></div>'; return; }
-  try { ({ quickstart: () => renderQuickstartPage(main, navigate), readonly: () => renderReadOnlyPage(main), cr: () => renderCrPage(main), 'schema-used': () => renderSchemaPage(main), 'error-rectifier': () => renderErrorRectifierPage(main), settings: () => renderSettingsPage(main), about: () => renderAboutPage(main) } as Record<Route, () => void>)[route](); }
+  try { ({ quickstart: () => renderQuickstartPage(main, navigate), readonly: () => renderReadOnlyPage(main), cr: () => renderCrPage(main), 'schema-used': () => renderSchemaPage(main), 'error-rectifier': () => renderErrorRectifierPage(main), settings: () => renderSettingsPage(main), about: () => renderAboutPage(main), github: () => renderGithubPage(main, navigate), 'query-add': () => renderQueryAddPage(main), 'query-library': () => renderQueryLibraryPage(main) } as Record<Route, () => void>)[route](); }
   catch (err) { main.innerHTML = `<div class="page"><div class="issue-box">${icon('alert-triangle', 15)} This page could not be displayed: ${e((err as Error).message)}</div></div>`; }
   if (changedRoute) window.scrollTo(0, 0);
 }
@@ -43,6 +42,9 @@ export async function boot(): Promise<void> {
   svc.adminMessage.subscribe(() => (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.()); // V17.5.1: a new / cleared / dismissed admin message updates the navbar at once
   svc.schemas.subscribe(() => { const fp = `${svc!.schemas.active().id}|${svc!.schemas.active().updatedAt}`; if (fp !== lastSchemaFp) { lastSchemaFp = fp; if (store.route !== 'settings') renderPage(true); } (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.(); });
   renderPage(true); (document.getElementById('navMount') as unknown as { redraw?: () => void }).redraw?.();
+  // V17.7.1: the GitHub connection is initialised NOW, at start-up — a saved token / the central sign-in / the published copy is validated (read-only requests) and the Home page reports the real state; no page has to be opened first.
+  // It never writes, never pulls on its own, never starts a sign-in by itself, never blocks or fails the start-up (every problem becomes a state with a message), and it is re-checked only when the token or the repository changes.
+  startGithubConnection();
   startSyncScheduler(() => { if (repository()) void services().adminPassword.synchronize().catch(() => undefined); /* V17.6.5: the Admin Password converges on the central record at every scheduled synchronization */ if (getSyncPrefs().source === 'github' && repository()) { void services().knowledge.synchronize().catch(() => undefined); void services().adminMessage.synchronize().catch(() => undefined); services().sync.synchronize().then((r) => { if (r.pull.migrated.length) store.pushToast('success', 'Legacy schema migrated and synchronized in the background.'); else if (r.pull.rejected.length) store.pushToast('warning', `${r.pull.rejected.length} repository schema(s) failed validation; your local copies were kept. Details: Settings → Schema Management.`); }).catch(() => undefined); } });
   // V17.5.1: the admin message is read at start-up and whenever the tab becomes visible again (throttled); a failure is silent — the last known message stays
   if (getSyncPrefs().source === 'github' && repository()) void svc.adminMessage.synchronize().catch(() => undefined);

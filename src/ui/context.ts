@@ -1,6 +1,6 @@
 /** Services are created inside boot() AFTER the page markup is on screen, so no service failure can blank the page. */
 import { SchemaService } from '../services/schemaService';
-import { browserStore, type KeyValueStore } from '../services/storage';
+import { browserStore, deviceTag, type KeyValueStore } from '../services/storage';
 import { SecretVault, EMPTY_SECRETS, type VaultSecrets } from '../v17/services/secretVault';
 import { indexedDbKeyProvider } from '../v17/services/cryptoBox';
 import { githubRepository, type SchemaRepository } from '../v17/services/githubClient';
@@ -9,7 +9,7 @@ import { fetchBrokerConfig, brokerRepository, BrokerSessionStore, type BrokerCon
 import { loadRepositoryConfig, applyRepositoryConfig, DEFAULT_REPOSITORY, type RepositoryConfig } from '../v17/services/repositoryConfig';
 import { SyncService } from '../v17/sync/syncService';
 import { LearningStore } from '../v17/services/learningStore';
-import { AdminQueryLibrary } from '../v17/services/adminLibrary';
+import { AdminQueryLibrary } from '../v17/services/adminLibrary'; import { QuerySubmissions, SubmissionSync, submissionsPathFor } from '../v17/services/querySubmissions';
 import { KnowledgeSync, knowledgePathFor } from '../v17/services/knowledgeSync';
 import { runMigrations, type MigrationState } from '../v17/services/migrations';
 import { SchemaPassphraseStore } from '../v17/services/schemaPassphrase';
@@ -19,14 +19,17 @@ import { AdminPasswordService, adminPasswordPathFor, type CentralSource } from '
 import { loadAiConfig, DEFAULT_AI_CONFIG, type AiLlmConfig } from '../v17/services/aiLlmService'; import { CentralSync, type VaultReport } from '../v17/sync/centralSync'; import { validateVaultPayload } from '../v17/services/vaultRetrieval';
 import { APP_NAME, APP_VERSION } from '../v17/sync/schemaFormat';
 export const APP = { name: APP_NAME, version: APP_VERSION };
-export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; admin: AdminQueryLibrary; knowledge: KnowledgeSync; migrations: MigrationState; sync: SyncService; /** V17.5: the passphrase saved on this device for the synchronized (encrypted) schema */ passphrase: SchemaPassphraseStore; /** V17.5.1: the short cross-device administrator message shown in the navbar */ adminMessage: AdminMessageService; /** V17.6.5: the centralized, synchronized Admin Password */ adminPassword: AdminPasswordService; /** V17.6.8: the navigation-bar Sync button — one run of the existing centralized synchronization (it adds no synchronization logic of its own) */ centralSync: CentralSync; }
+export interface Services { store: KeyValueStore & { persistent: boolean }; schemas: SchemaService; vault: SecretVault; learning: LearningStore; admin: AdminQueryLibrary; knowledge: KnowledgeSync; migrations: MigrationState; sync: SyncService; /** V17.5: the passphrase saved on this device for the synchronized (encrypted) schema */ passphrase: SchemaPassphraseStore; /** V17.5.1: the short cross-device administrator message shown in the navbar */ adminMessage: AdminMessageService; /** V17.6.5: the centralized, synchronized Admin Password */ adminPassword: AdminPasswordService; /** V17.6.8: the navigation-bar Sync button — one run of the existing centralized synchronization (it adds no synchronization logic of its own) */ centralSync: CentralSync; /** V17.7.1: user-submitted queries awaiting an administrator's decision — separate from the library, never trusted */ submissions: QuerySubmissions; /** V17.7.1: exchange of the submissions with the repository (…/knowledge/submissions.json) */ submissionSync: SubmissionSync; }
 let svc: Services | null = null;
 /** V17.5.6: the ONE repository configuration (defaults, or the administrator's saved override — see repositoryConfig.ts). Every synchronization reads its location from `secrets`, which is derived from this. */
 export let repoConfig: RepositoryConfig = { ...DEFAULT_REPOSITORY }; export let repoConfigCustom = false; export let repoConfigProblem: string | null = null;
 const locate = (s: VaultSecrets): VaultSecrets => applyRepositoryConfig(s, repoConfig);
 export let secrets: VaultSecrets = locate({ ...EMPTY_SECRETS });
 /** Re-reads the saved configuration and re-applies it to the secrets (called at start-up and after an administrator saved a change). */
-export function refreshRepositoryConfig(): RepositoryConfig { const r = loadRepositoryConfig(services().store); repoConfig = r.config; repoConfigCustom = r.custom; repoConfigProblem = r.problem; secrets = locate(secrets); return repoConfig; }
+/** V17.7.1: ONE notification door for "the repository location or the token on this device changed" (token saved / replaced by a vault import, configuration saved). The shared GitHub connection state (githubState.ts) listens here; it holds no token of its own. */
+const secretListeners = new Set<() => void>(); export const onSecretsChanged = (fn: () => void): (() => void) => { secretListeners.add(fn); return () => secretListeners.delete(fn); };
+const secretsChanged = (): void => { [...secretListeners].forEach((l) => { try { l(); } catch { /* a listener must never break the repository configuration */ } }); };
+export function refreshRepositoryConfig(): RepositoryConfig { const r = loadRepositoryConfig(services().store); repoConfig = r.config; repoConfigCustom = r.custom; repoConfigProblem = r.problem; secrets = locate(secrets); secretsChanged(); return repoConfig; }
 export let aiConfig: AiLlmConfig = { ...DEFAULT_AI_CONFIG };
 export let vaultProblem: string | null = null;
 let override: SchemaRepository | null = null;
@@ -100,10 +103,11 @@ export function initServices(): Services {
   if (svc) return svc; const store = browserStore(); const migrations = runMigrations(store); const schemas = new SchemaService(store); const vault = new SecretVault(store, indexedDbKeyProvider); vault.setLocator(locate);
   { const r = loadRepositoryConfig(store); repoConfig = r.config; repoConfigCustom = r.custom; repoConfigProblem = r.problem; secrets = locate(secrets); }
   const passphrase = new SchemaPassphraseStore(store, indexedDbKeyProvider); const learning = new LearningStore(store); const admin = new AdminQueryLibrary(store, () => store.get('sqla.adminname.v174') || 'Administrator');
-  svc = { centralSync: null as unknown as CentralSync, store, schemas, vault, learning, admin, migrations, knowledge: new KnowledgeSync(learning, admin, repository, store, () => knowledgePathFor(secrets.schemaPath), () => vault.knownSecrets()), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => [...vault.knownSecrets(), ...passphrase.known()], { passphrase: () => passphrase.get(), path: () => encryptedPathFor(secrets.schemaPath), saved: () => passphrase.hasSaved() }), passphrase, adminMessage: new AdminMessageService(store, repository, () => adminMessagePathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]), adminPassword: new AdminPasswordService(store, passwordRepository, () => adminPasswordPathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()], { source: passwordSource, standalone: passwordStandalone, rediscover: rediscoverAuthorization, confirmRepository: confirmRepositoryReachable }) };
+  svc = { centralSync: null as unknown as CentralSync, submissions: null as unknown as QuerySubmissions, submissionSync: null as unknown as SubmissionSync, store, schemas, vault, learning, admin, migrations, knowledge: new KnowledgeSync(learning, admin, repository, store, () => knowledgePathFor(secrets.schemaPath), () => vault.knownSecrets()), sync: new SyncService(schemas, repository, store, () => secrets.schemaPath, () => [...vault.knownSecrets(), ...passphrase.known()], { passphrase: () => passphrase.get(), path: () => encryptedPathFor(secrets.schemaPath), saved: () => passphrase.hasSaved() }), passphrase, adminMessage: new AdminMessageService(store, repository, () => adminMessagePathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]), adminPassword: new AdminPasswordService(store, passwordRepository, () => adminPasswordPathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()], { source: passwordSource, standalone: passwordStandalone, rediscover: rediscoverAuthorization, confirmRepository: confirmRepositoryReachable }) };
+  svc.submissions = new QuerySubmissions(store, () => deviceTag(store), () => store.get('sqla.adminname.v174') || 'Administrator'); svc.submissionSync = new SubmissionSync(svc.submissions, repository, store, () => submissionsPathFor(secrets.schemaPath), () => [...vault.knownSecrets(), ...passphrase.known()]);
   svc.centralSync = new CentralSync({ adminPassword: svc.adminPassword, schemas: svc.sync, knowledge: svc.knowledge, adminMessage: svc.adminMessage, hasRepository: () => !!repository(), vaultReport, secrets: () => [...vault.knownSecrets(), ...passphrase.known()] });
   setPasswordAuthority({ resolve: () => svc!.adminPassword.resolve() }); // V17.6.8: EVERY Admin Password check asks the central state first (start-up bootstrap awaited, stale verifier refreshed) — see passwordService.verifyPassword
   aiConfig = loadAiConfig(store); return svc;
 }
 export function services(): Services { if (!svc) throw new Error('Services are not initialised yet.'); return svc; }
-export async function reloadSecrets(): Promise<VaultSecrets> { try { secrets = locate(await services().vault.load()); vaultProblem = null; } catch (e) { secrets = locate({ ...EMPTY_SECRETS }); vaultProblem = (e as Error).message; } return secrets; }
+export async function reloadSecrets(): Promise<VaultSecrets> { try { secrets = locate(await services().vault.load()); vaultProblem = null; } catch (e) { secrets = locate({ ...EMPTY_SECRETS }); vaultProblem = (e as Error).message; } secretsChanged(); return secrets; }

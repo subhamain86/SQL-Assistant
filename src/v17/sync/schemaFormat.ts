@@ -13,7 +13,7 @@
  * Everything else stays a validation error with an exact path. Validation is never relaxed.
  */
 import type { SchemaModel, SchemaRegistry, TableDef, ColumnDef, DecodeEntry, RelationshipDef, SchemaMigrationInfo } from '../../types';
-export const APP_VERSION = '17.7.0';
+export const APP_VERSION = '17.7.1';
 export const APP_NAME = 'SQL Assistant';
 export const SCHEMA_FORMAT_VERSION = 2;
 export const WRITER_LABEL = `${APP_NAME} ${APP_VERSION}`;

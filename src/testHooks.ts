@@ -12,6 +12,7 @@ import { lastAuthBasis, sessionAuthBasis } from './services/passwordService';
 import { memoryRepository, setRepositoryTimeoutMs } from './v17/services/githubClient';
 import { encryptSchemaRegistry } from './v17/services/schemaCrypto';
 import { renderNow } from './main';
+import { githubConn, initGithubConnection, githubChecks, lastSyncAt } from './ui/githubState';
 
 export function installTestHooks(): void {
   if (new URLSearchParams(location.search).get('e2e') !== '1') return;
@@ -20,6 +21,7 @@ export function installTestHooks(): void {
     adminAuth: { diagnostics: () => services().adminPassword.diagnostics(), basis: lastAuthBasis, sessionBasis: sessionAuthBasis },
     centralSync: () => services().centralSync, services, refreshPublished, setPublishedState, publishedEnabled, refreshBrokerConfig, setBrokerConfig, brokerSession, brokerEnabled, memoryRepository, setRepositoryOverride, reloadSecrets, store,
     render: () => renderNow(), setRepositoryTimeoutMs,
+    /** V17.7.1: the shared GitHub connection state (no token is in it) */ github: { conn: githubConn, init: initGithubConnection, checks: githubChecks, lastSyncAt },
     /** location in force (no secret) */ repoLocation: () => [secrets.githubOwner, secrets.githubRepo, secrets.githubBranch, secrets.schemaPath],
     encryptForTest: (text: string, pass: string) => encryptSchemaRegistry(text, pass, { device: 'test-device', schemaCount: 1 }),
   };

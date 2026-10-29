@@ -63,16 +63,23 @@ let lastBasis: AuthBasis | null = null; let sessionBasis: AuthBasis | null = nul
 export const lastAuthBasis = (): AuthBasis | null => lastBasis;
 export const sessionAuthBasis = (): AuthBasis | null => sessionBasis;
 export const sessionOnDefault = (): boolean => sessionBasis === 'default-confirmed';
-export function clearSessionBasis(): void { sessionBasis = null; ticket = null; }
+export function clearSessionBasis(): void { sessionBasis = null; ticket = null; actionTicket = null; }
 /** Kept for compatibility (V17.6.7/8 callers): since V17.6.9 a default basis is only ever issued as 'default-confirmed', so there is nothing left to upgrade. */
 export function confirmDefaultSession(): void { /* intentionally empty */ }
 /** One-time ticket: issued only by a successful verifyPassword(candidate, 'settings-unlock'); consumed by AppStore.unlockSettings(). Valid for 30 seconds. */
 const TICKET_MS = 30_000; let ticket: { basis: AuthBasis; at: number } | null = null;
 export function takeUnlockTicket(): AuthBasis | null { const t = ticket; ticket = null; if (!t || Date.now() - t.at > TICKET_MS) return null; sessionBasis = t.basis; authTrace(`session:opened basis=${t.basis}`); return t.basis; }
+/**
+ * V17.7.1 — ONE-TIME ACTION TICKET for decisions on user-submitted queries (approve / reject). Same construction as the unlock ticket above: only a successful verifyPassword(…, 'admin-action') — i.e. the central
+ * Admin Password authority — issues it, takeActionTicket() consumes it (single use, 30 seconds). The submission service (querySubmissions.ts) refuses to approve or reject without it, so the decision is authorized
+ * where it is made and not by the visibility of a button or by the page the user happens to be on.
+ */
+let actionTicket: { basis: AuthBasis; at: number } | null = null;
+export function takeActionTicket(): AuthBasis | null { const t = actionTicket; actionTicket = null; if (!t || Date.now() - t.at > TICKET_MS) return null; authTrace('action:ticket-used'); return t.basis; }
 /** Authorization state that is held in memory by UI parts (Settings session, repository-configuration editor) is dropped through this single door. */
 const invalidateListeners = new Set<(reason: string) => void>();
 export function onAdminSessionInvalidated(fn: (reason: string) => void): () => void { invalidateListeners.add(fn); return () => invalidateListeners.delete(fn); }
-export function invalidateAdminSession(reason: string): void { sessionBasis = null; ticket = null; authTrace(`session:invalidated ${String(reason).slice(0, 60)}`); [...invalidateListeners].forEach((l) => { try { l(reason); } catch { /* a listener must never break the authority */ } }); }
+export function invalidateAdminSession(reason: string): void { sessionBasis = null; ticket = null; actionTicket = null; authTrace(`session:invalidated ${String(reason).slice(0, 60)}`); [...invalidateListeners].forEach((l) => { try { l(reason); } catch { /* a listener must never break the authority */ } }); }
 /** In-memory, secret-free trace of the authentication sequence (diagnostics; read by the tests through the e2e hook). Holds event names and numbers only — never a password, marker or token. */
 export interface AuthTraceEntry { n: number; e: string }
 const traceBuf: AuthTraceEntry[] = []; let traceN = 0;
@@ -80,7 +87,7 @@ export function authTrace(e: string): void { traceBuf.push({ n: ++traceN, e: Str
 export const authTraceLog = (): AuthTraceEntry[] => traceBuf.slice();
 /** Revision of the central record this device last applied or published (0 = none). Read-only; the key is written by AdminPasswordService (KEYS.adminPwMeta). A marker on a device that carries one IS the central verifier. */
 const centralRevision = (): number => { try { const m = JSON.parse(localStorage.getItem('sqla.adminpwmeta.v1765') || 'null'); return Number.isInteger(m?.revision) && m.revision > 0 ? m.revision : 0; } catch { return 0; } };
-export type VerifyPurpose = 'confirm' | 'settings-unlock';
+export type VerifyPurpose = 'confirm' | 'settings-unlock' | 'admin-action';
 /**
  * THE authoritative Admin Password check. 1) the authority makes sure the central state is loaded / refreshed (start-up bootstrap is awaited, a stale verifier is replaced); 2) the credential that is in force
  * on this device is the only one that can match: the marker (which IS the central verifier once applied) — or, only when the authority allows it, the default.
@@ -94,7 +101,7 @@ export async function verifyPassword(candidate: string, purpose: VerifyPurpose =
   else if (r.defaultAllowed && r.state === 'confirmed-default') { ok = await verifyDefault(candidate); basis = 'default-confirmed'; } // V17.6.9: the default is a candidate ONLY in the explicitly confirmed state — a bare `defaultAllowed` flag is not enough
   else authTrace('auth:blocked default-not-allowed');
   if (!ok) { authTrace('auth:rejected'); return false; }
-  lastBasis = basis; authTrace(`auth:accepted basis=${basis}`); if (purpose === 'settings-unlock' && basis) ticket = { basis, at: Date.now() }; return true;
+  lastBasis = basis; authTrace(`auth:accepted basis=${basis}`); if (purpose === 'settings-unlock' && basis) ticket = { basis, at: Date.now() }; if (purpose === 'admin-action' && basis) actionTicket = { basis, at: Date.now() }; return true;
 }
 /** Why a check that failed may have failed for another reason than a wrong password: the central Admin Password could not be determined and this device holds no local marker. null = a plain wrong password. */
 export function authBlockedMessage(): string | null {

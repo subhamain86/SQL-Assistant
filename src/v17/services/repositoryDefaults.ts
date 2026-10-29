@@ -10,7 +10,7 @@
  * against people who cannot also read the repository. Set it to '' to remove the pre-filled value; rotate it (push a new vault with a new passphrase) if it is exposed.
  */
 import type { VaultSecrets } from './secretVault';
-export const LOCKED_REPOSITORY = { owner: 'subhamain86', repo: 'SQL-Assistant', branch: 'main', schemaPath: 'sql-assistant-data/schemas/registry.json' } as const;
+export const LOCKED_REPOSITORY = { owner: 'basware', repo: 'sk-ap-sql-assistant', branch: 'main', schemaPath: 'sql-assistant-data/schemas/registry.json' } as const;
 export const LOCKED_REPOSITORY_LABEL = `${LOCKED_REPOSITORY.owner}/${LOCKED_REPOSITORY.repo}`;
 export const DEFAULT_VAULT_PASSPHRASE = 'xG71lfp1NHZVZ4WVWCPe';
 /** V17.5.7: true when a passphrase is the built-in default. That value ships in the application bundle, so a vault protected only by it is NOT secret from anyone who can read the repository and load the application. */

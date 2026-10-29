@@ -3,10 +3,10 @@
  * Settings lock automatically after 5 minutes without activity (V17.2 behaviour).
  */
 import { makeId } from '../utils/id'; import { takeUnlockTicket, clearSessionBasis, type AuthBasis } from '../services/passwordService';
-export type Route = 'quickstart' | 'readonly' | 'cr' | 'schema-used' | 'error-rectifier' | 'settings' | 'about';
+export type Route = 'quickstart' | 'readonly' | 'cr' | 'schema-used' | 'error-rectifier' | 'settings' | 'about' | 'github' | 'query-add' | 'query-library';
 export type Theme = 'system' | 'light' | 'dark';
 export interface ToastMessage { id: string; kind: 'success' | 'error' | 'info' | 'warning'; text: string; }
-export const ROUTES: Route[] = ['quickstart', 'readonly', 'cr', 'schema-used', 'error-rectifier', 'settings', 'about'];
+export const ROUTES: Route[] = ['quickstart', 'readonly', 'cr', 'schema-used', 'error-rectifier', 'settings', 'about', 'github', 'query-add', 'query-library'];
 export const SETTINGS_INACTIVITY_MS = 5 * 60 * 1000;
 const get = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
 const set = (k: string, v: string) => { try { localStorage.setItem(k, v); } catch { /* storage blocked */ } };
