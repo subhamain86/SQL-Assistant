@@ -1,0 +1,497 @@
+{
+ "version": "17.7.1",
+ "total": 97,
+ "passed": 97,
+ "failed": 0,
+ "emulated": [
+  "api.github.com (request interception)",
+  "repository (in-memory)"
+ ],
+ "results": [
+  {
+   "name": "A1 start-up: the application starts and shows the Home page",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "A2 Home shows a GitHub repository section matching the V17.7 panel style",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A3 nothing configured: Home says \"Not set up\" and NO request was sent to GitHub",
+   "pass": true,
+   "detail": "('Not set up', 0)"
+  },
+  {
+   "name": "A4 saving a token re-checks by itself (no page opened): chip becomes Connected",
+   "pass": true,
+   "detail": "Connected"
+  },
+  {
+   "name": "A5 fresh start: the saved token is validated at start-up while the route is still Home (Pull Schema / Settings never opened)",
+   "pass": true,
+   "detail": "('Connected', 'http://127.0.0.1:8171/?e2e=1')"
+  },
+  {
+   "name": "A6 start-up requests are READ-ONLY (GET to api.github.com) and carry the saved token; exactly one check",
+   "pass": true,
+   "detail": "[('GET', 'https://api.github.com/repos/basware/sk-ap-sql-assistant'), ('GET', 'https://api.github.com/repos/basware/sk-ap-sql-assistant/contents/sql-assistant-data/messages/admin-message.json?ref=main'), ('GET', 'https://api.github.com/repos/basware/sk-ap-sql-assistant/contents/sql-assistant-data/se"
+  },
+  {
+   "name": "A7 Home shows write access, the repository and the synchronization status",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A8 navigating away and back to Home makes no new GitHub request (the answer is reused)",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "A9 the token appears nowhere: not in the page, not in storage (encrypted vault), not in the console, not in the state",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A10 no unrelated error / unhandled exception during start-up",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "B expired or revoked token (401): Home shows \"Token rejected\" with a message and what to do",
+   "pass": true,
+   "detail": "('Token rejected', 'GitHub rejected the access token (it is invalid or has expired). Set a new access token in the GitHub repository card (Admin Password), or import it with Pull Secret Vault.')"
+  },
+  {
+   "name": "B expired or revoked token (401): no token in the message / page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B expired or revoked token (401): unrelated SQL generation still works",
+   "pass": true,
+   "detail": "SELECT *\nFROM VENDOR;"
+  },
+  {
+   "name": "B no permission / rate limit (403): Home shows \"No access\" with a message and what to do",
+   "pass": true,
+   "detail": "('No access', 'GitHub accepted the token but it is not allowed to use this repository (it needs Contents: Read, and Read and write to publish), or the rate limit was reached. Ask the repository owner to grant the token access (Contents: Read), or wait if the rate limit was reached.')"
+  },
+  {
+   "name": "B no permission / rate limit (403): no token in the message / page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B no permission / rate limit (403): unrelated SQL generation still works",
+   "pass": true,
+   "detail": "SELECT *\nFROM VENDOR;"
+  },
+  {
+   "name": "B network failure: Home shows \"Unreachable\" with a message and what to do",
+   "pass": true,
+   "detail": "('Unreachable', 'GitHub could not be reached (Failed to fetch), so the token could not be checked. Check your network connection and select Check connection.')"
+  },
+  {
+   "name": "B network failure: no token in the message / page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B network failure: unrelated SQL generation still works",
+   "pass": true,
+   "detail": "SELECT *\nFROM VENDOR;"
+  },
+  {
+   "name": "B slow GitHub: the application is ready while GitHub has not answered yet (start-up is never blocked) and Home shows \"Checking\u2026\"",
+   "pass": true,
+   "detail": "(0.29, 'Checking\u2026')"
+  },
+  {
+   "name": "B slow GitHub: the late answer updates Home",
+   "pass": true,
+   "detail": "Connected"
+  },
+  {
+   "name": "B read-only token: Home says \"read-only access\"",
+   "pass": true,
+   "detail": "GitHub repository\nConnected\nbasware/sk-ap-sql-assistant\nread-only access\n\nGitHub accepted the token, but it has READ-ONL"
+  },
+  {
+   "name": "B central access without a session: \"Sign-in needed\" with a Sign in button, NO sign-in was started and nothing was requested",
+   "pass": true,
+   "detail": "('Sign-in needed', 0)"
+  },
+  {
+   "name": "B published copy: \"Read-only \u00b7 published copy\" and no request",
+   "pass": true,
+   "detail": "Read-only \u00b7 published copy"
+  },
+  {
+   "name": "C1 Home \u2192 \"GitHub repository settings\" opens the GitHub Repository page with the repository card, Pull Schema and Pull Secret Vault",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C2 that page shows the same connection status",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C3 hamburger menu \u2192 GitHub Repository opens the same page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C4 Schema \u2192 Pull Schema still has the repository card, Pull Schema and the vault card (unchanged)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C5 (setup) a schema was published to the test repository",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "C6 Home \u2192 Pull Schema pulls through the existing validated pull and reports success",
+   "pass": true,
+   "detail": "Schema pulled and validated successfully."
+  },
+  {
+   "name": "C7 the last successful synchronization is shown",
+   "pass": true,
+   "detail": "Oct 27, 2026, 6:27 AM"
+  },
+  {
+   "name": "C8 a failing pull says what failed and that the existing schema is unchanged \u2014 and the active schema really is unchanged",
+   "pass": true,
+   "detail": "The synchronized schema could not be retrieved. Please verify the repository connection and try again. The existing local schema has not been changed."
+  },
+  {
+   "name": "D1 the hamburger menu has a top-level \"Query Library\" group",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D2 it contains exactly \"Add New Query\" and \"View Query Library\"",
+   "pass": true,
+   "detail": "['Add New Query', 'View Query Library']"
+  },
+  {
+   "name": "D3 Add New Query shows the form and the approval explanation",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D4 missing name is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D5 a destructive statement is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D6 a credential in the SQL is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D7 malformed SQL (unbalanced parentheses) is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D8 \"I ran this query successfully\" is required",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D9 unknown tables / columns only WARN (the query can still be submitted)",
+   "pass": true,
+   "detail": "nothing prevents this query from being submitted.\nwarnings (they do not stop the submission, but the administrator will see them and the query cannot be approve"
+  },
+  {
+   "name": "D10 \"Review & submit\" shows the review dialog with the SQL and the pending-approval notice",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D11 nothing is saved before the user confirms",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D12 the confirmation appears only after the submission was saved, as PENDING APPROVAL",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D13 the stored record has every field (name, SQL exact, description, submitter, time, status)",
+   "pass": true,
+   "detail": "pending"
+  },
+  {
+   "name": "D14 it is NOT in the Admin Query Library and NOT trusted",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D15 without a write-capable connection the page says it is saved on this device only",
+   "pass": true,
+   "detail": "Saved on this device only: there is no repository connection that can share it yet. Use \"Share now\" when connected, or export the submission and send the file t"
+  },
+  {
+   "name": "D16 \"Your submissions\" lists it with its status",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D17 a duplicate (same SQL) is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D18 a duplicate name is refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D19 a second submission is pending too",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D20 View Query Library lists NO query yet (pending submissions are not library entries)",
+   "pass": true,
+   "detail": "0 approved queries"
+  },
+  {
+   "name": "D21 Settings is locked (route / URL does not bypass the Admin Password)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D22 a wrong Admin Password does not unlock Settings",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D23 direct approve / reject calls \u2014 even with the Settings flag forced \u2014 are refused by the service (no Admin Password ticket); nothing changed",
+   "pass": true,
+   "detail": "[False, False, False, 0, 2]"
+  },
+  {
+   "name": "D24 the administrator sees \"Query submissions awaiting review\" with 2 pending",
+   "pass": true,
+   "detail": "2 pending"
+  },
+  {
+   "name": "D25 Review shows the SQL, the metadata and whether it can be approved",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D26 Approve asks for the Admin Password again; a wrong password changes nothing",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D27 the approved submission is now an approved, enabled Admin Query Library entry (exact SQL)",
+   "pass": true,
+   "detail": "[{'name': 'Valid query two', 'approved': True, 'enabled': True, 'sql': 'SELECT PO_ID FROM PO_HEADER'}]"
+  },
+  {
+   "name": "D28 it is trusted for SQL generation like any admin query",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D29 the pending count dropped and the decision is listed under \"Recently reviewed\"",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D30 the rejected submission keeps its status and feedback and did NOT enter the library",
+   "pass": true,
+   "detail": "[['Valid query two', 'approved', ''], ['Valid query one', 'rejected', 'Please add a filter']]"
+  },
+  {
+   "name": "D31 the existing Admin Query Library controls are still there (Add / Export / Import / Sync / Test / Approve\u2026)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D32 View Query Library shows the approved query (and only it)",
+   "pass": true,
+   "detail": "Query Library\n\nQueries that administrators approved. Search, open the details and copy the SQL \u2014 thi"
+  },
+  {
+   "name": "D33 pending / rejected submissions are not visible in the library view",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D34 the view has NO administrator control: no Approve / Reject / Delete / Edit / Import / Export / Enable / Disable / Withdraw / Add query / Test",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D35 it offers search, dialect / tag filters, details and Copy SQL (the same admin-list table and chips)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D36 search filters the list",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D37 Details shows the SQL, tables and a Copy SQL button; no administrator data",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D38 Copy SQL puts the query on the clipboard",
+   "pass": true,
+   "detail": "SELECT PO_ID FROM PO_HEADER"
+  },
+  {
+   "name": "D39 after the user view, the library on the device is unchanged and still holds exactly the approved entry",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D40 an unknown / admin-looking route does not expose the administrator library (falls back to Home)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D41 #settings is the lock screen again for the ordinary user",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D42 no script error during the Query Library flows",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "E1 a write-capable connection publishes the pending submission to its OWN file and leaves knowledge.json untouched",
+   "pass": true,
+   "detail": "['sql-assistant-data/knowledge/submissions.json']"
+  },
+  {
+   "name": "E2 the published record is pending and carries no library flag",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E3 a read-only connection keeps the submission on the device and says so (export is offered)",
+   "pass": true,
+   "detail": "Saved on this device only \u2014 your connection cannot write to the repository (Publishing failed: Your GitHub account has read-only access to the repository, so it cannot publish or push.). Export the su"
+  },
+  {
+   "name": "F1 version: the footer and the navbar badge show the package version",
+   "pass": true,
+   "detail": "V17.7.1"
+  },
+  {
+   "name": "F2 Describe What You Need \u2192 SQL generation works",
+   "pass": true,
+   "detail": "SELECT VENDOR.VENDOR_NAME,\n  SUM(INVOICE_HEADER.INVOICE_AMOUNT) AS TOTAL_INVOICE_AMOUNT\nFROM VENDOR\n"
+  },
+  {
+   "name": "F3 Manual Selectors (table picker), Advanced Options (DISTINCT, GROUP BY, join type) and the dialect selector are present",
+   "pass": true,
+   "detail": "[1, 1, 1, 1, 1]"
+  },
+  {
+   "name": "F4 Query Builder for CR loads",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F5 Error Rectifier loads",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F6 Schema page: tables, stored schemas and Pull Schema tabs",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F7 Settings is still password protected (lock screen)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F8 About lists the 17.7.1 history entry",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F9 theme switch works",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F10 hamburger order: Quick Start, Query Builder, Query Library, Schema, GitHub Repository, Error Rectifier, Settings, About",
+   "pass": true,
+   "detail": "['Quick Start', 'Query Builder', 'Query Library', 'Schema', 'GitHub Repository', 'Error Rectifier', 'Settings', 'About']"
+  },
+  {
+   "name": "F11 no script error during the regression pass",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "G mobile 390px: Home has no horizontal overflow with the GitHub section",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G mobile 390px: View Query Library has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G mobile 390px: Add New Query has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G tablet 820px: Home has no horizontal overflow with the GitHub section",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G tablet 820px: View Query Library has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G tablet 820px: Add New Query has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G desktop 1440px: Home has no horizontal overflow with the GitHub section",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G desktop 1440px: View Query Library has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "G desktop 1440px: Add New Query has no horizontal page overflow",
+   "pass": true,
+   "detail": "0"
+  }
+ ]
+}

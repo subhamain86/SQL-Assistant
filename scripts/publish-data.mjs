@@ -20,9 +20,12 @@ export const ROOT = 'sql-assistant-data'; export const MARKER = `${ROOT}/publish
 const CRED = /\bgh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|-----BEGIN [A-Z ]*PRIVATE KEY-----/;
 const okName = (p) => /^[A-Za-z0-9._\-/]+$/.test(p) && !p.includes('//') && !p.split('/').some((s) => s === '' || s === '.' || s === '..' || s.startsWith('.')) && /\.json$/i.test(p) && !/\.config\.json$/i.test(p) && p !== MARKER && p.length <= 255;
 const sha = (b) => createHash('sha256').update(b).digest('hex');
+// V17.7.1: user-submitted queries that are still awaiting an administrator's decision (…/knowledge/submissions.json) are NOT published to the site: unreviewed SQL is read by the administrator through an authenticated repository connection only, never served to every device.
+const UNPUBLISHED = /(^|\/)knowledge\/submissions\.json$/i;
 function walk(dir, base, out, skipped) {
   for (const name of readdirSync(dir)) { const full = join(dir, name); const st = lstatSync(full); const rel = relative(base, full).split(sep).join('/');
     if (st.isSymbolicLink()) { skipped.push(`${rel}: symbolic link`); continue; } if (st.isDirectory()) { if (name.startsWith('.')) { skipped.push(`${rel}/: hidden folder`); continue; } walk(full, base, out, skipped); continue; }
+    if (UNPUBLISHED.test(rel)) { skipped.push(`${rel}: unreviewed query submissions are not published`); continue; }
     if (!okName(rel)) { skipped.push(`${rel}: not an allowed file name (only *.json; no *.config.json; no dot-files)`); continue; } if (st.size > MAX_FILE) { skipped.push(`${rel}: larger than ${MAX_FILE} bytes`); continue; } out.push(rel); }
 }
 /** Returns { files, skipped, removed, marker }. Throws Error (with a message free of file contents) when a file must not be published. */

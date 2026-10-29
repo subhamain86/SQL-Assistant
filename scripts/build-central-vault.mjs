@@ -8,7 +8,7 @@
  *
  *   env  SQLA_DEVICE_TOKEN    the token to deliver. Must be fine-grained, ONE repository, Contents: READ-ONLY. A token that can write is refused (SQLA_ALLOW_WRITE_TOKEN=true overrides — do not).
  *        SQLA_VAULT_PASSPHRASE the passphrase (≥ 10 characters). Without it the built-in default is used ONLY when SQLA_ALLOW_DEFAULT_VAULT_PASSPHRASE=true (it is public: it is in the application).
- *        SQLA_REPOSITORY / SQLA_BRANCH   default subhamain86/SQL-Assistant / main        SQLA_VAULT_PATH   default sql-assistant-data/vault/secret-vault.v17.enc.json
+ *        SQLA_REPOSITORY / SQLA_BRANCH   default basware/sk-ap-sql-assistant / main        SQLA_VAULT_PATH   default sql-assistant-data/vault/secret-vault.v17.enc.json
  *   The token is checked with GitHub first (never printed; GitHub's own message and the SSO / permission headers are). Output: the vault file. Prints no secret.
  */
 import { pbkdf2Sync, createCipheriv, randomBytes } from 'node:crypto'; import { writeFileSync, mkdirSync } from 'node:fs'; import { dirname, resolve } from 'node:path'; import { fileURLToPath } from 'node:url';
@@ -30,7 +30,7 @@ export async function checkToken({ token, owner, repo, base = 'https://api.githu
   return { canWrite };
 }
 export async function buildCentralVault(env = process.env, fetchFn = globalThis.fetch) {
-  const token = String(env.SQLA_DEVICE_TOKEN || '').trim(); const [owner, repo] = String(env.SQLA_REPOSITORY || 'subhamain86/SQL-Assistant').split('/'); const branch = String(env.SQLA_BRANCH || 'main'); const vaultPath = String(env.SQLA_VAULT_PATH || 'sql-assistant-data/vault/secret-vault.v17.enc.json');
+  const token = String(env.SQLA_DEVICE_TOKEN || '').trim(); const [owner, repo] = String(env.SQLA_REPOSITORY || 'basware/sk-ap-sql-assistant').split('/'); const branch = String(env.SQLA_BRANCH || 'main'); const vaultPath = String(env.SQLA_VAULT_PATH || 'sql-assistant-data/vault/secret-vault.v17.enc.json');
   if (!token) throw new Error('The secret SQLA_DEVICE_TOKEN is not set — there is no token to deliver. (Reading the repository does not need one.)'); if (!isPlausibleToken(token)) throw new Error('SQLA_DEVICE_TOKEN does not look like a GitHub token (spaces, or too short).');
   if (!SAFE.test(owner || '') || !SAFE.test(repo || '')) throw new Error('SQLA_REPOSITORY must be owner/repo.'); if (!/^sql-assistant-data\/.+\.json$/.test(vaultPath) || vaultPath.includes('..') || /\.config\.json$/.test(vaultPath)) throw new Error('SQLA_VAULT_PATH must be a *.json file below sql-assistant-data/.');
   let pass = String(env.SQLA_VAULT_PASSPHRASE || ''); let usedDefault = false;

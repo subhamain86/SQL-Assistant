@@ -1,7 +1,7 @@
 {
   "name": "sql-assistant",
   "productName": "SQL Assistant",
-  "version": "17.7.0",
+  "version": "17.7.1",
   "private": true,
   "type": "module",
   "description": "SQL Assistant \u2014 schema-aware read-only and Change Request SQL generator with an offline self-training NLU, centralized learning, an Admin Query Library, schema CASE/DECODE, cross-device schema synchronization (Pull Schema from GitHub with hidden repository configuration and a Secret Vault pull card), a short cross-device administrator message in the navbar, a manual Sync button in the navbar, a CENTRALIZED Admin Password that is synchronized to every device (with a reset to the default), CENTRAL repository access through a trusted repository access service that holds the GitHub PAT as a GitHub Actions secret (no token on any device), a PUBLISHED copy of the repository data that devices read without any GitHub credential, an optional AI/LLM Model, and (V17.7) an Admin Password authority that confirms the default by evidence and no longer ships a browser-test hook.",
@@ -16,7 +16,7 @@
     "dev": "node scripts/dev.mjs",
     "serve": "node scripts/serve.mjs",
     "test": "node scripts/build.mjs && node --test --test-concurrency=1 test/*.test.mjs",
-    "test:browser": "node scripts/build.mjs && node scripts/build.mjs --test && python3 scripts/browser_test.py && python3 scripts/browser_test_v174.py && python3 scripts/browser_test_v175.py && python3 scripts/browser_test_v1751.py && python3 scripts/browser_test_v1752.py && python3 scripts/browser_test_v1754.py && python3 scripts/browser_test_v1755.py && python3 scripts/browser_test_v1757.py && python3 scripts/browser_test_v1761.py && python3 scripts/browser_test_v1762.py && python3 scripts/browser_test_v1763.py && python3 scripts/browser_test_v1765.py && python3 scripts/browser_test_v1766.py && python3 scripts/browser_test_v1767.py && python3 scripts/browser_test_v1768.py && python3 scripts/browser_test_v1769.py && python3 scripts/browser_test_v177.py",
+    "test:browser": "node scripts/build.mjs && node scripts/build.mjs --test && python3 scripts/browser_test.py && python3 scripts/browser_test_v174.py && python3 scripts/browser_test_v175.py && python3 scripts/browser_test_v1751.py && python3 scripts/browser_test_v1752.py && python3 scripts/browser_test_v1754.py && python3 scripts/browser_test_v1755.py && python3 scripts/browser_test_v1757.py && python3 scripts/browser_test_v1761.py && python3 scripts/browser_test_v1762.py && python3 scripts/browser_test_v1763.py && python3 scripts/browser_test_v1765.py && python3 scripts/browser_test_v1766.py && python3 scripts/browser_test_v1767.py && python3 scripts/browser_test_v1768.py && python3 scripts/browser_test_v1769.py && python3 scripts/browser_test_v177.py && python3 scripts/browser_test_v1771.py",
     "compare": "python3 scripts/compare_v1768.py",
     "diagnose": "node scripts/diagnose.mjs",
     "verify": "npm run clean && npm run check:toolchain && npm run typecheck && npm run lint && npm run check:stale && npm run build && npm run security && npm run verify:artifact && npm test && npm run build:dev && npm run typecheck:test && npm run build && npm run verify:artifact && npm run test:browser",

@@ -22,18 +22,15 @@ async function deviceA(pw = CENTRAL) { const repo = memoryRepository(); const a 
 const authMsg = () => P.authBlockedMessage() || '';
 
 // ───────────────────────────────────────── 1. version stamps (the ONLY place the current literal is asserted) and test design
-test('V17.7 version is stamped consistently: package.json = APP_VERSION = writer label = NLU label = About = release metadata = docs; the controlled constant equals package.json', () => {
-  assert.equal(CURRENT_VERSION, '17.7.0'); assert.equal(PREVIOUS_VERSION, '17.6.9'); assert.equal(JSON.parse(src('package.json')).version, CURRENT_VERSION); assert.equal(F.APP_VERSION, CURRENT_VERSION); assert.equal(F.WRITER_LABEL, `SQL Assistant ${CURRENT_VERSION}`); assert.equal(NLU.NLU_ENGINE_VERSION, `offline-nlu-${CURRENT_VERSION}`);
+test('V17.7 release is documented and kept in the history: its release documents exist, the README keeps the V17.7 section, About keeps the 17.7.0 entry; the CURRENT version stamps are asserted by test/v1771.test.mjs (the one current-version file)', () => {
   assert.match(src('src/ui/pages/other.ts'), /<li><strong>17\.7\.0<\/strong>.*<li><strong>17\.6\.9<\/strong>.*<li><strong>17\.6\.8<\/strong>/s); assert.match(src('README.md'), /What is new in V17\.7/); assert.match(src('README.md'), /What was new in V17\.6\.9/);
   for (const d of ['CHANGELOG_V17.7.md', 'TEST_REPORT_V17.7.md', 'REGRESSION_BASELINE_V17.7.md', 'VERIFICATION_REPORT_V17.7.md', 'ROLLBACK_V17.7.md', 'RELEASE_NOTES_V17.7.md', 'ERROR_LOG_REVIEW_V17.7.md', 'CHANGED_FILES_V17.7.md', 'STALE_FILES_V17.7.md']) assert.ok(existsSync(join(root, 'docs', d)), d);
-  if (existsSync(join(root, 'release/version.json'))) assert.equal(JSON.parse(src('release/version.json')).version, CURRENT_VERSION); if (existsSync(join(root, 'dist/index.html'))) assert.ok(src('dist/index.html').includes(`SQL Assistant ${CURRENT_VERSION}`));
-  assert.ok(!/17\.6\.9/.test(src('package.json')) && !/17\.6\.9/.test(strip(src('src/v17/sync/schemaFormat.ts'))) && !/17\.6\.9/.test(strip(src('src/v17/engines/nluEngine.ts'))), 'no stale active-version reference');
   assert.equal(JSON.parse(src('package.json')).devDependencies.typescript, '5.8.3', 'TypeScript stays pinned exactly'); assert.ok(!JSON.parse(src('package.json')).dependencies, 'no runtime dependency at all');
 });
 test('V17.7 test design: no historical test pins the CURRENT package version or the writer label; the current literal lives in ONE support module', () => {
   const dir = join(root, 'test'); const files = readdirSync(dir).filter((f) => /\.test\.mjs$/.test(f));
-  for (const f of files) { if (f === 'v177.test.mjs') continue; const t = readFileSync(join(dir, f), 'utf8'); assert.ok(!/(pkg|package\.json'\)\))\.version, ['"]17\.\d+\.\d+['"]/.test(t), `${f}: a historical test must not pin the package version`); assert.ok(!/APP_VERSION, ['"]17\.\d+\.\d+['"]|WRITER_LABEL, ['"]SQL Assistant 17\./.test(t), `${f}: a historical test must not pin APP_VERSION / the writer label`); assert.ok(!/version is 17\.\d+\.\d+ everywhere it is stamped/.test(t), `${f}: no "version is X everywhere" test outside the current-version file`); assert.ok(!/CURRENT_VERSION = ['"]17\./.test(t), f); }
-  assert.match(readFileSync(join(dir, 'support/version.mjs'), 'utf8'), /CURRENT_VERSION = '17\.7\.0'/);
+  for (const f of files) { if (f === 'v177.test.mjs' || f === 'v1771.test.mjs') continue; const t = readFileSync(join(dir, f), 'utf8'); assert.ok(!/(pkg|package\.json'\)\))\.version, ['"]17\.\d+\.\d+['"]/.test(t), `${f}: a historical test must not pin the package version`); assert.ok(!/APP_VERSION, ['"]17\.\d+\.\d+['"]|WRITER_LABEL, ['"]SQL Assistant 17\./.test(t), `${f}: a historical test must not pin APP_VERSION / the writer label`); assert.ok(!/version is 17\.\d+\.\d+ everywhere it is stamped/.test(t), `${f}: no "version is X everywhere" test outside the current-version file`); assert.ok(!/CURRENT_VERSION = ['"]17\./.test(t), f); }
+  assert.match(readFileSync(join(dir, 'support/version.mjs'), 'utf8'), /CURRENT_VERSION = '17\.\d+\.\d+'/);
   for (const f of readdirSync(join(root, 'scripts')).filter((x) => /^browser_test.*\.py$/.test(x))) assert.ok(!/["']Version 17\.\d+\.\d+["']/.test(readFileSync(join(root, 'scripts', f), 'utf8')), `${f}: browser suites derive the version from package.json (VERSION), they do not pin it`);
 });
 
