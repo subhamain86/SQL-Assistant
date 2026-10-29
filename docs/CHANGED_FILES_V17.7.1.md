@@ -1,0 +1,7 @@
+# Changed files — V17.7.1 versus V17.7.0
+
+**New:** `src/ui/githubState.ts` · `src/ui/pages/githubStatus.ts` · `src/ui/pages/githubRepository.ts` · `src/ui/pages/queryLibrary.ts` · `src/ui/pages/adminSubmissions.ts` · `src/v17/services/querySubmissions.ts` · `test/v1771.test.mjs` · `test/fixtures/ui-baseline-v177.json` · `scripts/browser_test_v1771.py` · `docs/*_V17.7.1.md` · `docs/QUERY_LIBRARY.md`
+
+**Changed:** `src/main.ts` (routes, start-up check) · `src/ui/state.ts` (3 routes) · `src/ui/context.ts` (submissions services, `onSecretsChanged`) · `src/ui/components/navbar.ts` (menu entries, version badge) · `src/ui/pages/other.ts` (Home GitHub panel, About entry) · `src/ui/pages/schemaPull.ts` (`pullSummary`, `pullSchemaFromHome`) · `src/ui/pages/adminLibrary.ts` (mounts the submissions panel) · `src/services/passwordService.ts` (action ticket; no change to the checks themselves) · `src/testHooks.ts` (test build only) · `scripts/publish-data.mjs` (does not publish pending submissions) · version stamps (`package.json`, `schemaFormat.ts`, `nluEngine.ts`, `test/support/version.mjs`) · `README.md` · `test/v177.test.mjs`, `test/v1769.test.mjs` (historical tests no longer pin the current version / the V17.6.8 hashes of the six modules)
+
+**Byte-identical to V17.7.0 (tested):** `public/styles.css`, `public/favicon.svg`, `src/ui/pages/settings.ts`, `src/ui/pages/schemaRepoCards.ts`, `src/ui/pages/readonly.ts`, `src/ui/repoAccess.ts`, every other UI component, every engine and service not listed above, `server/repo-broker.mjs`, all workflows.
