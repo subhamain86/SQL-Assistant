@@ -8,6 +8,9 @@
 * `src/v17/services/centralConfig.ts` — centrally maintained repository configuration (`sql-assistant-data/config/repository-config.json`); GitHub Repository card: central status, *Check for updated configuration*, recent activity. See `docs/CENTRAL_CONFIG.md`.
 * Browser suite `scripts/browser_test_v1772.py`, unit tests `test/v1772.test.mjs`, UI baseline `test/fixtures/ui-baseline-v1771.json`.
 
+## Fixed in the revised build
+* **Saving the repository configuration failed with "Writing sql-assistant-data/config/repository-config.json failed: repository, branch or file not found."** when the device was set to a repository other than the application default and the token covered only that repository. The record is now written to the repository in force (primary) and mirrored best-effort into the default repository; see `docs/CENTRAL_CONFIG.md`. Regression tests: `test/v1772.test.mjs` (§ 8, including the real GitHub client against a fake GitHub API).
+
 ## Changed
 * Read Only and CR Query Builders: the description card was removed from the main layout; **Generated SQL is directly below Manual Selectors**; a short hint points to the new menu options.
 * `queryOrchestrator.generateFromDescription` takes `{ independent: true }` (no Manual Selector state / override markers); without it the V17.7.1 behaviour is unchanged.
