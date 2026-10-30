@@ -1,0 +1,14 @@
+{
+  "format": "sqla-repository-config",
+  "formatVersion": 1,
+  "revision": 1,
+  "updatedAt": "2026-10-30T08:57:32.322Z",
+  "updatedByDevice": "device-0lsb38",
+  "appVersion": "17.7.2",
+  "config": {
+    "owner": "basware",
+    "repo": "sk-ap-sql-assistant",
+    "branch": "main",
+    "schemaPath": "sql-assistant-data/schemas/registry.json"
+  }
+}
