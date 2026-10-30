@@ -1,12 +1,12 @@
 {
   "format": "sqla-published-data",
   "formatVersion": 1,
-  "publishedAt": "2026-10-30T09:15:28.271Z",
-  "sourceCommit": "3cc84ddea445ba9b5d66b14c1a51163c5fd9edc0",
+  "publishedAt": "2026-10-30T09:47:53.392Z",
+  "sourceCommit": "13a0244ef256c901828fea00112c0588079987ac",
   "sourceRepository": "subhamain86/SQL-Assistant",
   "files": {
     "sql-assistant-data/config/repository-config.json": "ddd30453304609967936acbd2f86e26ca22f6c0a2f73cfedab89c6e8b32c6aaa",
-    "sql-assistant-data/knowledge/knowledge.json": "52e0b70e4673c8bbab2c8269b2c2475b107f0c0490060d14184bd59629078f94",
+    "sql-assistant-data/knowledge/knowledge.json": "2760273e53af2c17c6639beda941356e272836752d703d88353db2f7c3d5fa7e",
     "sql-assistant-data/messages/admin-message.json": "dd5b7b073ff883d50edc9f31fc3c5939e9327ccad257ab7b31e9c7e655313b59",
     "sql-assistant-data/schema-registry.json": "62b209e3d792c74649e2fa9b005ffd97299c9316161de3ea432e79828881b2e7",
     "sql-assistant-data/schemas/registry.enc.json": "507920babae725f5f119d0d4dedd4c8c953b60161aa216a5d6e2a2b91d8b37fb",
