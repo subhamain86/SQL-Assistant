@@ -1,0 +1,9 @@
+SQL Assistant V17.7.2 — overlay release
+=======================================
+This ZIP contains the complete V17.7.2 source tree (plus the built index.html, release/ and dist/), except the files listed below.
+Install: unzip INTO your V17.7.1 project folder (overwrite when asked) — or into an empty folder after copying your public/favicon.svg and scripts/browser_test*.py there. It deliberately does NOT contain:
+  * public/favicon.svg and the scripts/browser_test*.py / compare_v1768.py files — they were not in the text bundle used for this work, so your own copies must stay in place;
+  * node_modules, dist, build, release (generated).
+Then:  npm run typecheck && npm run lint && npm run check:stale && npm run build && npm test && npm run test:browser
+(`npm run test:browser` now also runs scripts/browser_test_v1772.py; it needs Python + Playwright + Chromium.)
+Read docs/TEST_REPORT_V17.7.2.md for what was and was not executed.

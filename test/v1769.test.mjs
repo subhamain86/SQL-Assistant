@@ -197,7 +197,7 @@ test('V17.6.9 PAT verification failure (HTTP 403, Conditional Access): reported 
 });
 test('V17.6.9 UI is preserved: the style sheet, favicon and every page module other than the authentication state text / version history are byte-identical to V17.6.8 (recorded hashes)', () => {
   const h = (p) => createHash('sha256').update(readFileSync(join(root, p))).digest('hex'); const fx = JSON.parse(src('test/fixtures/ui-baseline-v1768.json'));
-  const later = new Set(JSON.parse(src('test/fixtures/ui-baseline-v177.json')).changedIn1771); // V17.7.1 deliberately changed these modules; test/v1771.test.mjs pins them against the V17.7.0 baseline instead
+  const later = new Set([...JSON.parse(src('test/fixtures/ui-baseline-v177.json')).changedIn1771, ...JSON.parse(src('test/fixtures/ui-baseline-v1771.json')).changedIn1772]); // V17.7.2 (test/v1772.test.mjs pins its changed modules against the V17.7.1 baseline) // V17.7.1 deliberately changed these modules; test/v1771.test.mjs pins them against the V17.7.0 baseline instead
   for (const [p, hash] of Object.entries(fx.unchanged)) { if (later.has(p)) continue; assert.equal(h(p), hash, `${p} must be byte-identical to V17.6.8`); }
   assert.deepEqual(Object.keys(fx.changed).sort(), ['src/ui/pages/other.ts', 'src/ui/pages/settings.ts'], 'the only UI modules that changed (version history / lock-screen authentication text)');
 });
