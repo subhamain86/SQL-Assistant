@@ -1,7 +1,7 @@
 {
  "format": "sqla-knowledge",
  "formatVersion": 1,
- "writtenBy": "SQL Assistant 17.7.1",
+ "writtenBy": "SQL Assistant 17.7.2",
  "writtenByDevice": "device-vhynma",
  "learned": [
   {
@@ -54,5 +54,5 @@
   }
  ],
  "admin": [],
- "writtenAt": "2026-10-30T06:31:15.217Z"
+ "writtenAt": "2026-10-30T09:47:42.460Z"
 }
