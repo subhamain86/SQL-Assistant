@@ -12,7 +12,8 @@ name: Publish SQL Assistant data (reads need no token)
 #                        SQLA_SITE_PUBLISH_WORKFLOW = the file name of the workflow that deploys the site (for example publish.yml). It must have a workflow_dispatch trigger. Needed only if the site is NOT
 #                        republished by a push event: a commit made with GITHUB_TOKEN does not trigger push workflows, but workflow_dispatch IS allowed, and this workflow starts it.
 on:
-  push: { branches: [main], paths: ['sql-assistant-data/**'] }
+  # V17.7.4: the analytics folder (encrypted usage batches, written by devices) is never published and must not start this workflow
+  push: { branches: [main], paths: ['sql-assistant-data/**', '!sql-assistant-data/analytics/**'] }
   workflow_dispatch:
     inputs:
       rebuild_central_vault: { description: 'Also (re)build the central token vault from SQLA_DEVICE_TOKEN (replaces the vault file in sql-assistant-data/vault/)', type: boolean, default: false }

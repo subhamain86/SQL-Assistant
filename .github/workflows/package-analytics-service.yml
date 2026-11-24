@@ -1,0 +1,39 @@
+name: Package the usage analytics service (credential-free; deploys nothing)
+# V17.7.5 — OPTIONAL. Replaces the former deployment workflow for this service. The usage analytics SERVICE (server/analytics-service.mjs, Node 20 or newer, no dependencies) is only needed when
+# `analytics.provider` is "service"; the serverless provider ("repository") needs no service at all.
+# This workflow builds, tests and PACKAGES the service as a workflow ARTIFACT and starts the packaged copy once to prove that it runs. It deploys nothing, calls nothing external, uses only the default
+# GITHUB_TOKEN (read access to the repository) and never reads or prints a secret. The administrator password hash is created and kept by the OPERATOR on the operator's own host (see the README inside the artifact).
+# Download the artifact from the run page, copy it to any host that runs Node 20 or newer, and follow its README.md.
+on:
+  push: { branches: [main], paths: ['server/analytics-service.mjs', 'scripts/package-service.mjs', '.github/workflows/package-analytics-service.yml'] }
+  workflow_dispatch: {}
+permissions: { contents: read }
+concurrency: { group: package-analytics-service, cancel-in-progress: true }
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24 }
+      - name: Install (verify the committed, checksum-pinned TypeScript — nothing is downloaded)
+        id: install
+        run: node scripts/check-toolchain.mjs --committed-only
+      - name: Build (the service tests use the compiled modules)
+        id: build
+        run: node scripts/build.mjs
+      - name: Service tests (administrator authentication, event validation, aggregation, session limits)
+        id: service-tests
+        run: node --test --test-concurrency=1 --test-name-pattern='V17\.7\.3 (service|admin) ' test/v1773.test.mjs
+      - name: Package the service (one file, no dependencies)
+        id: package
+        run: node scripts/package-service.mjs analytics
+      - name: Start the packaged service with a minimal environment (self test, synthetic settings, no secret)
+        id: self-test
+        run: node scripts/package-service.mjs analytics --self-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqla-analytics-service
+          path: service-dist/sqla-analytics-service
+          if-no-files-found: error
+          retention-days: 30

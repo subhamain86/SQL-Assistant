@@ -1,0 +1,41 @@
+name: Package the repository access broker (credential-free; deploys nothing)
+# V17.7.5 — OPTIONAL. Replaces the former deployment workflow for this service. The repository access broker (server/repo-broker.mjs, Node 20 or newer, no dependencies) is only needed when central
+# repository access is used (repo-broker.config.json): it holds the central GitHub PAT so that no token is needed on a device. SQL Assistant works without it.
+# This workflow builds, tests and PACKAGES the broker as a workflow ARTIFACT and starts the packaged copy once to prove that it runs. It deploys nothing, calls nothing external, uses only the default
+# GITHUB_TOKEN (read access to the repository) and never reads or prints a secret.
+# CHANGE FROM THE FORMER WORKFLOW: the automatic delivery of the secret SQLA_GITHUB_PAT (and SQLA_SESSION_SECRET) to a cloud-hosted broker is gone — it required cloud credentials. The operator now sets
+# SQLA_GITHUB_PAT, SQLA_SESSION_SECRET, SQLA_GITHUB_CLIENT_ID and SQLA_ALLOWED_ORIGINS as environment variables on the operator's own host (the names and meanings are unchanged; see the README inside the artifact).
+# The PAT check (verify-repo-pat.yml) and the in-app central access are unchanged.
+on:
+  push: { branches: [main], paths: ['server/repo-broker.mjs', 'scripts/package-service.mjs', '.github/workflows/package-repo-broker.yml'] }
+  workflow_dispatch: {}
+permissions: { contents: read }
+concurrency: { group: package-repo-broker, cancel-in-progress: true }
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with: { node-version: 24 }
+      - name: Install (verify the committed, checksum-pinned TypeScript — nothing is downloaded)
+        id: install
+        run: node scripts/check-toolchain.mjs --committed-only
+      - name: Build (the broker tests use the compiled modules)
+        id: build
+        run: node scripts/build.mjs
+      - name: Broker tests (sessions, path and repository allow-lists, write rules, no secret in any answer)
+        id: service-tests
+        run: node --test --test-concurrency=1 test/v1762.test.mjs
+      - name: Package the service (one file, no dependencies)
+        id: package
+        run: node scripts/package-service.mjs broker
+      - name: Start the packaged service with a minimal environment (self test, synthetic settings, no secret)
+        id: self-test
+        run: node scripts/package-service.mjs broker --self-test
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sqla-repo-broker
+          path: service-dist/sqla-repo-broker
+          if-no-files-found: error
+          retention-days: 30
