@@ -1,3 +1,41 @@
+## Added in V17.7.5 — the workflow supply chain
+
+| Concern | Implementation / result |
+|---|---|
+| **No package manager, no package download** | Every workflow step calls `node` directly. The compiler is committed (`tools/typescript`, TypeScript 5.8.3) and the Install step verifies every file against `CHECKSUMS.json` — a modified, missing or unlisted file stops the build and is named; there is **no fallback** to a download. |
+| **No secret in the Pages workflow** | `deploy-pages.yml` reads no secret at all (only the implicit `GITHUB_TOKEN` through `github.token` and the first-party actions). Its inputs are public repository **variables**. |
+| **Pinned actions** | Every action is first-party and pinned to a major version (`checkout@v5`, `setup-node@v5`, `upload-pages-artifact@v3`, `deploy-pages@v4`, `upload-artifact@v4`); an unpinned action fails the guard. |
+| **Least privilege** | Every workflow declares `permissions`; the packaging workflows have `contents: read` only. |
+| **Packaging deploys nothing** | `package-analytics-service.yml` / `package-repo-broker.yml` call nothing external, read no secret, and upload an artifact scanned for secrets, cloud-vendor references and package-manager commands. The password hash and the central PAT stay on the operator's host. |
+| **A guard, not a convention** | `scripts/check-workflows.mjs` (a CI stage) fails on: a package-manager command or registry, Azure, `az`, `continue-on-error`, an unpinned action, a step that echoes a secret, a missing `permissions` block, or a secret outside the allow-list in `scripts/workflow-policy.mjs` (only `publish-data.yml`: `SQLA_DEVICE_TOKEN`, `SQLA_VAULT_PASSPHRASE`; `verify-repo-pat.yml`: `SQLA_GITHUB_PAT`). |
+| **Token synchronization was not changed** | The in-app token / vault / central-access logic, `publish-data.yml`, `verify-repo-pat.yml`, their scripts and the broker are pinned byte-for-byte to V17.7.4 (`test/fixtures/token-sync-baseline-v1774.json`; only the `APP_VERSION` stamp differs). The only token-delivery behaviour that changed: the former `deploy-broker.yml` no longer copies the PAT to an Azure-hosted broker. |
+
+### Limitations (V17.7.5)
+GitHub Actions cannot be run here: the workflows are parsed, statically checked and their `run:` steps executed locally, not executed by GitHub. The guard is a strict text extractor (no YAML library exists in a Node-only checkout) cross-checked against a real YAML parser in the tests when one is installed. A secret stored on the operator's host (the central PAT, the analytics password hash) is protected by that host, not by this repository.
+
+---
+
+## Added in V17.7.4 — serverless Usage Analytics (provider "repository") and the registry-free build
+
+| Concern | Implementation / result |
+|---|---|
+| **Where the password is checked** | In the browser, by the cryptography: it derives (PBKDF2-HMAC-SHA-256, ≥ 600 000 iterations) the key that unwraps the private key (AES-256-GCM); a wrong password fails the authentication tag. **No password, no hash and no verifier is stored anywhere.** There is no default password. |
+| **What the repository holds** | `public-key.json` (public key), `admin-key.json` (private key, wrapped), encrypted batches and roll-ups. A reader of the repository learns the commit history (writer, time) and file sizes in coarse buckets — not the content. |
+| **Key handling** | Hybrid encryption (ephemeral ECDH P-256 → HKDF-SHA-256 → AES-256-GCM, key id and format in the AAD). An unlocked private key is non-extractable and exists only in page memory; Lock Analytics, the inactivity timeout, a reload and a password change drop it together with every decrypted byte. |
+| **Hostile data** | Every event is validated field by field (the same validator as the service) before it can count; damaged, forged and foreign-key files are skipped and counted; roll-ups are sanitized. |
+| **Publication** | `scripts/publish-data.mjs` never publishes `sql-assistant-data/analytics/**`; the workflows ignore pushes to that folder. |
+| **Build supply chain** | The TypeScript compiler is committed and every file is verified against SHA-256 values before use; the build scripts contain no network address; the Pages workflow uses only the default `GITHUB_TOKEN`. |
+
+### Limitations (V17.7.4)
+Offline password guessing against a readable key file (strength of the password and the PBKDF2 cost are the protection); metadata (commit author, timing, coarse sizes) is visible; only devices with write access can report; telemetry is not authenticated (pin the public key, protect the branch); no server-side lock-out or revocation; a lost password cannot be recovered. Details: `docs/ANALYTICS_SERVERLESS.md` §7.
+
+---
+
+## Added in V17.7.3 — Usage Analytics (provider "service")
+The administrator password exists only as a salted scrypt hash inside the analytics service; the page holds no hash, salt, KDF or literal; the session token lives in page memory only; telemetry is validated field by field; see `docs/ANALYTICS.md` §8 for the limits.
+
+---
+
 ## Added in V17.6.5 — centralized Admin Password
 
 * **What is stored where.** The repository file `…/security/admin-password.json` and the device entry `sqla.pwvault.v15` hold the same thing as in V17.6.4: an AES-256-GCM encrypted fixed marker whose key is derived from the password (PBKDF2-SHA-256, 150 000 iterations, random salt and IV). **No password, no key and no hash of the password is stored or transmitted.** A reset record (`isDefault: true`) holds no marker at all.

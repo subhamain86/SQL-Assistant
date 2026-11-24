@@ -1,3 +1,19 @@
+## V17.7.5 — how the central PAT reaches the broker now (read this first)
+
+**Not changed:** the central PAT as the design (one fine-grained PAT, one repository, Contents: Read and write), the broker (`server/repo-broker.mjs`), the in-app central access (sign-in, sessions, central configuration synchronization), `verify-repo-pat.yml` (the weekly PAT check) and the environment-variable contract.
+
+**Changed — the only token-delivery behaviour that changed:** the former workflow `deploy-broker.yml` copied the GitHub Actions secrets `SQLA_GITHUB_PAT` and `SQLA_SESSION_SECRET` to an **Azure-hosted** broker as application settings. **That automatic delivery no longer exists**, because it required Azure credentials (`AZURE_CREDENTIALS`) and V17.7.5 removes every Azure dependency from the workflows. No replacement host was invented.
+
+**What the operator does now** (any host that runs Node ≥ 20):
+1. Run `package-repo-broker.yml` (or `node scripts/package-service.mjs broker`) and download the artifact `sqla-repo-broker` (`server.mjs`, `README.md`, `Dockerfile`, a systemd unit, `env.example`, `SHA256SUMS`).
+2. On **your own host** set the variables — `SQLA_GITHUB_PAT` (the PAT), `SQLA_SESSION_SECRET` (≥ 32 random characters), `SQLA_GITHUB_CLIENT_ID`, `SQLA_ALLOWED_ORIGINS`, optionally `SQLA_ALLOWED_REPOSITORIES` (default: this repository), `SQLA_ALLOWED_PATH_PREFIXES`, `SQLA_SESSION_TTL_MINUTES`, `SQLA_RATE_LIMIT_PER_MINUTE`, `SQLA_AUDIT_LOG`, `PORT` — in the platform's secret store, a mode-0600 environment file or `docker run --env-file`; **never in a repository**.
+3. Run it: `node server.mjs`, a systemd unit, or the container (`FROM node:24-slim`, one file, no package manager). Azure App Service is still possible as your own deployment.
+4. Put it behind HTTPS and set the repository variable `SQLA_BROKER_URL`; re-run the Pages workflow.
+
+An **existing** broker keeps working unchanged: it already has its settings. Only the *delivery* of the secret by a workflow is gone; to rotate the PAT, change the variable on the host (and keep the repository secret `SQLA_GITHUB_PAT` in step if you use `verify-repo-pat.yml`).
+
+---
+
 > **V17.6.3 note.** This guide (the PAT-holding broker) is now **optional**. Reading the private repository needs no PAT any more: see `PUBLISHED_DATA.md`. Use the broker only if devices must **write** without holding a token. The 403 troubleshooting table is in `PUBLISHED_DATA.md` §7.
 
 ## Central GitHub PAT — setup guide (V17.6.2)

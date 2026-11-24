@@ -1,0 +1,12 @@
+{
+  "analytics": {
+    "enabled": true,
+    "provider": "service",
+    "serviceUrl": "https://sql-assistant-analytics.example.org",
+    "inactivityTimeout": 300,
+    "collectUserIdentity": false,
+    "applicationVersion": "",
+    "adminAuthenticationEnabled": true,
+    "adminSessionTimeout": 900
+  }
+}

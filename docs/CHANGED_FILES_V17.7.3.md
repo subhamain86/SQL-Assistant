@@ -1,0 +1,4 @@
+# Changed files — V17.7.3 versus V17.7.2
+
+New: `server/analytics-service.mjs`, `src/v17/services/analytics{Config,Tracker,Admin,View}.ts`, `src/ui/analyticsRuntime.ts`, `src/ui/pages/analyticsPage.ts`, `.github/workflows/deploy-analytics.yml`, `test/v1773.test.mjs`, `scripts/browser_test_v1773.py`, `test/fixtures/ui-baseline-v1772.json`, `docs/ANALYTICS.md`, `docs/analytics.config.example.json` and the V17.7.3 release documents.
+Changed: `src/main.ts`, `src/ui/state.ts`, `src/ui/components/navbar.ts`, `src/ui/components/icons.ts`, `src/ui/pages/describeNeed.ts`, `readonly.ts`, `other.ts`, `public/styles.css` (appended), `package.json`, `schemaFormat.ts`, `nluEngine.ts`, `.github/workflows/deploy-pages.yml`, `README.md`, `test/support/version.mjs`, and the historical version / UI pins of `v1769`, `v1771`, `v1772`.

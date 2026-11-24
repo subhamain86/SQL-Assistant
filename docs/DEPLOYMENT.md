@@ -1,3 +1,53 @@
+## No npm, no Azure — the workflows (V17.7.5, final state)
+
+**What deploying SQL Assistant needs:** a GitHub repository, GitHub Pages (Settings → Pages → Source = **GitHub Actions**) and the **default `GITHUB_TOKEN`**. Nothing else. No package manager, no package download, no cloud account, no secret.
+
+| Workflow | What it does | What it needs | Required? |
+|---|---|---|---|
+| `deploy-pages.yml` | install-verification → typecheck → lint → hygiene → workflow guard → build → security → artifact check → tests → final build → publish configuration → artifact check → deploy to Pages | `GITHUB_TOKEN` only (`contents: read`, `pages: write`, `id-token: write`); public settings from repository **variables** | **yes** |
+| `package-analytics-service.yml` | builds, tests and **packages** the usage-analytics service as a downloadable artifact; starts the packaged copy once; **deploys nothing** | `GITHUB_TOKEN` (`contents: read`) | optional (only for `analytics.provider = "service"`) |
+| `package-repo-broker.yml` | the same for the repository access broker | `GITHUB_TOKEN` (`contents: read`) | optional (only for central repository access) |
+| `publish-data.yml` | **token synchronization (unchanged):** mirrors `sql-assistant-data/**` (never `analytics/**`) to the site; on request builds the **central token vault** | `GITHUB_TOKEN` + the secrets **`SQLA_DEVICE_TOKEN`**, **`SQLA_VAULT_PASSPHRASE`** (vault only) | optional; not required for building or deploying |
+| `verify-repo-pat.yml` | **token synchronization (unchanged):** weekly check that the central PAT is valid and not about to expire | the secret **`SQLA_GITHUB_PAT`** | optional; not required for building or deploying |
+
+`scripts/check-workflows.mjs` (a stage of the Pages workflow and of `node scripts/ci.mjs`) **fails the build** when a workflow contains a package-manager command, a package registry, Azure, an `az` command, `continue-on-error`, an unpinned action, a step that echoes a secret, or a secret other than `GITHUB_TOKEN`. The only secrets it allows are the three above, by name and by workflow — the list lives in one place, `scripts/workflow-policy.mjs`.
+
+**Run the same stages locally with Node only** (Node ≥ 20; no package manager, no network, no `node_modules`):
+```
+node scripts/ci.mjs                 # install → typecheck → lint → hygiene → workflows → build → security → artifact → tests → final → artifact-final
+node scripts/ci.mjs --list          # the stages and their commands (the workflow has one step per stage with the same command)
+node scripts/ci.mjs --only=lint,build
+```
+The compiler is committed: `tools/typescript/` (TypeScript 5.8.3), every file verified against `CHECKSUMS.json`. The Pages workflow's **Install** step is exactly that verification (`node scripts/check-toolchain.mjs --committed-only`): a missing or modified file stops the build and is named — **there is no fallback of any kind**. To use a compiler somewhere else for local work, set `TSC_PATH` to a TypeScript 5.8.3 package folder (a different version is refused).
+
+**Actions used** (all first-party, pinned to a major version): `actions/checkout@v5`, `actions/setup-node@v5` (Node only, no cache), `actions/upload-pages-artifact@v3`, `actions/deploy-pages@v4`, `actions/upload-artifact@v4` (the two packaging workflows). No third-party action exists.
+
+### The optional services — run them anywhere Node ≥ 20 runs
+Each packaging workflow uploads an artifact (`sqla-analytics-service`, `sqla-repo-broker`) with: `server.mjs` (the single-file service, **no dependencies**), `README.md`, `Dockerfile`, a `systemd` unit, `env.example` (names only) and `SHA256SUMS`. Download it from the run page (or run `node scripts/package-service.mjs analytics|broker` locally) and:
+
+* **Plain Node:** `node server.mjs` with the environment variables below set on the host.
+* **systemd:** copy `server.mjs` to `/opt/<service>/`, put the variables in `/etc/<service>.env` (mode 0600, **not** in a repository), install the unit, `systemctl enable --now <service>`.
+* **Container:** `FROM node:24-slim`, `COPY server.mjs`, `CMD ["node", "server.mjs"]` — the Dockerfile copies one file and runs no package manager.
+* **Azure App Service** (or any other platform) remains possible, but it is **your own deployment** — set the same variables as application settings and run `node server.mjs`. It is not part of this repository's workflows.
+
+| Service | Variables (set on the host) |
+|---|---|
+| repository access broker | **`SQLA_GITHUB_PAT`** (secret), **`SQLA_SESSION_SECRET`** (secret), `SQLA_GITHUB_CLIENT_ID`, `SQLA_ALLOWED_ORIGINS`, optional `SQLA_ALLOWED_REPOSITORIES`, `SQLA_ALLOWED_PATH_PREFIXES`, `SQLA_SESSION_TTL_MINUTES`, `SQLA_RATE_LIMIT_PER_MINUTE`, `SQLA_AUDIT_LOG`, `PORT` |
+| usage-analytics service | `SQLA_ANALYTICS_ALLOWED_ORIGINS`, **`SQLA_ANALYTICS_ADMIN_PASSWORD_HASH`** (secret; from `node server.mjs hash-password`), optional `SQLA_ANALYTICS_DATA_DIR`, `SQLA_ANALYTICS_TRUST_PROXY`, `…_ADMIN_IDLE_SECONDS`, `…_ADMIN_MAX_SECONDS`, `…_RETENTION_DAYS`, `…_RATE_LIMIT_PER_MINUTE`, `…_AUDIT_LOG`, `HOST`, `PORT` |
+
+Then set the repository **variable** `SQLA_BROKER_URL` / `SQLA_ANALYTICS_URL` to the service's https address and re-run the Pages workflow; it writes the public configuration file.
+
+**What changed for the broker — in plain words.** The former `deploy-broker.yml` delivered the central PAT (and the session secret) from GitHub Actions secrets to an **Azure-hosted** broker as application settings. **That automatic delivery no longer exists** (it needed Azure credentials). The operator now sets `SQLA_GITHUB_PAT` (and the rest) as environment variables on their own host. The variable names, the broker (`server/repo-broker.mjs`), the in-app central access and `verify-repo-pat.yml` are unchanged, so an existing deployment keeps working. Details: `docs/WORKFLOW_DEPENDENCIES_V17.7.5.md`, `docs/CENTRAL_PAT.md`.
+
+**Usage Analytics without a server:** set the repository variable `SQLA_ANALYTICS_PROVIDER` = `repository`, re-run the Pages workflow, then an administrator runs *Analytics → Set up* in the app (`docs/ANALYTICS_SERVERLESS.md`).
+
+---
+
+## Usage Analytics (V17.7.3) — optional deployment (provider "service")
+Run the analytics service (`server/analytics-service.mjs`; `package-analytics-service.yml` packages it for any Node host — see the section above) and publish `sql-assistant-data/analytics.config.json`; without both, SQL Assistant behaves exactly as before. See `docs/ANALYTICS.md`.
+
+---
+
 ## Deployment and upgrade (V17.6.9)
 
 No new feature, no new endpoint, no new storage key. The application files are the same shape as V17.6.8 (`release/` → GitHub Pages / IIS / Azure Static Web Apps).
@@ -6,7 +56,9 @@ No new feature, no new endpoint, no new storage key. The application files are t
 
 **Publication artifact** (`release/`): `index.html`, `404.html` (refresh / deep-link fallback), `.nojekyll`, `version.json`, `staticwebapp.config.json` (Azure Static Web Apps: navigation fallback → `/index.html`), `web.config` (IIS: 404 → `/index.html`) and, when the repository variable `SQLA_BROKER_URL` is set, `sql-assistant-data/repo-broker.config.json` (a public address only). The root `index.html`, `dist/index.html`, `release/index.html` and `release/404.html` are byte-identical (one build). The page is self-contained (inline script with a matching CSP hash, no module / external script / external stylesheet, no absolute `/…` asset path), so it works under any base path. The publishing-zone repository `basware/dh-zone` (`bw-publish-zone`) could **not** be read from the build environment; nothing in this release claims details of that target. The release is a static, relative, self-contained folder; whether `bw-publish-zone` accepts that structure has to be confirmed against the zone's own documentation by the person who owns it.
 
-### Repository access service deployment (`deploy-broker.yml`) — required configuration
+### Repository access service deployment (former `deploy-broker.yml`) — required configuration
+
+> **Superseded in V17.7.5:** that workflow no longer exists. The variables below are now set **on the host that runs the broker** (see the top of this document); the names are unchanged.
 | Key | Kind | Where | Purpose |
 |---|---|---|---|
 | `AZURE_CREDENTIALS` | **secret** | repository secret, or a secret of the environment `central-repository-access` | service-principal JSON for `azure/login`. **Required**: without it no Azure deployment can happen and none is attempted. |

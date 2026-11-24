@@ -1,0 +1,13 @@
+{
+  "analytics": {
+    "enabled": true,
+    "provider": "repository",
+    "repositoryPath": "sql-assistant-data/analytics",
+    "retentionDays": 400,
+    "inactivityTimeout": 300,
+    "collectUserIdentity": false,
+    "applicationVersion": "",
+    "adminAuthenticationEnabled": true,
+    "adminSessionTimeout": 900
+  }
+}
