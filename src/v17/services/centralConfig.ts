@@ -59,8 +59,7 @@ export type SaveCentralResult = { ok: true; config: RepositoryConfig; custom: bo
 const LOG_MAX = 30;
 export class CentralConfigService {
   private busy: Promise<unknown> | null = null;
-  /** `repo` = the repository connection IN FORCE (the one the saved token / sign-in belongs to) — the primary home of the record. `o.mirror` = the application's default (bootstrap) repository when it is a different repository: written best-effort and read as a fallback, so machines that start from the compiled defaults can find the record too. */
-  constructor(private store: KeyValueStore, private repo: () => SchemaRepository | null, private secrets: () => string[] = () => [], private o: { now?: () => string; mirror?: () => { repo: SchemaRepository; label: string } | null } = {}) {}
+  constructor(private store: KeyValueStore, private repo: () => SchemaRepository | null, private secrets: () => string[] = () => [], private o: { now?: () => string } = {}) {}
   private now = () => (this.o.now ? this.o.now() : new Date().toISOString());
   private meta(): Meta { const m = readJson<Partial<Meta> | null>(this.store, KEYS.centralConfig, null); if (!m || typeof m !== 'object') return { ...EMPTY }; const rev = typeof m.revision === 'number' && Number.isInteger(m.revision) && m.revision >= 0 ? m.revision : 0;
     const pc = m.pending && typeof m.pending === 'object' ? clean((m.pending as { config: Partial<RepositoryConfig> }).config || {}) : null; const pending = pc && !validateRepositoryConfig(pc).length ? { config: pc, savedAt: String((m.pending as { savedAt?: string }).savedAt || '') } : null;
@@ -74,26 +73,12 @@ export class CentralConfigService {
   private note(event: string, ok: boolean, message: string): void { const entry: CentralConfigLogEntry = { at: this.now(), event, ok, message: this.red(message).slice(0, 300) }; writeJson(this.store, KEYS.centralConfigLog, [...this.log(), entry].slice(-LOG_MAX)); }
   private out(p: Partial<CentralConfigOutcome> & { message: string }): CentralConfigOutcome { return { ok: false, changed: false, published: false, revision: this.meta().revision, stage: null, ...p }; }
   private exclusive<T>(fn: () => Promise<T>): Promise<T> { const run = async () => { while (this.busy) { try { await this.busy; } catch { /* ignore */ } } const p = fn(); this.busy = p; try { return await p; } finally { this.busy = null; } }; return run(); }
-  /** Reads the record from the primary repository and, best-effort, from the mirror (errors of the mirror are ignored: a token for one repository cannot see another). The valid record with the higher revision wins; `fp` stays the PRIMARY file (its sha is what a conflict-checked write needs). */
-  private async readCentral(repo: SchemaRepository): Promise<{ f: { text: string; sha: string } | null; fp: { text: string; sha: string } | null; err: string | null }> {
-    let fp: { text: string; sha: string } | null = null; let err: string | null = null; try { fp = await repo.read(CENTRAL_CONFIG_PATH); } catch (e) { err = this.red((e as Error).message); }
-    let fm: { text: string; sha: string } | null = null; const m = this.o.mirror ? this.o.mirror() : null; if (m) { try { fm = await m.repo.read(CENTRAL_CONFIG_PATH); } catch { fm = null; } }
-    const rev = (x: { text: string } | null): number => (x ? parseCentralConfigText(x.text).record?.revision ?? -1 : -2); let f = fp; if (fm && rev(fm) >= 1 && rev(fm) > rev(fp)) f = fm;
-    return { f, fp, err: f ? null : err };
-  }
-  /** After a confirmed write to the primary: the same record into the default repository, best-effort. Returns one sentence for the administrator (null when there is no separate default repository). */
-  private async mirrorWrite(text: string, revision: number): Promise<string | null> {
-    const m = this.o.mirror ? this.o.mirror() : null; if (!m) return null;
-    try { const cur = await m.repo.read(CENTRAL_CONFIG_PATH); const pr = cur ? parseCentralConfigText(cur.text).record : null; if (pr && pr.revision >= revision) return `Not written to ${m.label}: it already holds revision ${pr.revision}.`;
-      await m.repo.write(CENTRAL_CONFIG_PATH, text, cur ? cur.sha : null, `Update repository configuration (revision ${revision})`); return `Also written to ${m.label} (the application's default repository), so machines that start from the application defaults find it.`; }
-    catch (e) { return `Not written to ${m.label} (${this.red((e as Error).message)}). Machines that start from the application defaults cannot see this configuration until their default repository is changed to the location in use (see docs/CENTRAL_CONFIG.md).`; }
-  }
   /** Read the central record and apply a newer one; publish a pending local change when no newer central revision exists. Never throws; a failure changes nothing local. */
   pull(): Promise<CentralConfigOutcome> { return this.exclusive(() => this.doPull()); }
   private async doPull(): Promise<CentralConfigOutcome> {
     const repo = this.repo(); if (!repo) return this.out({ stage: 'Configuration', message: 'No repository connection — the repository configuration was not synchronized.' });
-    const rd = await this.readCentral(repo); if (rd.err) { const m = rd.err; this.setMeta({ lastPullAt: this.now(), lastOutcome: 'download-failed', lastMessage: m }); this.note('pull', false, `Download failed: ${m}`); return this.out({ stage: 'Download', message: m }); }
-    const f = rd.f; const meta = this.meta(); const at = this.now();
+    let f; try { f = await repo.read(CENTRAL_CONFIG_PATH); } catch (e) { const m = this.red((e as Error).message); this.setMeta({ lastPullAt: this.now(), lastOutcome: 'download-failed', lastMessage: m }); this.note('pull', false, `Download failed: ${m}`); return this.out({ stage: 'Download', message: m }); }
+    const meta = this.meta(); const at = this.now();
     if (!f) { this.setMeta({ lastPullAt: at, sha: null, lastOutcome: 'none-published', lastMessage: 'No central configuration has been published yet.' }); if (meta.pending) return this.publishPending(null, 0);
       this.note('pull', true, 'No central configuration published yet — the values of this device stay in force.'); return this.out({ ok: true, message: 'No central repository configuration has been published yet; this device keeps its own values.' }); }
     const p = parseCentralConfigText(f.text);
@@ -108,7 +93,7 @@ export class CentralConfigService {
       return this.out({ ok: true, changed, revision: remote.revision, message: m });
     }
     this.setMeta({ sha: f.sha, lastPullAt: at });
-    if (meta.pending) return this.publishPending(rd.fp, remote.revision);
+    if (meta.pending) return this.publishPending(f, remote.revision);
     const m = remote.revision < meta.revision ? 'The repository holds an older configuration revision than this device; the newer one is kept.' : `The repository configuration is up to date (revision ${meta.revision}).`;
     this.setMeta({ lastOutcome: 'up-to-date', lastMessage: m }); return this.out({ ok: true, message: m });
   }
@@ -119,7 +104,7 @@ export class CentralConfigService {
     const m = `The configuration saved on this device was published as central revision ${r.revision}.`; this.setMeta({ revision: r.revision, updatedAt: r.updatedAt, sha: r.sha, pending: null, lastOutcome: 'published', lastMessage: m }); this.note('publish-pending', true, m); return this.out({ ok: true, published: true, revision: r.revision, message: m });
   }
   /** Writes revision N+1 with the sha of the file that was read (so a concurrent write is refused, never overwritten) and confirms it by reading it back. */
-  private async publish(c: RepositoryConfig, f: { sha: string } | null, baseRevision: number, retry = true): Promise<{ ok: true; revision: number; updatedAt: string; sha: string; mirror: string | null } | { ok: false; kind: 'publish' | 'conflict'; message: string }> {
+  private async publish(c: RepositoryConfig, f: { sha: string } | null, baseRevision: number, retry = true): Promise<{ ok: true; revision: number; updatedAt: string; sha: string } | { ok: false; kind: 'publish' | 'conflict'; message: string }> {
     const repo = this.repo(); if (!repo) return { ok: false, kind: 'publish', message: 'No repository connection.' };
     const rec: CentralConfigRecord = { format: CENTRAL_CONFIG_FORMAT, formatVersion: CENTRAL_CONFIG_FORMAT_VERSION, revision: baseRevision + 1, updatedAt: this.now(), updatedByDevice: deviceTag(this.store), appVersion: APP_VERSION, config: c }; const text = serializeCentralConfig(rec);
     if (looksLikeCredential(text)) return { ok: false, kind: 'publish', message: 'The configuration looks like it contains a credential and was not published.' };
@@ -127,7 +112,7 @@ export class CentralConfigService {
     catch (e) { const m = this.red((e as Error).message); if (retry && (e instanceof RepositoryError ? e.kind === 'conflict' : /changed on the server/.test(m))) { let g; try { g = await repo.read(CENTRAL_CONFIG_PATH); } catch (e2) { return { ok: false, kind: 'publish', message: this.red((e2 as Error).message) }; } const pr = g ? parseCentralConfigText(g.text).record : null; if (pr && pr.revision > baseRevision) return { ok: false, kind: 'conflict', message: `Another administrator published a newer configuration (revision ${pr.revision}) at the same time. It was not overwritten — synchronize, review it and save again.` }; return this.publish(c, g ? { sha: g.sha } : null, baseRevision, false); } return { ok: false, kind: 'publish', message: m }; }
     let back; try { back = await repo.read(CENTRAL_CONFIG_PATH); } catch (e) { return { ok: false, kind: 'publish', message: `The configuration was written but could not be read back to confirm it (${this.red((e as Error).message)}). Use Sync to verify.` }; }
     const br = back ? parseCentralConfigText(back.text).record : null; if (!br || br.revision !== rec.revision || !sameRepositoryConfig(br.config, c)) return { ok: false, kind: 'publish', message: 'The configuration was written but the repository does not return what was written. Use Sync to verify.' };
-    const mirror = await this.mirrorWrite(text, rec.revision); return { ok: true, revision: rec.revision, updatedAt: rec.updatedAt, sha: back!.sha || sha, mirror };
+    return { ok: true, revision: rec.revision, updatedAt: rec.updatedAt, sha: back!.sha || sha };
   }
   /**
    * Administrator: validate and save the configuration CENTRALLY (and locally). Admin Password → validation → live check → publish (read-back confirmed) → local apply.
@@ -145,14 +130,14 @@ export class CentralConfigService {
         const m = 'Saved on this device only: there is no repository connection to publish through yet. It becomes the central configuration at the next synchronization once a connection exists (a newer central revision, if one exists by then, takes precedence).';
         this.setMeta({ pending: { config: c, savedAt: this.now() }, lastOutcome: 'saved-local-pending', lastMessage: m }); this.note('save', true, m); return { ok: true, config: c, custom: w.custom, central: false, revision: this.meta().revision, notes, message: m };
       }
-      const rd = await this.readCentral(repo); if (rd.err) { const m = `The current central configuration could not be read, so nothing was saved: ${rd.err}`; this.note('save', false, m); return { ok: false, kind: 'download', message: m, problems: [] }; }
-      const pr = rd.f ? parseCentralConfigText(rd.f.text).record : null; const base = Math.max(pr ? pr.revision : 0, this.meta().revision);
-      const pub = await this.publish(c, rd.fp ? { sha: rd.fp.sha } : null, base);
+      let f; try { f = await repo.read(CENTRAL_CONFIG_PATH); } catch (e) { const m = `The current central configuration could not be read, so nothing was saved: ${this.red((e as Error).message)}`; this.note('save', false, m); return { ok: false, kind: 'download', message: m, problems: [] }; }
+      const pr = f ? parseCentralConfigText(f.text).record : null; const base = Math.max(pr ? pr.revision : 0, this.meta().revision);
+      const pub = await this.publish(c, f ? { sha: f.sha } : null, base);
       if (!pub.ok) { this.note('save', false, pub.message); return { ok: false, kind: pub.kind, message: `${pub.message} Nothing was changed on this device.`, problems: [] }; }
-      if (pub.mirror) notes.push(pub.mirror); const w = writeRepositoryConfig(this.store, c); const m = `Repository configuration saved centrally (revision ${pub.revision}). New machines start with it and existing machines receive it at their next synchronization.`;
+      const w = writeRepositoryConfig(this.store, c); const m = `Repository configuration saved centrally (revision ${pub.revision}). New machines start with it and existing machines receive it at their next synchronization.`;
       this.setMeta({ revision: pub.revision, updatedAt: pub.updatedAt, sha: pub.sha, pending: null, lastPullAt: this.now(), lastOutcome: 'published', lastMessage: m });
       if (!w.ok) { const m2 = `${m} This device's own storage rejected the local copy (${w.message}); the next synchronization applies it again.`; this.note('save', true, m2); return { ok: true, config: c, custom: !sameRepositoryConfig(c, DEFAULT_REPOSITORY), central: true, revision: pub.revision, notes, message: m2 }; }
-      this.note('save', true, `${m} (${repositoryLabel(c)} · ${c.branch})${sameRepositoryConfig(was, c) ? ' — values unchanged' : ''}${pub.mirror ? ` ${pub.mirror}` : ''}`); return { ok: true, config: c, custom: w.custom, central: true, revision: pub.revision, notes, message: m };
+      this.note('save', true, `${m} (${repositoryLabel(c)} · ${c.branch})${sameRepositoryConfig(was, c) ? ' — values unchanged' : ''}`); return { ok: true, config: c, custom: w.custom, central: true, revision: pub.revision, notes, message: m };
     });
   }
 }

@@ -51,6 +51,17 @@ export function loadRepositoryConfig(store: KeyValueStore): LoadedRepositoryConf
 }
 /** The only place a location is applied to the secrets. The token, AI key and vault file path are untouched; the input is not modified. */
 export function applyRepositoryConfig(s: VaultSecrets, c: RepositoryConfig): VaultSecrets { return { ...s, githubOwner: c.owner, githubRepo: c.repo, githubBranch: c.branch, schemaPath: c.schemaPath }; }
+/**
+ * V17.7.2 — the ONE local write of an already validated configuration (used by saveRepositoryConfig and by the central configuration, centralConfig.ts).
+ * Single write + read-back; when the read-back differs the previous record is restored, so a failed write can never leave a half-applied location. Saving the defaults removes the override.
+ */
+export function writeRepositoryConfig(store: KeyValueStore, c: RepositoryConfig): { ok: true; custom: boolean } | { ok: false; message: string } {
+  const isDefault = sameRepositoryConfig(c, DEFAULT_REPOSITORY);
+  if (isDefault) { const prev0 = store.get(KEYS.repoConfig); store.remove(KEYS.repoConfig); if (store.get(KEYS.repoConfig) !== null) { if (prev0 !== null) store.set(KEYS.repoConfig, prev0); return { ok: false, message: 'Browser storage rejected the change — the previous configuration is still in force.' }; } return { ok: true, custom: false }; }
+  const prev = store.get(KEYS.repoConfig); if (!writeJson(store, KEYS.repoConfig, { v: 1, ...c, savedAt: new Date().toISOString() })) return { ok: false, message: 'Browser storage rejected the change — the previous configuration is still in force.' };
+  const back = loadRepositoryConfig(store); if (back.problem || !sameRepositoryConfig(back.config, c)) { if (prev === null) store.remove(KEYS.repoConfig); else store.set(KEYS.repoConfig, prev); return { ok: false, message: 'The configuration could not be read back after saving — the previous configuration was restored.' }; }
+  return { ok: true, custom: true };
+}
 export type SaveConfigResult = { ok: true; config: RepositoryConfig; custom: boolean; notes: string[] } | { ok: false; kind: 'unauthorized' | 'invalid' | 'unverified' | 'storage'; message: string; problems: string[] };
 export interface SaveConfigOptions {
   /** Test seam — defaults to the real Admin Password check. */ verify?: (password: string) => Promise<boolean>;
@@ -62,9 +73,6 @@ export async function saveRepositoryConfig(store: KeyValueStore, input: Partial<
   if (!ok) return { ok: false, kind: 'unauthorized', message: authBlockedMessage() ? `${authBlockedMessage()} The repository configuration was not changed.` : 'Incorrect Admin Password — the repository configuration was not changed.', problems: [] };
   const c = clean(input); const problems = validateRepositoryConfig(c); if (problems.length) return { ok: false, kind: 'invalid', message: 'The repository configuration is not valid — nothing was saved.', problems };
   const notes: string[] = []; if (o.liveCheck) { const r = await o.liveCheck(c); notes.push(...r.notes); if (r.refuse) return { ok: false, kind: 'unverified', message: r.refuse, problems: [] }; }
-  const isDefault = sameRepositoryConfig(c, DEFAULT_REPOSITORY);
-  if (isDefault) { store.remove(KEYS.repoConfig); if (store.get(KEYS.repoConfig) !== null) return { ok: false, kind: 'storage', message: 'Browser storage rejected the change — the previous configuration is still in force.', problems: [] }; return { ok: true, config: c, custom: false, notes }; }
-  const prev = store.get(KEYS.repoConfig); if (!writeJson(store, KEYS.repoConfig, { v: 1, ...c, savedAt: new Date().toISOString() })) return { ok: false, kind: 'storage', message: 'Browser storage rejected the change — the previous configuration is still in force.', problems: [] };
-  const back = loadRepositoryConfig(store); if (back.problem || !sameRepositoryConfig(back.config, c)) { if (prev === null) store.remove(KEYS.repoConfig); else store.set(KEYS.repoConfig, prev); return { ok: false, kind: 'storage', message: 'The configuration could not be read back after saving — the previous configuration was restored.', problems: [] }; }
-  return { ok: true, config: c, custom: true, notes };
+  const w = writeRepositoryConfig(store, c); if (!w.ok) return { ok: false, kind: 'storage', message: w.message, problems: [] };
+  return { ok: true, config: c, custom: w.custom, notes };
 }

@@ -1,7 +1,10 @@
 import { base64ToUtf8, utf8ToBase64 } from '../../utils/base64';
 import { redactSecrets } from '../errors/appErrors';
 export interface RepoFile { text: string; sha: string; }
-export interface SchemaRepository { describe: string; read(path: string): Promise<RepoFile | null>; write(path: string, text: string, sha: string | null, message: string): Promise<string>; }
+/** V17.7.4: one entry of a repository folder (used by Usage Analytics to find its encrypted batch files; listing is limited by GitHub to 1000 entries per folder). */
+export interface RepoEntry { name: string; path: string; sha: string; size: number; type: 'file' | 'dir'; }
+/** `list` / `remove` are OPTIONAL (V17.7.4): the token connection and the in-memory test repository have them; central access through the repository broker and the published copy do not — a caller that needs them says so instead of guessing. */
+export interface SchemaRepository { describe: string; read(path: string): Promise<RepoFile | null>; write(path: string, text: string, sha: string | null, message: string): Promise<string>; list?(dir: string): Promise<RepoEntry[]>; remove?(path: string, sha: string, message: string): Promise<void>; }
 /**
  * V17.5.2 — every failure of the repository is a typed RepositoryError so the UI can say WHAT failed and WHAT to do:
  *   auth (401 invalid/expired token) · permission (403 / 429 missing Contents permission or rate limit) · not-found (404) · conflict (409/422 file changed on the server)
@@ -16,9 +19,9 @@ export const repositoryErrorKind = (e: unknown): RepositoryErrorKind | null => (
 let timeoutMs = 20_000; export const setRepositoryTimeoutMs = (ms: number) => { timeoutMs = Math.max(50, ms); }; export const getRepositoryTimeoutMs = () => timeoutMs;
 const SAFE_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
 /** No HTTP cache (cache:'no-store'); files > 1 MB via the blob API; tokens redacted from every error; every request has a time limit. */
-export function githubRepository(cfg: { owner: string; repo: string; branch: string; token: string }): SchemaRepository {
+export function githubRepository(cfg: { owner: string; repo: string; branch: string; token: string; /** tests only — never passed by the application */ apiBase?: string }): SchemaRepository {
   const bad = !SAFE_NAME.test(cfg.owner || '') || !SAFE_NAME.test(cfg.repo || '') || !(cfg.branch || 'main').trim() || /[\s?#]/.test(cfg.branch || '');
-  const api = `https://api.github.com/repos/${cfg.owner}/${cfg.repo}`; const h: Record<string, string> = { Accept: 'application/vnd.github+json', ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}) }; // V17.5.6: an empty token sends NO Authorization header (anonymous read of a public repository — used only to try "Retrieve from Repository" before any token exists)
+  const api = `${cfg.apiBase || 'https://api.github.com'}/repos/${cfg.owner}/${cfg.repo}`; const h: Record<string, string> = { Accept: 'application/vnd.github+json', ...(cfg.token ? { Authorization: `Bearer ${cfg.token}` } : {}) }; // V17.5.6: an empty token sends NO Authorization header (anonymous read of a public repository — used only to try "Retrieve from Repository" before any token exists)
   const url = (p: string) => `${api}/contents/${p.split('/').map(encodeURIComponent).join('/')}`;
   const guard = () => { if (bad) throw new RepositoryError('The repository is not configured correctly: owner and repository may contain only letters, digits, "-", "_" and "." — check the GitHub repository card under Schema → Pull Schema.', 'config'); };
   const fail = (what: string, st: number): never => { const kind: RepositoryErrorKind = st === 401 ? 'auth' : st === 403 || st === 429 ? 'permission' : st === 404 ? 'not-found' : st === 409 || st === 422 ? 'conflict' : 'http';
@@ -31,11 +34,16 @@ export function githubRepository(cfg: { owner: string; repo: string; branch: str
     async read(p) { const r = await call(`${url(p)}?ref=${encodeURIComponent(cfg.branch)}`); if (r.status === 404) return null; if (!r.ok) fail(`Reading ${p}`, r.status); const j = (await r.json()) as { content?: string; sha: string; encoding?: string };
       if (j.content && j.encoding !== 'none') return { text: base64ToUtf8(j.content), sha: j.sha };
       const b = await call(`${api}/git/blobs/${j.sha}`); if (!b.ok) fail(`Reading ${p} (large file)`, b.status); return { text: base64ToUtf8(((await b.json()) as { content: string }).content), sha: j.sha }; },
-    async write(p, t, sha, m) { const r = await call(url(p), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: m, content: utf8ToBase64(t), branch: cfg.branch, ...(sha ? { sha } : {}) }) }); if (!r.ok) fail(`Writing ${p}`, r.status); return ((await r.json()) as { content?: { sha: string } }).content?.sha || ''; } };
+    async write(p, t, sha, m) { const r = await call(url(p), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: m, content: utf8ToBase64(t), branch: cfg.branch, ...(sha ? { sha } : {}) }) }); if (!r.ok) fail(`Writing ${p}`, r.status); return ((await r.json()) as { content?: { sha: string } }).content?.sha || ''; },
+    async list(dir) { const r = await call(`${url(dir)}?ref=${encodeURIComponent(cfg.branch)}`); if (r.status === 404) return []; if (!r.ok) fail(`Listing ${dir}`, r.status); const j = (await r.json()) as unknown; if (!Array.isArray(j)) return [];
+      return j.filter((x): x is { name: string; path: string; sha: string; size?: number; type: string } => !!x && typeof x === 'object' && typeof (x as { name?: unknown }).name === 'string' && typeof (x as { sha?: unknown }).sha === 'string').map((x) => ({ name: x.name, path: String(x.path || `${dir}/${x.name}`), sha: x.sha, size: Number(x.size) || 0, type: x.type === 'dir' ? 'dir' as const : 'file' as const })); },
+    async remove(p, sha, m) { const r = await call(url(p), { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: m, sha, branch: cfg.branch }) }); if (r.status === 404) return; if (!r.ok) fail(`Deleting ${p}`, r.status); } };
 }
 export function memoryRepository(files: Record<string, string> = {}): SchemaRepository & { files: Map<string, RepoFile> } {
   let n = 0; const map = new Map<string, RepoFile>(Object.entries(files).map(([k, v]) => [k, { text: v, sha: `sha${++n}` }]));
-  return { describe: 'in-memory test repository', files: map, async read(p) { return map.get(p) ? { ...map.get(p)! } : null; }, async write(p, t, s) { const c = map.get(p); if (c && c.sha !== s) throw new Error('Writing failed: the file changed on the server — synchronize again.'); const sha = `sha${++n}`; map.set(p, { text: t, sha }); return sha; } };
+  return { describe: 'in-memory test repository', files: map, async read(p) { return map.get(p) ? { ...map.get(p)! } : null; }, async write(p, t, s) { const c = map.get(p); if (c && c.sha !== s) throw new Error('Writing failed: the file changed on the server — synchronize again.'); const sha = `sha${++n}`; map.set(p, { text: t, sha }); return sha; },
+    async list(dir) { const pre = `${dir.replace(/\/+$/, '')}/`; const seen = new Map<string, RepoEntry>(); for (const [k, v] of map) { if (!k.startsWith(pre)) continue; const rest = k.slice(pre.length); const slash = rest.indexOf('/'); if (slash < 0) seen.set(rest, { name: rest, path: k, sha: v.sha, size: v.text.length, type: 'file' }); else { const d = rest.slice(0, slash); if (!seen.has(d)) seen.set(d, { name: d, path: `${pre}${d}`, sha: `tree-${d}`, size: 0, type: 'dir' }); } } return [...seen.values()]; },
+    async remove(p, sha) { const c = map.get(p); if (!c) return; if (c.sha !== sha) throw new Error('Deleting failed: the file changed on the server — synchronize again.'); map.delete(p); } };
 }
 
 /**
