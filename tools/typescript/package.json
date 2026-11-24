@@ -1,0 +1,10 @@
+{
+  "name": "typescript",
+  "version": "5.8.3",
+  "description": "Vendored, checksum-pinned copy of the TypeScript compiler (tsc) \u2014 used only by scripts/build.mjs and scripts/tsc.mjs; see tools/typescript/README.md",
+  "license": "Apache-2.0",
+  "bin": {
+    "tsc": "./bin/tsc"
+  },
+  "private": true
+}
