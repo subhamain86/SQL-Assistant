@@ -1,9 +1,31 @@
-## SQL Assistant — V17.7.2
+## SQL Assistant — V17.7.5
 
 SQL Assistant writes read-only and Change Request SQL from your **Active Schema**.
 Its primary engine is an **offline, self-training natural-language model** that also learns from SQL you confirm and from an **Admin Query Library** of trusted queries. An AI/LLM Model (including a model running on your own computer) can optionally be added; nothing requires it.
 
-### What is new in V17.7.2
+### What is new in V17.7.5
+V17.7.5 removes npm and Azure dependencies from the GitHub workflows. SQL Assistant now builds, tests, verifies and deploys with Node and the default GitHub token only. Optional services are packaged by credential-free workflows and run on any host. SQL Assistant behaviour, automatic token synchronization, security controls and usage-analytics privacy are unchanged.
+
+* **Workflows need only Node and the default `GITHUB_TOKEN`.** Every step of `deploy-pages.yml` is a direct `node` call — the same ordered stages as `node scripts/ci.mjs` (install → typecheck → lint → hygiene → workflows → build → security → artifact → tests → final → artifact). The Install step *verifies* the committed, checksum-pinned compiler (`tools/typescript`) and names a missing or modified file; there is no fallback of any kind. No package manager, no package download, no cloud login, no secret.
+* **A guard enforces it.** `scripts/check-workflows.mjs` (a CI stage, rules and allow-list in `scripts/workflow-policy.mjs`) fails on a package-manager command or registry, Azure, an `az` command, `continue-on-error`, an unpinned action, a step that echoes a secret, or any secret other than `GITHUB_TOKEN` — except the **token-synchronization** workflows' own secrets, by name.
+* **Optional services are packaged, not deployed.** `package-analytics-service.yml` and `package-repo-broker.yml` build, test and package the single-file services as artifacts (with a README, Dockerfile, systemd unit and `env.example`) and start the packaged copy once; they use only `GITHUB_TOKEN` and run on any host that has Node ≥ 20 (`docs/DEPLOYMENT.md`).
+* **Token synchronization is not changed** (pinned by `test/fixtures/token-sync-baseline-v1774.json`): the in-app token / vault / central-access logic, `publish-data.yml`, `verify-repo-pat.yml`, the scripts they call and `server/repo-broker.mjs` are byte-identical to V17.7.4 (only the `APP_VERSION` stamp differs). **One token-delivery behaviour is gone:** the automatic delivery of `SQLA_GITHUB_PAT` to an Azure-hosted broker by the former `deploy-broker.yml` (it needed Azure credentials) — the operator now sets the variable on their own host (`docs/CENTRAL_PAT.md`).
+* Fixed: a test (`v1763`) of V17.7.4 failed in a registry-free checkout because it copied a `node_modules` that no longer exists.
+* Stamped `17.7.5`. See `docs/WORKFLOW_DEPENDENCIES_V17.7.5.md`, `docs/CHANGELOG_V17.7.5.md`, `docs/RELEASE_NOTES_V17.7.5.md`, `docs/TEST_REPORT_V17.7.5.md`, `docs/VERIFICATION_REPORT_V17.7.5.md`, `docs/REGRESSION_BASELINE_V17.7.5.md`, `docs/CHANGED_FILES_V17.7.5.md`, `docs/ROLLBACK_V17.7.5.md`.
+
+### What was new in V17.7.4
+V17.7.4 makes Usage Analytics deployable without a server or cloud credentials. Analytics data is encrypted on the device and can be read only in the Analytics dashboard after administrator authentication. SQL Assistant continues to capture usage metadata only and does not capture SQL content, credentials, database results, or customer data.
+
+* **Serverless Usage Analytics** (`analytics.provider = "repository"`): usage metadata is **encrypted on the device** (ECDH P-256 → HKDF → AES-256-GCM) and written to the repository; the Analytics dashboard unwraps the administrator's private key with the **administrator password** (PBKDF2, ≥ 600 000 iterations; nothing about the password is stored), decrypts and aggregates **in the browser**, and drops everything on Lock. Set up, Change password, Rotate keys and Compact are in the Analytics page. The V17.7.3 server provider is unchanged. Honest limits (offline password guessing, visible commit metadata, only write-capable devices report, no server-side lock-out): `docs/ANALYTICS_SERVERLESS.md`.
+* **Build and test with Node only**: the TypeScript compiler is committed and checksum-pinned (`tools/typescript/`); the Pages workflow needs only the default `GITHUB_TOKEN`; the Azure workflows are marked optional; the stale-file check passes on this package (`docs/DEPLOYMENT.md`).
+* Stamped `17.7.4`; the real favicon ships; analytics batches never trigger the Pages build or the data publication and are never published.
+
+### What was new in V17.7.3
+V17.7.3 introduces optional Usage Analytics for measuring SQL Assistant adoption and utilization. The Analytics dashboard is available from the hamburger menu and protected by centralized administrator authentication. Analytics capture usage metadata only and do not capture SQL content, credentials, database results, or customer data.
+
+* **Hamburger → Analytics → Administrator Authentication → Usage Analytics dashboard**; one centralized administrator password checked by the analytics service (`server/analytics-service.mjs`), never by the page; Lock Analytics and an inactivity timeout; active usage (not time left open); unique users not counted per session; usage metadata only; optional and failure-proof. See `docs/ANALYTICS.md`.
+
+### What was new in V17.7.2
 * **Describe What You Need is its own page for each builder** (hamburger → *Describe What You Need – Read Only Query Builder* and *Describe What You Need – Query Builder for CR*). Each page has two cards: *Describe What You Need (optional)* and *Result* (loading · success · needs review · error, Copy, Format SQL, Regenerate, Validate; Read Only also Accept & Learn, Report issue). The description is generated independently of the Manual Selectors; *Open in Query Builder* is an explicit one-way hand-over.
 * **A result is a success only when the SQL covers the description and validates.** Parts of the description that the SQL does not reflect, tables that the imported schema cannot join, data-change requests in the Read Only builder and read requests in the CR builder are reported instead of being hidden. CR values keep the case and spelling that was typed. See `docs/NL_SQL_ROOT_CAUSE_V17.7.2.md`.
 * **Generated SQL sits directly below Manual Selectors** in both main Query Builders; the description card moved to the new pages.
@@ -59,7 +81,7 @@ Its primary engine is an **offline, self-training natural-language model** that 
 ### What was new in V17.6.2
 * **Central GitHub PAT.** The token that reads and writes the data repository is stored **once**, as the GitHub Actions repository secret **`SQLA_GITHUB_PAT`**; no device holds it and nobody copies it. A secret like that cannot be read by a browser, so a small trusted **repository access broker** (`server/repo-broker.mjs`, Node ≥ 20, no dependency) uses it — only after the user proved with GitHub's own sign-in that their account may read the repository — and returns file contents, never the PAT.
 * **One mechanism for every repository action:** Pull Schema from GitHub, Pull / Push Secret Vault, *Sync with GitHub Now*, knowledge sync, the admin message. *Hamburger → Schema → Pull Schema* shows *Repository access (central)* — *Sign in with GitHub* once per browser session; a new device needs no token.
-* **Opt-in:** nothing changes until an administrator follows `docs/CENTRAL_PAT.md` (secret, GitHub App, `deploy-broker.yml`, `SQLA_BROKER_URL`). Without `sql-assistant-data/repo-broker.config.json` the app behaves exactly as V17.6.1. Same UI, same three Pull Schema cards in the same order; only a "Direction: repository → this device." sentence was added to the vault card.
+* **Opt-in:** nothing changes until an administrator follows `docs/CENTRAL_PAT.md` (secret, GitHub App, `package-repo-broker.yml` — V17.7.5 replaced the former `deploy-broker.yml`, see the note there — `SQLA_BROKER_URL`). Without `sql-assistant-data/repo-broker.config.json` the app behaves exactly as V17.6.1. Same UI, same three Pull Schema cards in the same order; only a "Direction: repository → this device." sentence was added to the vault card.
 * **Clear errors** for a missing, invalid / expired / revoked, insufficiently privileged or read-only PAT; `verify-repo-pat.yml` warns weekly and 14 days before it expires.
 * See `docs/CHANGELOG_V17.6.2.md`, `docs/CENTRAL_PAT.md`, `docs/TEST_REPORT_V17.6.2.md`, `docs/SECURITY.md`, `docs/SOURCE_PROVENANCE.md`.
 

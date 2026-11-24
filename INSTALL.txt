@@ -1,9 +1,18 @@
-SQL Assistant V17.7.2 — overlay release
-=======================================
-This ZIP contains the complete V17.7.2 source tree (plus the built index.html, release/ and dist/), except the files listed below.
-Install: unzip INTO your V17.7.1 project folder (overwrite when asked) — or into an empty folder after copying your public/favicon.svg and scripts/browser_test*.py there. It deliberately does NOT contain:
-  * public/favicon.svg and the scripts/browser_test*.py / compare_v1768.py files — they were not in the text bundle used for this work, so your own copies must stay in place;
-  * node_modules, dist, build, release (generated).
-Then:  npm run typecheck && npm run lint && npm run check:stale && npm run build && npm test && npm run test:browser
-(`npm run test:browser` now also runs scripts/browser_test_v1772.py; it needs Python + Playwright + Chromium.)
-Read docs/TEST_REPORT_V17.7.2.md for what was and was not executed.
+SQL Assistant V17.7.5 — complete build (source + generated outputs + docs + tests)
+
+Needs only Node >= 20. No package manager, no registry, no cloud account, no secret.
+  Deploy       publish the contents of release/ (or dist/index.html) — one self-contained page.
+  CI stages    node scripts/ci.mjs            (install -> typecheck -> lint -> hygiene -> workflows -> build -> security -> artifact -> tests -> final -> artifact-final)
+               node scripts/ci.mjs --list     (the GitHub Pages workflow has one step per stage with the same command)
+  Build        node scripts/build.mjs          (TypeScript 5.8.3 is committed in tools/typescript and verified against CHECKSUMS.json; TSC_PATH may point to another 5.8.3 package)
+  Typecheck    node scripts/tsc.mjs -p tsconfig.json --noEmit
+  Test         node --test --test-concurrency=1 test/*.test.mjs      (after node scripts/build.mjs)
+  Workflows    node scripts/check-workflows.mjs   (policy and the one allow-list: scripts/workflow-policy.mjs)
+  Browser      node scripts/build.mjs && node scripts/build.mjs --test && python3 scripts/browser_test_v1773.py && python3 scripts/browser_test_v1774.py   (Playwright + Chromium)
+
+Optional services (any host with Node >= 20; nothing is deployed by a workflow):
+  node scripts/package-service.mjs analytics|broker [--self-test]     or run the workflows package-analytics-service.yml / package-repo-broker.yml and download the artifact
+  docs/DEPLOYMENT.md (final state, systemd, container), docs/CENTRAL_PAT.md (the broker: the PAT is now set on YOUR host), docs/ANALYTICS.md
+
+Token synchronization is unchanged (docs/WORKFLOW_DEPENDENCIES_V17.7.5.md). The only token-delivery behaviour that changed: no workflow delivers the central PAT to an Azure-hosted broker any more.
+Rollback: rollback/SQL-Assistant-V17.7.4-rollback.zip (a REBUILD of V17.7.4 — see docs/ROLLBACK_V17.7.5.md and docs/VERIFICATION_REPORT_V17.7.5.md).
