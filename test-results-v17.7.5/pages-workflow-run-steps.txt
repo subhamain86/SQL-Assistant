@@ -1,0 +1,24 @@
+PATH = node + mkdir only: npm=false npx=false az=false node=true
+
+PASS  -  Toolchain versions  0.0s
+PASS  install  Install (verify the committed, checksum-pinned TypeScript in tools/typescript   0.1s
+PASS  typecheck  Typecheck  8.9s
+PASS  lint  Lint  0.1s
+PASS  hygiene  Repository hygiene (orphaned / stale files — reported by name, never deleted h  0.1s
+PASS  workflows  Workflow guard (Node and GITHUB_TOKEN only — scripts/workflow-policy.mjs)  0.1s
+PASS  build  Build (dist/index.html, release/)  20.8s
+PASS  security  Security check (scans the source and every generated output)  0.2s
+PASS  artifact  Verify the generated artifact (root index.html = dist/index.html = release/, s  0.3s
+SKIP  tests  executed by scripts/ci.mjs / the full Node run (reported separately)  -
+PASS  final  Final production build  21.3s
+PASS  -  Publish the repository-access configuration  0.0s
+PASS  -    ↳ the written repo-broker.config.json holds only the public address  
+PASS  -  Publish the analytics configuration (public settings only)  0.1s
+PASS  -    ↳ the written analytics.config.json is a VALID configuration for the app (provider service)  
+PASS  -  Publish the analytics configuration (serverless provider, public settings only  0.0s
+PASS  -    ↳ the written analytics.config.json is a VALID configuration for the app (provider repository)  
+PASS  artifact-final  Verify the artifact that will be published  0.3s
+PASS  -  Explain the failure (simulated failing typecheck + workflows)  0.0s
+PASS  -    ↳ the summary names the failing stages (Typecheck, Workflow guard) and only those  
+
+ALL RUN STEPS PASSED (node-only PATH, no npm, no network)

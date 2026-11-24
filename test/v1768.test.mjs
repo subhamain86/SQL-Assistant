@@ -201,7 +201,7 @@ test('CI log rectified: tsconfig compiles from the entry point; lint and securit
   writeFileSync(join(tmp, 'src/main.ts'), "import { a } from './v17/a';\nexport const m = a;\n"); writeFileSync(join(tmp, 'src/v17/a.ts'), "import type { T } from './b';\nexport const a = 1; export type X = T;\n"); writeFileSync(join(tmp, 'src/v17/b.ts'), 'export type T = string;\n'); writeFileSync(join(tmp, 'src/pages/old.ts'), "import { nope } from '../types';\nexport const x = nope;\n"); writeFileSync(join(tmp, 'src/v17/adminCredentialService.ts'), 'export const stale = 1;\n');
   const s = sourceSet(tmp); assert.deepEqual(s.files.map(s.rel), ['src/main.ts', 'src/v17/a.ts', 'src/v17/b.ts']); assert.deepEqual(s.orphans.map(s.rel), ['src/pages/old.ts', 'src/v17/adminCredentialService.ts']);
   for (const f of ['scripts/lint.mjs', 'scripts/security_check.mjs']) assert.match(src(f), /sourceSet\(root\)/, f); assert.match(src('package.json'), /"prune-orphans": "node scripts\/prune-orphans\.mjs"/);
-  for (const w of ['deploy-pages.yml', 'publish-data.yml', 'deploy-broker.yml', 'verify-repo-pat.yml']) assert.ok(existsSync(join(root, '.github/workflows', w)), w);
+  for (const w of ['deploy-pages.yml', 'publish-data.yml', 'package-repo-broker.yml', 'verify-repo-pat.yml']) assert.ok(existsSync(join(root, '.github/workflows', w)), w);
 });
 
 // ───────────────────────────────────────── identity

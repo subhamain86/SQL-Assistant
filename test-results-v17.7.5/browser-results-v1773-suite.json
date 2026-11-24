@@ -1,0 +1,428 @@
+{
+ "version": "17.7.5",
+ "total": 84,
+ "passed": 84,
+ "failed": 0,
+ "results": [
+  {
+   "name": "A1 the hamburger menu has an \"Analytics\" entry (visible without any configuration)",
+   "pass": true,
+   "detail": "['Quick Start', 'Schema', 'GitHub Repository', 'Error Rectifier', 'Analytics', 'Settings', 'About']"
+  },
+  {
+   "name": "A2 Analytics sits between Error Rectifier and Settings; every earlier entry is still there",
+   "pass": true,
+   "detail": "['Quick Start', 'Schema', 'GitHub Repository', 'Error Rectifier', 'Analytics', 'Settings', 'About']"
+  },
+  {
+   "name": "A3 selecting it opens the \"Administrator Authentication\" dialog",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A4 with analytics off the dialog says so, has no password field and Unlock is disabled",
+   "pass": true,
+   "detail": "Administrator Authentication\n\u00d7\n\nThe Analytics dashboard needs administrator authentication.\n\nUsage Analytics is not enabled in this deployment.\nUnlock\nCancel"
+  },
+  {
+   "name": "A5 Cancel closes the dialog; the page shows \"Analytics is locked\" and NO dashboard data",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A6 nothing was requested from any analytics service",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "A7 SQL generation works exactly as before",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A8 no uncaught page error",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "B1 the dialog is titled \"Administrator Authentication\" and asks for the administrator password (masked, not auto-filled)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B2 BEFORE authentication the page holds no dashboard data: no KPI, no chart, no table, none of the labels",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B3 BEFORE authentication no administrator endpoint was requested",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B4 a wrong password shows exactly \"Invalid administrator password\"",
+   "pass": true,
+   "detail": "Invalid administrator password"
+  },
+  {
+   "name": "B5 the password field is cleared after the attempt, the dialog stays, and still no dashboard data exists",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B6 the failed attempt exposed nothing: no summary request, no configuration text, no hint about the password",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B7 the correct password opens the dashboard and closes the dialog",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B8 all 11 KPI cards are shown with their names",
+   "pass": true,
+   "detail": "{'unique-users': 'Unique Users', 'daily-active-users': 'Daily Active Users', 'weekly-active-users': 'Weekly Active Users', 'monthly-active-users': 'Monthly Active Users', 'total-sessions': 'Total Sessions', 'average-active-time': 'Average Active Usage Time', 'total-active-time': 'Total Active Usage "
+  },
+  {
+   "name": "B9 the usage views are shown: trend, daily / weekly / monthly utilization, most-used features, application versions",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B10 the weekly utilization tab renders a table",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B10 the monthly utilization tab renders a table",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B10 the daily utilization tab renders a table",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B11 the password is nowhere in the page: not in the DOM, not in localStorage / sessionStorage, not in the URL, not in cookies",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B12 the session token is nowhere in storage, URL, cookies or the DOM (it lives in memory only)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B13 the delivered page (bundle) contains neither the password, nor any password hash, nor a password literal",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B14 \"Lock Analytics\" returns to the locked page and removes every number from the page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B15 locking revoked the session at the service: the old token no longer works",
+   "pass": true,
+   "detail": "401"
+  },
+  {
+   "name": "B16 unlocking again asks for the password again",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B17 closing / reloading the application requires authentication again (no session survives a reload)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B18 the date-range filter: \"Last 7 days\" shows 7 days",
+   "pass": true,
+   "detail": "(7, '2026-11-04 \u2013 2026-11-10')"
+  },
+  {
+   "name": "B19 the range is sent to the service as UTC dates (from / to)",
+   "pass": true,
+   "detail": "http://127.0.0.1:50623/v1/admin/summary?from=2026-11-04&to=2026-11-10"
+  },
+  {
+   "name": "B20 an invalid custom range (start after end) is refused with a reason and nothing is requested",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B21 a valid custom range is applied (10 daily rows)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B22 activity inside the inactivity period keeps Analytics unlocked (15 s of use with a 12 s timeout)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B23 after the configured inactivity period Analytics locks itself and says so",
+   "pass": true,
+   "detail": "28.220163822174072"
+  },
+  {
+   "name": "B24 no uncaught page error in the authentication flows",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "C1 the per-device id is created (random, 32 hex) and kept in browser storage",
+   "pass": true,
+   "detail": "17a841efbdb833841ee6fb2a0dfa804f"
+  },
+  {
+   "name": "C2 the same browser profile keeps the same device id across sessions",
+   "pass": true,
+   "detail": "('17a841efbdb833841ee6fb2a0dfa804f', '17a841efbdb833841ee6fb2a0dfa804f')"
+  },
+  {
+   "name": "C3 usage reached the service: sessions, generations (one valid, one failed) and active time",
+   "pass": true,
+   "detail": "{'uniqueUsers': 1, 'dailyActiveUsers': 1, 'weeklyActiveUsers': 1, 'monthlyActiveUsers': 1, 'totalSessions': 4, 'totalActiveMs': 1833, 'averageActiveMsPerSession': 458, 'averageActiveMsPerUser': 1833, 'generated': 2, 'successful': 1, 'failed': 1, 'needsReview': 1, 'successRate': 50}"
+  },
+  {
+   "name": "C4 UNIQUE USERS: several sessions of one browser profile are ONE unique user",
+   "pass": true,
+   "detail": "{'uniqueUsers': 1, 'dailyActiveUsers': 1, 'weeklyActiveUsers': 1, 'monthlyActiveUsers': 1, 'totalSessions': 4, 'totalActiveMs': 1833, 'averageActiveMsPerSession': 458, 'averageActiveMsPerUser': 1833, 'generated': 2, 'successful': 1, 'failed': 1, 'needsReview': 1, 'successRate': 50}"
+  },
+  {
+   "name": "C5 the success rate is successful / generated",
+   "pass": true,
+   "detail": "50"
+  },
+  {
+   "name": "C6 the most-used features include the pages that were opened and the Describe page",
+   "pass": true,
+   "detail": "{'quick-start': 4, 'about': 1, 'describe-read-only': 1, 'settings': 1}"
+  },
+  {
+   "name": "C7 the application version in use is the build version",
+   "pass": true,
+   "detail": "[{'version': '17.7.5', 'sessions': 4, 'users': 1}]"
+  },
+  {
+   "name": "C8 PRIVACY: every field of every event that left the page is a whitelisted metadata field",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "C9 PRIVACY: the description text, generated SQL, table / column names and any SQL keyword never left the page",
+   "pass": true,
+   "detail": "{\"events\":[{\"v\":1,\"eid\":\"2b005792ac9723e9\",\"t\":\"session_start\",\"ts\":1794303078372,\"uid\":\"17a841efbdb833841ee6fb2a0dfa804f\",\"sid\":\"cc9d95eadf21d3eb950c44d9\",\"ver\":\"17.7.5\"},{\"v\":1,\"eid\":\"b8e581bee5b0be"
+  },
+  {
+   "name": "C10 PRIVACY: nothing of the kind is in the browser queue or in the files of the service either",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C11 a generation event names only the builder and the outcome",
+   "pass": true,
+   "detail": "{'describe-read-only'}"
+  },
+  {
+   "name": "C12 no uncaught page error while measuring",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "C13 the dashboard shows the same numbers as the service (unique users, sessions, generations)",
+   "pass": true,
+   "detail": "('1', '2', {'uniqueUsers': 1, 'dailyActiveUsers': 1, 'weeklyActiveUsers': 1, 'monthlyActiveUsers': 1, 'totalSessions': 4, 'totalActiveMs': 1833, 'averageActiveMsPerSession': 458, 'averageActiveMsPerUser': 1833, 'generated': 2, 'successful': 1, 'failed': 1, 'needsReview': 1, 'successRate': 50})"
+  },
+  {
+   "name": "C14 the trend chart and the feature / version rankings are drawn from that data",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C15 the \"Total Active Usage Time\" is shown as a duration and is greater than zero",
+   "pass": true,
+   "detail": "2 s"
+  },
+  {
+   "name": "C16 ACTIVE TIME: 13 s open with one click and a 5 s inactivity timeout counted \u2248 5\u20137 s, not 13 s",
+   "pass": true,
+   "detail": "(5000, 12.9)"
+  },
+  {
+   "name": "C17 ACTIVE TIME: the hidden minutes (4 clicks while hidden, 4 s visible without interaction) are excluded; only the \u2248 3 s of real use after returning were added",
+   "pass": true,
+   "detail": "(3453, 5000, 8453)"
+  },
+  {
+   "name": "C18 ACTIVE TIME: total active time is a small part of the time the page was open",
+   "pass": true,
+   "detail": "(8453, 27.4)"
+  },
+  {
+   "name": "D1 SERVICE DOWN: SQL Assistant keeps working (the first SQL generation after the outage succeeded and the pages still render)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D2 SERVICE DOWN: describing and generating SQL still works",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D3 SERVICE DOWN: usage that could not be sent is kept (bounded, metadata only) for a later attempt",
+   "pass": true,
+   "detail": "[{\"v\":1,\"eid\":\"d42846f4b23cc377\",\"t\":\"session_start\",\"ts\":1794303120776,\"uid\":\"f6537756e9c834bc94c64baeaf91c558\",\"sid\":\""
+  },
+  {
+   "name": "D4 SERVICE DOWN: Analytics says the service cannot be reached and that SQL Assistant is not affected; no dashboard data",
+   "pass": true,
+   "detail": "The analytics service could not be reached, so Analytics cannot be unlocked right now. SQL Assistant itself is not affected."
+  },
+  {
+   "name": "D5 SERVICE DOWN: no uncaught page error (only the browser's own failed-network notices)",
+   "pass": true,
+   "detail": "([], ['Failed to load resource: the server responded with a status of 404 (Not Found)', 'Failed to load resource: the server responded with a status of 404 (Not Found)', 'Failed to load resource: the server responded with a status of 404 (Not Found)'])"
+  },
+  {
+   "name": "D6 INVALID CONFIGURATION (a password in the public file): analytics is off, the dialog explains why, the value is never echoed",
+   "pass": true,
+   "detail": "The analytics configuration is not valid (the file is public and must not contain a password, secret or token (\"adminPassword\"). Remove it, and rotate the administrator password if it was ever written"
+  },
+  {
+   "name": "D7 INVALID CONFIGURATION: no analytics request was made and SQL Assistant works",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D8 INVALID CONFIGURATION: SQL generation works",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D9 adminAuthenticationEnabled=false: the dashboard is NOT available at all (never open without the password); the dialog says why",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D10 adminAuthenticationEnabled=false: usage is still collected (the service received the session)",
+   "pass": true,
+   "detail": "{'uniqueUsers': 1, 'dailyActiveUsers': 1, 'weeklyActiveUsers': 1, 'monthlyActiveUsers': 1, 'totalSessions': 1, 'totalActiveMs': 1045, 'averageActiveMsPerSession': 1045, 'averageActiveMsPerUser': 1045, 'generated': 0, 'successful': 0, 'failed': 0, 'needsReview': 0, 'successRate': None}"
+  },
+  {
+   "name": "D11 ADMIN NOT SET UP on the service: a clear message (no default password exists), no dashboard",
+   "pass": true,
+   "detail": "Analytics administration is not set up on the analytics service yet. An administrator has to set the administrator password on the service."
+  },
+  {
+   "name": "D12 the default word \"admin\" does not unlock anything",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E1 the two entries of the new password must match",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E2 a wrong CURRENT password is refused (the service checks it again)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E3 a weak new password is refused with the service's reason",
+   "pass": true,
+   "detail": "The password must have at least 12 characters."
+  },
+  {
+   "name": "E4 all password fields are cleared after every attempt",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E5 a successful change ends the administrator session: Analytics is locked and says the password was changed",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E6 the OLD password no longer works; the NEW one does \u2014 with no restart and no rebuild",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E7 only a salted scrypt hash of the new password is stored (never the password)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E8 the dashboard opens with the new password",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "E9 a PLATFORM-MANAGED password (environment hash) is not changeable from the dashboard: the panel says where to change it, no form",
+   "pass": true,
+   "detail": "The administrator password is managed in the analytics service's environment (a platform secret), so it cannot be change"
+  },
+  {
+   "name": "F1 every route renders (the 12 existing ones and Analytics \u2014 which opens its dialog while locked)",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "F2 Settings is still behind its lock screen (the Admin Password is unchanged and separate)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F3 the version is shown in the footer and in the navbar",
+   "pass": true,
+   "detail": "('SQL Assistant \u00b7 Version 17.7.5\\nCrafted by Subham Ain', 'V17.7.5')"
+  },
+  {
+   "name": "F4 About shows the version and the 17.7.3 entry with the release note",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F5 the page metadata carries the version",
+   "pass": true,
+   "detail": "['SQL Assistant 17.7.5', 'SQL Assistant']"
+  },
+  {
+   "name": "F6 the Read Only builder and its Manual Selectors load",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F7 the earlier hamburger structure is intact",
+   "pass": true,
+   "detail": "['Quick Start', 'Read Only Query Builder', 'Query Builder for CR', 'Describe What You Need \u2013 Read Only Query Builder', 'Describe What You Need \u2013 Query Builder for CR', 'Schema', 'GitHub Repository', 'Error Rectifier', 'Analytics', 'Settings', 'About']"
+  },
+  {
+   "name": "F8 the dashboard follows the dark theme",
+   "pass": true,
+   "detail": "rgb(22, 31, 54)"
+  },
+  {
+   "name": "F9 the dashboard has no horizontal page overflow at 390 px",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "F9 the dashboard has no horizontal page overflow at 820 px",
+   "pass": true,
+   "detail": "0"
+  },
+  {
+   "name": "F10 no uncaught page error in the regression pass",
+   "pass": true,
+   "detail": "[]"
+  }
+ ]
+}

@@ -14,20 +14,18 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, rmSync, readFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
+import { resolveTypeScript } from './toolchain.mjs';
 
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..');
 const args = process.argv.slice(2);
 const skipBrowser = args.includes('--skip-browser');
 const only = (args.find((a) => a.startsWith('--only=')) || '').slice(7).split(',').filter(Boolean);
 
-const candidates = [
-  join(root, 'node_modules/typescript/bin/tsc'),
-  ...(process.env.NODE_PATH || '').split(':').filter(Boolean).map((p) => join(p, 'typescript/bin/tsc')),
-];
 const pin = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).devDependencies?.typescript;
-const tsc = candidates.find((c) => existsSync(c) && JSON.parse(readFileSync(join(dirname(dirname(c)), 'package.json'), 'utf8')).version === pin);
-if (!tsc) { console.error(`No project-pinned TypeScript ${pin} found. Looked in:\n  ` + candidates.join('\n  ')); process.exit(2); }
-console.log(`Using TypeScript ${JSON.parse(readFileSync(join(dirname(dirname(tsc)), 'package.json'), 'utf8')).version} (${tsc})`);
+const found = resolveTypeScript(root); // V17.7.4: TSC_PATH → the committed, checksum-verified tools/typescript → node_modules (scripts/toolchain.mjs)
+if (!found.ok) { console.error(found.message); process.exit(2); }
+const tsc = found.tsc;
+console.log(`Using TypeScript ${found.version} (${found.source})`);
 
 const node = process.execPath;
 const py = process.env.PYTHON || 'python3';

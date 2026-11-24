@@ -1,0 +1,26 @@
+
+package-analytics-service.yml
+PASS  install  node scripts/check-toolchain.mjs --committed-only  0.1s
+PASS  build  node scripts/build.mjs  21.2s
+PASS  service-tests  node --test --test-concurrency=1 --test-name-pattern='V17\.7\.3 (service|admin) ' test/v17  2.3s
+INFO      ↳ service tests passed: 19  
+PASS  package  node scripts/package-service.mjs analytics  0.1s
+PASS  self-test  node scripts/package-service.mjs analytics --self-test  0.8s
+INFO      ↳ Self test passed (analytics): |   - hash-password works |   - starts with a minimal environment; adminConfigured |   - login: wrong password 401, right password 200 |   - dashboard data refused without a session  
+PASS  artifact  service-dist/sqla-analytics-service: Dockerfile, README.md, SHA256SUMS, env.example, server.mjs, sqla-analytics.service  
+PASS  artifact  no secret, no Azure reference, no package-manager command in any file  
+PASS  artifact  server.mjs is a byte-identical copy of server/analytics-service.mjs  
+ALL STEPS PASSED (node-only PATH)
+
+package-repo-broker.yml
+PASS  install  node scripts/check-toolchain.mjs --committed-only  0.1s
+PASS  build  node scripts/build.mjs  20.9s
+PASS  service-tests  node --test --test-concurrency=1 test/v1762.test.mjs  39.2s
+INFO      ↳ service tests passed: 23  
+PASS  package  node scripts/package-service.mjs broker  0.1s
+PASS  self-test  node scripts/package-service.mjs broker --self-test  0.5s
+INFO      ↳ Self test passed (broker): |   - starts with a minimal environment; reports that no PAT is configured (none was given — by design) |   - an unauthenticated read is refused (401)  
+PASS  artifact  service-dist/sqla-repo-broker: Dockerfile, README.md, SHA256SUMS, env.example, server.mjs, sqla-repo-broker.service  
+PASS  artifact  no secret, no Azure reference, no package-manager command in any file  
+PASS  artifact  server.mjs is a byte-identical copy of server/repo-broker.mjs  
+ALL STEPS PASSED (node-only PATH)

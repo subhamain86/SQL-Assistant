@@ -1,0 +1,122 @@
+{
+ "test/v1762.test.mjs": {
+  "baselineSha256": "5eb3fe834f8c92828525b8c8df375a0c92eb6da5baaab1d0205ce9ee9275adcf",
+  "replacements": [
+   {
+    "old": "deploy-broker passes the Actions secret to the service as a setting (never echoed, never in the repository)",
+    "new": "the broker workflow reads NO secret and deploys nothing (V17.7.5: it only packages the service; the PAT is set on the own host of the operator)",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent \u2014 the broker workflow no longer delivers the PAT; it reads no secret"
+   },
+   {
+    "old": "const db = src('.github/workflows/deploy-broker.yml'); const vp",
+    "new": "const db = src('.github/workflows/package-repo-broker.yml'); const vp",
+    "reason": "the workflow file was renamed (deploy-broker.yml -> package-repo-broker.yml)"
+   },
+   {
+    "old": "assert.match(db, /secrets\\.SQLA_GITHUB_PAT/); assert.match(db, /app-settings-json/); assert.ok(!/echo[^\\n]*(PAT|secrets\\.)/.test(db.replace(/\"::error::[^\"]*\"/g, '')), 'no echo of the secret'); assert.match(db, /permissions: \\{ contents: read \\}/); assert.match(db, /patConfigured\":true/); assert.ok(!/upload-artifact|upload-pages-artifact/.test(db), 'the secret-bearing job uploads no artifact');",
+    "new": "assert.ok(!/secrets\\./.test(db), 'V17.7.5: the packaging workflow reads no secret \u2014 the PAT is set on the operator\\'s own host'); assert.ok(!/app-settings-json|azure/i.test(db), 'nothing is delivered to a host'); assert.ok(!/echo[^\\n]*(PAT|secrets\\.)/.test(db.replace(/\"::error::[^\"]*\"/g, '')), 'no echo of the secret'); assert.match(db, /permissions: \\{ contents: read \\}/); assert.match(db, /--self-test/); assert.ok(!/upload-pages-artifact/.test(db), 'it uploads only the packaged service, which holds no secret (scanned by the packager)');",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent"
+   }
+  ]
+ },
+ "test/v1763.test.mjs": {
+  "baselineSha256": "1518d95a035382c81d95bb4b4b0ff8362a493c9117bd499cac27573fdc9651f6",
+  "replacements": [
+   {
+    "old": "['publish-data', 'deploy-broker', 'verify-repo-pat', 'deploy-pages']",
+    "new": "['publish-data', 'package-repo-broker', 'verify-repo-pat', 'deploy-pages']",
+    "reason": "the workflow file was renamed (deploy-broker.yml -> package-repo-broker.yml); same two assertions (no Node-20 action versions, node-version 24)"
+   },
+   {
+    "old": "['src', 'scripts', 'public', 'package.json', 'tsconfig.json']) cpSync(join(root, f), join(t, f), { recursive: true }); symlinkSync(join(root, 'node_modules'), join(t, 'node_modules'), 'dir'); /* V17.6.9: the copy builds with the PROJECT-PINNED TypeScript of this checkout \u2014 no environment-specific absolute path exists any more */",
+    "new": "['src', 'scripts', 'public', 'tools', 'package.json', 'tsconfig.json']) cpSync(join(root, f), join(t, f), { recursive: true }); /* V17.7.5: the copy builds with the COMMITTED, checksum-pinned TypeScript (tools/typescript) \u2014 it needs no node_modules, which a registry-free checkout does not have */",
+    "reason": "V17.7.4 DEFECT: the copy symlinked node_modules, which a registry-free checkout does not have, so the copied build found no compiler outside an environment with a global NODE_PATH; the copy now carries the committed, checksum-pinned compiler (tools/) instead"
+   }
+  ]
+ },
+ "test/v1764.test.mjs": {
+  "baselineSha256": "78d2d75454cf107fcc0a75cead16d1ae9e24a01f422af826634b715091d24319",
+  "replacements": [
+   {
+    "old": "assert.match(wf, /npm ci --no-audit --no-fund; else npm install --no-audit --no-fund/); assert.ok(!/npm ci \\|\\| npm install/.test(wf));",
+    "new": "assert.match(wf, /node scripts\\/check-toolchain\\.mjs --committed-only/, 'V17.7.5: the Install step verifies the committed compiler'); assert.ok(!/\\bnpm\\b/.test(wf), 'V17.7.5: no package manager in the workflow');",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent (the Install step is verification only, no package manager)"
+   },
+   {
+    "old": "const db = src('.github/workflows/deploy-broker.yml'); assert.match(db, /if: \\$\\{\\{ github\\.event_name == 'workflow_dispatch' \\|\\| vars\\.SQLA_BROKER_APP_NAME != '' \\}\\}/);",
+    "new": "const db = src('.github/workflows/package-repo-broker.yml'); assert.match(db, /workflow_dispatch/); assert.match(db, /paths: \\['server\\/repo-broker\\.mjs'/, 'V17.7.5: a push runs it only when the service or its packaging changed');",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent (the broker packaging workflow runs on its own files and by hand; there is nothing configured that could be missing)"
+   },
+   {
+    "old": "for (const item of ['SQLA_BROKER_APP_NAME', 'AZURE_CREDENTIALS', 'SQLA_GITHUB_PAT', 'SQLA_GITHUB_CLIENT_ID', 'SQLA_ALLOWED_ORIGINS']) assert.match(db, new RegExp(`need (secret|variable)\\\\s+${item} `), item); assert.match(db, /Deployment blocked: \\$2 is not configured/);",
+    "new": "assert.ok(!/need (secret|variable)/.test(db) && !/secrets\\./.test(db), 'V17.7.5: nothing is configured, so nothing can be missing \u2014 no preflight of secrets or variables remains');",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent"
+   }
+  ]
+ },
+ "test/v1768.test.mjs": {
+  "baselineSha256": "0acdd5aa085acddbece684708e6fd38e0717d995c3945af19dd8b8ef6fd14f13",
+  "replacements": [
+   {
+    "old": "['deploy-pages.yml', 'publish-data.yml', 'deploy-broker.yml', 'verify-repo-pat.yml']",
+    "new": "['deploy-pages.yml', 'publish-data.yml', 'package-repo-broker.yml', 'verify-repo-pat.yml']",
+    "reason": "the workflow file was renamed (deploy-broker.yml -> package-repo-broker.yml); the existence check is otherwise unchanged"
+   }
+  ]
+ },
+ "test/v1769.test.mjs": {
+  "baselineSha256": "8b870cfab76664aa95c493829f6475c53ba224583021bd35ad5952f6420aa28b",
+  "replacements": [
+   {
+    "old": "assert.match(wf, /npm run check:stale/); assert.match(wf, /npm run verify:artifact/); assert.match(wf, /npm run check:toolchain/);",
+    "new": "assert.match(wf, /node scripts\\/check-stale\\.mjs/); assert.match(wf, /node scripts\\/verify-artifact\\.mjs/); assert.match(wf, /node scripts\\/check-toolchain\\.mjs/);",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent (the same three stages are called as direct node commands)"
+   },
+   {
+    "old": "test('V17.6.9 broker deployment: a missing AZURE_CREDENTIALS (or any required key) BLOCKS the deployment with an explicit, actionable annotation \u2014 names only, no value, no bypass of Azure authentication', () => {\n  const db = src('.github/workflows/deploy-broker.yml'); const pre = db.slice(db.indexOf('- name: Preflight'), db.indexOf('- name: Verify the PAT')); assert.ok(pre.length > 500);\n  for (const k of ['SQLA_BROKER_APP_NAME', 'AZURE_CREDENTIALS', 'SQLA_GITHUB_PAT', 'SQLA_GITHUB_CLIENT_ID', 'SQLA_ALLOWED_ORIGINS']) assert.match(pre, new RegExp(`need (secret|variable)\\\\s+${k} `), k);\n  assert.match(pre, /Deployment blocked: \\$2 is not configured\\. Stage: preflight\\. Component: repository access service/); assert.match(pre, /Retry: not retryable until it is set/); assert.match(pre, /docs\\/DEPLOYMENT\\.md/); assert.match(pre, /exit 1/);\n  assert.ok(!/echo[^\\n]*\\$\\{?(PAT|AZURE)\\b|printf[^\\n]*\\$\\{?(PAT|AZURE)\\b|set -x/.test(pre), 'no secret value is printed'); assert.ok(db.indexOf('- name: Preflight') < db.indexOf('azure/login@v2'), 'the preflight precedes the Azure login, which is never bypassed'); assert.match(db, /azure\\/login@v2\\s*\\n\\s+with: \\{ creds: '\\$\\{\\{ secrets\\.AZURE_CREDENTIALS \\}\\}' \\}/);\n  const script = pre.slice(pre.indexOf('run: |') + 6).split('\\n').map((l) => l.replace(/^ {10}/, '')).join('\\n'); const out = spawnSync('bash', ['-c', script], { encoding: 'utf8', env: { PATH: process.env.PATH, PAT: 'ghp_' + 'Z'.repeat(36), CLIENT: 'Iv1.abc', ORIGINS: 'https://x.example.org', APP: 'app', AZURE: '', GITHUB_STEP_SUMMARY: join(tmpdir(), 'sqla-summary.md') } });\n  assert.equal(out.status, 1); assert.match(out.stdout, /::error title=Deployment blocked - AZURE_CREDENTIALS is not configured::Deployment blocked: AZURE_CREDENTIALS is not configured\\./); assert.ok(!out.stdout.includes('ghp_') && !out.stderr.includes('ghp_'), 'the PAT value is never printed'); assert.ok(!/SQLA_GITHUB_PAT is not configured/.test(out.stdout), 'only what is missing is reported');\n  const ok = spawnSync('bash', ['-c', script], { encoding: 'utf8', env: { PATH: process.env.PATH, PAT: 'p', CLIENT: 'c', ORIGINS: 'o', APP: 'a', AZURE: '{\"clientId\":\"x\"}', GITHUB_STEP_SUMMARY: join(tmpdir(), 'sqla-summary2.md') } }); assert.equal(ok.status, 0); assert.ok(!ok.stdout.includes('clientId'));\n});\n",
+    "new": "test('V17.6.9 broker deployment (V17.7.5: packaging only): the workflow that used to deliver the PAT to a cloud host is replaced by a credential-free packaging workflow \u2014 it reads no secret, deploys nothing, and a PAT present in the environment never reaches the artifact', () => {\n  const db = src('.github/workflows/package-repo-broker.yml'); assert.ok(!/secrets\\./.test(db), 'no secret'); assert.ok(!/azure|app-settings|webapps-deploy|need (secret|variable)/i.test(db), 'no cloud step, no preflight of secrets'); assert.match(db, /permissions: \\{ contents: read \\}/); assert.match(db, /node scripts\\/package-service\\.mjs broker --self-test/); assert.ok(!/echo[^\\n]*(PAT|secrets\\.)|set -x/.test(db), 'no secret value is printed');\n  const out = mkdtempSync(join(tmpdir(), 'sqla-pk-')); const PAT = 'ghp_' + 'Z'.repeat(36); const SES = 'S'.repeat(40);\n  try {\n    const r = spawnSync(process.execPath, [join(root, 'scripts/package-service.mjs'), 'broker', '--out', out], { encoding: 'utf8', env: { PATH: process.env.PATH, SQLA_GITHUB_PAT: PAT, SQLA_SESSION_SECRET: SES } }); assert.equal(r.status, 0, r.stderr); const dir = join(out, 'sqla-repo-broker');\n    for (const f of readdirSync(dir)) { const t = readFileSync(join(dir, f), 'utf8'); assert.ok(!t.includes(PAT) && !t.includes(SES), `${f}: the PAT / session secret of the environment never reaches the artifact`); } assert.ok(!r.stdout.includes('ghp_') && !r.stderr.includes('ghp_'), 'the PAT value is never printed');\n    const env = readFileSync(join(dir, 'env.example'), 'utf8'); for (const k of ['SQLA_GITHUB_PAT', 'SQLA_SESSION_SECRET', 'SQLA_GITHUB_CLIENT_ID', 'SQLA_ALLOWED_ORIGINS']) assert.match(env, new RegExp(`^${k}=$`, 'm'), `${k} is documented by name, with no value`);\n  } finally { rmSync(out, { recursive: true, force: true }); }\n});\n",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent \u2014 this test executed the retired Azure preflight script; it is replaced by the packaging equivalent"
+   }
+  ]
+ },
+ "test/v1773.test.mjs": {
+  "baselineSha256": "f049f0f5d7c738575c3146a59f47ab3b9d1fc2027be6ee290183436d471dfd56",
+  "replacements": [
+   {
+    "old": "the service has its own deployment workflow that takes the password hash from a secret;",
+    "new": "the service has its own credential-free packaging workflow (V17.7.5: no secret, nothing deployed);",
+    "reason": "title of a test about the retired deployment workflow: the service now has a credential-free packaging workflow (no secret, nothing deployed)"
+   },
+   {
+    "old": "const dep = src('.github/workflows/deploy-analytics.yml'); assert.match(dep, /SQLA_ANALYTICS_ADMIN_PASSWORD_HASH/); assert.match(dep, /secrets\\.SQLA_ANALYTICS_ADMIN_PASSWORD_HASH/); assert.ok(!/continue-on-error/.test(dep.replace(/^\\s*#.*$/gm, ''))); assert.match(dep, /SQLA_ANALYTICS_ALLOWED_ORIGINS/); assert.match(dep, /Preflight/); assert.match(dep, /healthz/); assert.ok(!/echo[^\\n]*SQLA_ANALYTICS_ADMIN_PASSWORD_HASH/.test(dep), 'the secret is not echoed'); assert.match(dep, /actions\\/checkout@v5/); assert.match(dep, /actions\\/setup-node@v5/);",
+    "new": "const dep = src('.github/workflows/package-analytics-service.yml'); assert.ok(!/secrets\\./.test(dep), 'V17.7.5: the packaging workflow reads no secret \u2014 the password hash is set on the operator\\'s own host'); assert.ok(!/continue-on-error/.test(dep.replace(/^\\s*#.*$/gm, ''))); assert.match(dep, /--self-test/); assert.match(dep, /upload-artifact@v4/); assert.match(dep, /permissions: \\{ contents: read \\}/); assert.match(dep, /actions\\/checkout@v5/); assert.match(dep, /actions\\/setup-node@v5/);",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent"
+   }
+  ]
+ },
+ "test/v1774.test.mjs": {
+  "baselineSha256": "7f46308989e8c7f427437abfac6551b5d17545651c53f2f3b532a071fb8577f0",
+  "replacements": [
+   {
+    "old": "test('V17.7.4 version is stamped consistently: package.json = APP_VERSION = writer label = NLU label = About = README = release metadata = the controlled constant; V17.7.3 stays recoverable', () => {\n  assert.equal(CURRENT_VERSION, '17.7.4'); assert.equal(PREVIOUS_VERSION, '17.7.3'); assert.equal(",
+    "new": "test('V17.7.4 version stamps (historical release): its documents are kept, README and About still describe it, and the current stamp is a valid 17.7.x (the current-version assertions live in test/v1775.test.mjs)', () => {\n  assert.match(CURRENT_VERSION, /^17\\.7\\.\\d+$/); assert.equal(",
+    "reason": "the version test became a documented historical test (the current-version assertions live in test/v1775.test.mjs), as in every earlier release"
+   },
+   {
+    "old": "assert.match(src('README.md'), /^## SQL Assistant \u2014 V17\\.7\\.4/m); assert.match(src('README.md'), /What is new in V17\\.7\\.4/);",
+    "new": "assert.match(src('README.md'), /^## SQL Assistant \u2014 V17\\.7\\.\\d+/m); assert.match(src('README.md'), /What (?:is|was) new in V17\\.7\\.4/);",
+    "reason": "same: README heading and section names of the historical release"
+   },
+   {
+    "old": "assert.match(wf, /if \\[ -f tools\\/typescript\\/bin\\/tsc \\]; then echo \"Using the committed TypeScript \\(no npm install, no registry\\)\\.\"/); assert.match(wf, /npm ci --no-audit --no-fund; else npm install --no-audit --no-fund/, 'npm is only the documented FALLBACK for a checkout without tools/typescript'); assert.ok(wf.indexOf('tools/typescript/bin/tsc') < wf.indexOf('npm run check:toolchain'));",
+    "new": "assert.match(wf, /run: node scripts\\/check-toolchain\\.mjs --committed-only/, 'V17.7.5: the Install step only VERIFIES the committed compiler'); assert.ok(!/\\bnpm\\b/.test(wf), 'V17.7.5: no package manager and no fallback to one');",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent"
+   },
+   {
+    "old": "for (const [f, re] of [['deploy-analytics.yml', /NEEDS CREDENTIALS[^\\n]*NOT REQUIRED/], ['deploy-broker.yml', /NEEDS CREDENTIALS[^\\n]*NOT REQUIRED/]]) assert.match(src(`.github/workflows/${f}`), re, `${f} is marked optional`); assert.ok(!/azure/i.test(src('.github/workflows/publish-data.yml')));",
+    "new": "for (const f of ['package-analytics-service.yml', 'package-repo-broker.yml']) assert.match(src(`.github/workflows/${f}`), /deploys nothing/i, `${f} says that it deploys nothing`); assert.ok(!/azure/i.test(src('.github/workflows/publish-data.yml')));",
+    "reason": "the assertion pinned a retired workflow or behaviour (the Azure delivery of the central PAT, the npm Install fallback); replaced by the V17.7.5 equivalent of the same intent (the retired Azure workflows are replaced by packaging workflows that deploy nothing)"
+   }
+  ]
+ }
+}

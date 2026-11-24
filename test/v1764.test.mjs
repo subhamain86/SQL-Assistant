@@ -14,14 +14,14 @@ test('V17.6.4 the Pages workflow builds BEFORE the security check (which scans d
   const at = (re) => n.findIndex((x) => re.test(x)); const [ins, tc, lint, build, sec, tests] = [/^Install/, /^Typecheck/, /^Lint/, /^Build \(dist/, /^Security check/, /^Tests/].map(at);
   assert.ok([ins, tc, lint, build, sec, tests].every((i) => i >= 0), 'all stages are named steps'); assert.ok(ins < tc && tc < lint && lint < build && build < sec && sec < tests, 'order: install, typecheck, lint, build, security, tests');
   assert.ok(!/npm run typecheck && npm run lint && npm run security/.test(wf), 'the old single-line chain is gone');
-  assert.match(wf, /npm ci --no-audit --no-fund; else npm install --no-audit --no-fund/); assert.ok(!/npm ci \|\| npm install/.test(wf));
+  assert.match(wf, /node scripts\/check-toolchain\.mjs --committed-only/, 'V17.7.5: the Install step verifies the committed compiler'); assert.ok(!/\bnpm\b/.test(wf), 'V17.7.5: no package manager in the workflow');
   assert.match(wf, /needs: build/); assert.match(wf, /permissions: \{ contents: read, pages: write, id-token: write \}/); assert.match(wf, /actions\/checkout@v5/); assert.match(wf, /actions\/setup-node@v5/); assert.match(wf, /node-version: 24/);
   assert.ok(!/secrets\./.test(wf), 'the Pages workflow uses no secret');
 });
 test('V17.6.4 the Pages workflow names a missing GitHub Pages setting, and the broker workflow skips (does not fail) a push when the service is not configured, but names every missing item on a manual run', () => {
   const wf = src('.github/workflows/deploy-pages.yml'); assert.match(wf, /GitHub Pages is not enabled/); assert.match(wf, /Source/); assert.match(wf, /GitHub Actions/);
-  const db = src('.github/workflows/deploy-broker.yml'); assert.match(db, /if: \$\{\{ github\.event_name == 'workflow_dispatch' \|\| vars\.SQLA_BROKER_APP_NAME != '' \}\}/);
-  for (const item of ['SQLA_BROKER_APP_NAME', 'AZURE_CREDENTIALS', 'SQLA_GITHUB_PAT', 'SQLA_GITHUB_CLIENT_ID', 'SQLA_ALLOWED_ORIGINS']) assert.match(db, new RegExp(`need (secret|variable)\\s+${item} `), item); assert.match(db, /Deployment blocked: \$2 is not configured/);
+  const db = src('.github/workflows/package-repo-broker.yml'); assert.match(db, /workflow_dispatch/); assert.match(db, /paths: \['server\/repo-broker\.mjs'/, 'V17.7.5: a push runs it only when the service or its packaging changed');
+  assert.ok(!/need (secret|variable)/.test(db) && !/secrets\./.test(db), 'V17.7.5: nothing is configured, so nothing can be missing — no preflight of secrets or variables remains');
   assert.match(db, /permissions: \{ contents: read \}/);
 });
 test('V17.6.4 security check still fails when dist/index.html is missing (so the order in the workflow matters) and the build output is the thing it scans', () => {

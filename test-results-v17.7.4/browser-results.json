@@ -1,0 +1,308 @@
+{
+ "version": "17.7.5",
+ "total": 60,
+ "passed": 60,
+ "failed": 0,
+ "results": [
+  {
+   "name": "A1 with provider \"repository\" the dialog asks for the administrator password (masked)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A2 NO repository connection: a clear message, no dashboard, SQL Assistant unaffected",
+   "pass": true,
+   "detail": "No repository connection is available on this device (a GitHub access token with access to the repository is needed to read or write Analytics). SQL Assistant itself is not affected."
+  },
+  {
+   "name": "A3 NOT SET UP: the message says so and offers \"Set up Analytics\u2026\"",
+   "pass": true,
+   "detail": "Analytics has not been set up in the repository yet. An administrator has to set it up first.\nSet up Analytics\u2026"
+  },
+  {
+   "name": "A4 Set up is an administrator action: with Settings locked there is NO form, only the instruction to unlock Settings",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A5 nothing was written to the repository by refused attempts",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "A6 the wizard explains that the data cannot be recovered without the password",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A7 a weak password is refused with the reason (minimum 14 characters) and nothing is written",
+   "pass": true,
+   "detail": "The password must have at least 14 characters."
+  },
+  {
+   "name": "A8 two different entries are refused",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A9 the password fields are emptied after every attempt",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "A10 set-up wrote exactly the key file and the public key",
+   "pass": true,
+   "detail": "['sql-assistant-data/analytics/admin-key.json', 'sql-assistant-data/analytics/public-key.json']"
+  },
+  {
+   "name": "A11 the key file holds a WRAPPED key: no password, no hash, no verifier, no plaintext private key; PBKDF2 cost \u2265 600 000",
+   "pass": true,
+   "detail": "{\n  \"format\": \"sqla-analytics-admin-key\",\n  \"formatVersion\": 1,\n  \"kdf\": {\n    \"name\": \"PBKDF2-SHA256\",\n    \"iterations\": 600000,\n    \"salt\": \"RJUxBxoHjRkhF7P-0"
+  },
+  {
+   "name": "A12 the page offers the PUBLIC key to pin \u2014 and only the public key",
+   "pass": true,
+   "detail": "{\n  \"analytics\": {\n    \"publicKey\": {\n      \"kid\": \"IetN7BA_phV3\",\n      \"jwk\": {\n        \"kty\": \"EC\",\n        \"crv\": \"P"
+  },
+  {
+   "name": "A13 the public key file is the PUBLIC key only",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B1 a wrong password shows exactly \"Invalid administrator password\"",
+   "pass": true,
+   "detail": "Invalid administrator password"
+  },
+  {
+   "name": "B2 a failed attempt exposes nothing: no dashboard, no key, the field is emptied",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B3 the right password opens the dashboard: the 11 KPI cards, numeric values, no SQL generated yet",
+   "pass": true,
+   "detail": "('0', '0')"
+  },
+  {
+   "name": "B4 the password is nowhere in the page: not in the DOM, localStorage, sessionStorage, the URL or cookies",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B5 no private key or wrapped key in the page or its storage (the unwrapped key lives only in memory): the only analytics storage is the device id and the unsent queue",
+   "pass": true,
+   "detail": "(None, ['sqla.analytics.uid.v1773', 'sqla.analytics.queue.v1773'])"
+  },
+  {
+   "name": "B6 the dashboard says the data is stored encrypted and shows the V17.7.4 release note",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "B7 Lock Analytics removes every number from the page",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C1 the first send (tab hidden) wrote ONE batch under events/YYYY-MM-DD/ with a random 128-bit name",
+   "pass": true,
+   "detail": "['sql-assistant-data/analytics/events/2026-11-10/c0fc905dda2463c8a3f35aefc3be84e2.json']"
+  },
+  {
+   "name": "C2 leaving the page wrote the final batch (a second file); nothing links the two",
+   "pass": true,
+   "detail": "['sql-assistant-data/analytics/events/2026-11-10/4379c6045a126efc7aa6316c229f972b.json', 'sql-assistant-data/analytics/events/2026-11-10/c0fc905dda2463c8a3f35aefc3be84e2.json']"
+  },
+  {
+   "name": "C3 PRIVACY: no repository file contains a readable event, id, feature name, version, SQL keyword or the description text",
+   "pass": true,
+   "detail": "sql-assistant-data/analytics/events/2026-11-10/4379c6045a126efc7aa6316c229f972b.json{\"format\":\"sqla-analytics-batch\",\"v\""
+  },
+  {
+   "name": "C4 every batch has only the envelope fields (format, v, kid, epk, iv, ct)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C5 the SQL-generation flow was not affected by encryption and writing (a valid and a refused description both produced their result)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C6 a reload requires the password again (no session survives it)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "C7 the dashboard decrypts the stored usage: 2 generations (1 valid, 1 failed), one unique user, success rate 50%",
+   "pass": true,
+   "detail": "['2', '1', '1', '1', '50%']"
+  },
+  {
+   "name": "C8 the most-used features and the application version are shown from the decrypted data",
+   "pass": true,
+   "detail": "('Most-used SQL Assistant features\\nQuick Start\\n2 uses\\nAbout\\n1 use\\nDescribe What You Need \u2013 Read Only\\n1', 'Application versions in use\\nV17.7.5\\n1 session 1 user')"
+  },
+  {
+   "name": "C9 total active usage time is greater than zero (measured, then encrypted, then decrypted)",
+   "pass": true,
+   "detail": "7 s"
+  },
+  {
+   "name": "C10 unique users are not counted per session: two page sessions of one browser profile are one user",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D1 the panel for the repository provider offers Change password, Rotate keys, Publish public key and Compact; the minimum is 14 characters",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D2 a wrong CURRENT password is refused and changes nothing",
+   "pass": true,
+   "detail": "The current password is not correct."
+  },
+  {
+   "name": "D3 a weak new password is refused with the reason",
+   "pass": true,
+   "detail": "The new password was not accepted. The password must have at least 14 characters."
+  },
+  {
+   "name": "D4 the password fields are emptied after every attempt",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D5 a successful change locks Analytics and says so; the key file changed and holds neither password",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D6 the key PAIR is unchanged (same key id) \u2014 only its wrapping changed",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D7 the OLD password no longer works",
+   "pass": true,
+   "detail": "Invalid administrator password"
+  },
+  {
+   "name": "D8 the NEW password opens the dashboard and ALL earlier data is still readable (generations, users, success rate unchanged; sessions can only have grown)",
+   "pass": true,
+   "detail": "({'queries-generated': '2', 'unique-users': '1', 'total-sessions': '1', 'success-rate': '50%'}, {'queries-generated': '2', 'unique-users': '1', 'total-sessions': '2', 'success-rate': '50%'})"
+  },
+  {
+   "name": "D9 Rotate keys needs the current password",
+   "pass": true,
+   "detail": "The current password is not correct."
+  },
+  {
+   "name": "D10 rotation created a second wrapped key, made it current and published its PUBLIC key",
+   "pass": true,
+   "detail": "(2, 'S9uesMtfXVNk')"
+  },
+  {
+   "name": "D11 the page shows the new public key to pin (public only)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "D12 Compact now runs and reports (nothing is old enough yet: 0 files)",
+   "pass": true,
+   "detail": "Merged 0 file(s) of 0 day(s) into 0 roll-up(s); removed 0 file(s)."
+  },
+  {
+   "name": "D13 usage written after the rotation is encrypted to the NEW key; earlier batches keep the old key id",
+   "pass": true,
+   "detail": "['IetN7BA_phV3', 'S9uesMtfXVNk']"
+  },
+  {
+   "name": "D14 after rotation the dashboard reads old AND new batches (generations unchanged, a new feature appears)",
+   "pass": true,
+   "detail": "('2', 'Most-used SQL Assistant features\\nQuick Start\\n2 uses\\nSettings\\n2 uses\\nAbout\\n1 use\\n')"
+  },
+  {
+   "name": "D15 no uncaught page error in the administration flows",
+   "pass": true,
+   "detail": "([], ['Failed to load resource: the server responded with a status of 404 (Not Found)', 'Failed to load resource: the server responded with a status of 404 (Not Found)'])"
+  },
+  {
+   "name": "D16 after the configured inactivity period Analytics locks itself, says so, and drops the data",
+   "pass": true,
+   "detail": "11.0"
+  },
+  {
+   "name": "D17 ACTIVE TIME through the encrypted repository: 12 s open with ONE click and a 5 s inactivity timeout counts about 5 s, not 12 s (idle time is excluded)",
+   "pass": true,
+   "detail": "5 s"
+  },
+  {
+   "name": "E1 NO WRITE ACCESS: usage is queued locally (bounded, no content), SQL generation works, no error is shown",
+   "pass": true,
+   "detail": "[{\"v\":1,\"eid\":\"4496205b2f6fa24e\",\"t\":\"session_start\",\"ts\":1794303234160,\"uid\":\"88216d7efae8d03f6ee35"
+  },
+  {
+   "name": "E2 NOT SET UP on a read-only repository: the Analytics page says so (the browser is not blocked)",
+   "pass": true,
+   "detail": "Analytics has not been set up in the repository yet. An administrator has to set it up first.\nSet up Analytics\u2026"
+  },
+  {
+   "name": "E3 no uncaught page error with a read-only repository",
+   "pass": true,
+   "detail": "[]"
+  },
+  {
+   "name": "E4 a DAMAGED key file: the page says it was not used; nothing is revealed; no crash",
+   "pass": true,
+   "detail": "The Analytics key file in the repository is damaged or does not have the expected format (or its password protection is weaker than allowed), so it was not used."
+  },
+  {
+   "name": "E5 a pinned public key that is not valid switches analytics off with a message (nothing is sent anywhere)",
+   "pass": true,
+   "detail": "Administrator Authentication\n\u00d7\n\nThe Analytics dashboard needs administrator authentication.\n\nThe analytics configuration is not valid (analytics.publicKey is no"
+  },
+  {
+   "name": "F1 the PRODUCTION page has no test hook (the in-memory repository exists only in the test build)",
+   "pass": true,
+   "detail": "undefined"
+  },
+  {
+   "name": "F2 PRODUCTION page, no token on the device: \"No repository connection\u2026\" (and the page works)",
+   "pass": true,
+   "detail": "No repository connection is available on this device (a GitHub access token with access to the repository is needed to read or write Analytics). SQL Assistant itself is not affected."
+  },
+  {
+   "name": "F3 SQL generation works exactly as before",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F4 the version is shown in the footer and in the navbar",
+   "pass": true,
+   "detail": "('SQL Assistant \u00b7 Version 17.7.5\\nCrafted by Subham Ain', 'V17.7.5')"
+  },
+  {
+   "name": "F5 About lists the serverless release (17.7.4) with its release note, before 17.7.3, and the current version",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F6 Settings is still behind its lock screen (the Admin Password is unchanged and separate)",
+   "pass": true,
+   "detail": ""
+  },
+  {
+   "name": "F7 the page metadata carries the version",
+   "pass": true,
+   "detail": "SQL Assistant 17.7.5"
+  },
+  {
+   "name": "F8 no uncaught page error on the production page",
+   "pass": true,
+   "detail": "[]"
+  }
+ ]
+}

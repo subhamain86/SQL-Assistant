@@ -1,0 +1,112 @@
+{
+ "_comment": "SHA-256 of every file that implements the AUTOMATIC TOKEN SYNCHRONIZATION (token / Secret Vault storage and retrieval, central repository access, central configuration synchronization, Sync with GitHub Now, Pull / Push Secret Vault, the published read-only fallback, the Settings Admin Password record) and of the automation around it (publish-data.yml, verify-repo-pat.yml and the scripts they call, the repository broker), taken from the V17.7.4 package AS SUPPLIED, BEFORE any V17.7.5 change. test/v1775.test.mjs requires every file to be byte-identical, except those listed in allowedChanges (each with its reason and the exact normalization that makes the baseline hash reproducible).",
+ "files": {
+  "src/v17/services/secretVault.ts": "6a1a1fb1de496ec43562c9267c92db6356fee3e631d2a48a996598ffaaf54084",
+  "src/v17/services/vaultRetrieval.ts": "b287ce125f2564e011a4e1cca82f4c41dd8f556d954d7590631436e7a1689c1f",
+  "src/v17/services/cryptoBox.ts": "e8242f506768f745caa8963c7a267a42bbaa3837528f7862d85aec72aaa7ecb9",
+  "src/v17/services/bootstrapAuth.ts": "a314b656934a3aab1b2a6c428aab3bceef5f5ff029144b10400858441265a7bc",
+  "src/v17/services/repoBroker.ts": "39c1496fb7069837e205751b7089f3459c145e124bfb1280fccb096a0fa8c82c",
+  "src/v17/services/centralConfig.ts": "de942378983e816d8c57f1247c15bad53338eb6f19f1ae8dab4ca57c45d4056f",
+  "src/v17/services/githubClient.ts": "7ae7720911e504b8d7b848d7371793d4167d6aa49762b4cba89721c483fa3f3d",
+  "src/v17/services/publishedData.ts": "c34c032f2c87bd9720583346f2db0f4bc5318e8c3ce648b332f485228e6a8715",
+  "src/v17/services/repositoryConfig.ts": "22ffff472532649774e13b9b71c6ff9ab4f63cf098bd326aae9d2aad2d196ad5",
+  "src/v17/services/repositoryDefaults.ts": "7a8caa06d79df24f2f0f1b74d7f67cb29f10e4734f36e8fc55c56e2cf5f6544c",
+  "src/v17/services/schemaPassphrase.ts": "f909605ae8267b6d6dc88b12bd0aae553600931da1e7a14bf9e91ee83c06fbb3",
+  "src/v17/services/schemaCrypto.ts": "1bd024d93d817eecb86d51192c2d0b386e3824c91ce0c9856e8c751c72a1c8b6",
+  "src/v17/services/knowledgeSync.ts": "8df7f21bce58156505fcfb9e81470c3195854e1c5a62195029642adbaf51c511",
+  "src/v17/services/adminPassword.ts": "5b9bf8118762a30f237f492c1c60440392cf6c96af10f293d37e347158c65007",
+  "src/v17/sync/centralSync.ts": "7177f48a4578a85ab6fce182118210807e55b26ad43eb77bac9914ecef9875f8",
+  "src/v17/sync/schemaFormat.ts": "62321df13b9150d25d641ab40480d95cea30414ab82de469abd4481c8757a1fa",
+  "src/v17/sync/syncService.ts": "8db069a1806e0b177505d77e3582bc15ca02497420b702da5a71c9f6bc35be03",
+  "src/ui/githubState.ts": "a03986216d9aa7a18f8f8e78da3f661c51e9aff09644a8deccaf60e94e252b4c",
+  "src/ui/context.ts": "add683e9a0bde15fb16aad3a3af59f3717ee6e01e2eabce03fb281c39ab07f74",
+  "src/ui/pages/schemaRepoCards.ts": "dabade0af86ead7c89b87d94c4250f9cf5d987b6ec5faf362f4adc3dbeaf163e",
+  "src/ui/pages/schemaPull.ts": "d6221a8239d5ac30b8b05b8e66307aa09969ba81f40b3789da10ea7b685fb7b9",
+  "src/ui/pages/settings.ts": "89621078112baac5353ad28497a08677bc5134514cc9030513abdd9144d4880d",
+  "src/ui/components/navbar.ts": "99cbd209cec2127a62e98741512dcf0c465ed1b334529969aef0dfc79df21ebc",
+  "src/services/cryptoService.ts": "ae26eed4419c8462840af1fe96fb00f6f0e54746a05c87a8f8426934b452325e",
+  "src/services/passwordService.ts": "07cd4a1f4331473fa41ec97a93593839f6308eac2bcae0bda191cbe5b9ef5c72",
+  "src/services/storage.ts": "4f4ec23ff00ea44f7a65a5000abe0aab5c24905e976bed8b205318d6114bdc40",
+  "src/main.ts": "0eff644f1555b5d197a3a87b6f00b72cd2ee44bc98888f16ba971c70f02d68ef",
+  "scripts/publish-data.mjs": "bcfbc33448999349ec5829fa473d7a03b155cdf3ed40e263d4470dfb7cea24c2",
+  "scripts/build-central-vault.mjs": "443aa09d84e1369e54d9f43009bf3db3b634dee8f8f3cfb1afcc61cc3896b7e4",
+  "scripts/verify-pat.mjs": "73ad1786a3aa4d4efd2b5a44509dfe926433c98b12c6df6ef511dff7347e967d",
+  "scripts/github-device-relay.mjs": "a7bd15d6086450bafc88e0fe481a4999bec36435a0f9d821c876f81f9b879209",
+  "scripts/reset-admin-password.mjs": "dc7eb2cfb5f6c89f7f7b3af8239bc0e6b116023a997504232378ab7a2ecea03e",
+  "server/repo-broker.mjs": "6c40fd8db388f67efe4256d39aab415da0b2e3889209a8cb5705002a9031758b",
+  ".github/workflows/publish-data.yml": "97a6f29e1ce0f9f1bdc16162a71a76446b54155f4eb3f247b976f9071f726799",
+  ".github/workflows/verify-repo-pat.yml": "c8d9e0f1ca883aad18d4f657be3291ba07640d3ea845c876077b16b18d6f99e4"
+ },
+ "allowedChanges": {
+  "src/v17/sync/schemaFormat.ts": {
+   "reason": "the APP_VERSION constant (the application version stamp) is the only change: 17.7.4 -> 17.7.5. It is also written into synchronized files as the writer label, which is the intended version stamp, not a change of the synchronization.",
+   "normalize": {
+    "from": "export const APP_VERSION = '17.7.4';",
+    "to": "export const APP_VERSION = '17.7.5';"
+   }
+  }
+ },
+ "workflows": {
+  "publish-data.yml": {
+   "sha256": "97a6f29e1ce0f9f1bdc16162a71a76446b54155f4eb3f247b976f9071f726799",
+   "triggerBlock": [
+    "on:",
+    "  push: { branches: [main], paths: ['sql-assistant-data/**', '!sql-assistant-data/analytics/**'] }",
+    "  workflow_dispatch:",
+    "    inputs:",
+    "      rebuild_central_vault: { description: 'Also (re)build the central token vault from SQLA_DEVICE_TOKEN (replaces the vault file in sql-assistant-data/vault/)', type: boolean, default: false }",
+    "permissions: { contents: write, actions: write }",
+    "concurrency: { group: publish-data, cancel-in-progress: false }"
+   ],
+   "secretAndVariableReferences": [
+    "secrets.SQLA_DEVICE_TOKEN",
+    "secrets.SQLA_VAULT_PASSPHRASE",
+    "vars.SQLA_ALLOW_DEFAULT_VAULT_PASSPHRASE",
+    "vars.SQLA_SITE_PUBLISH_WORKFLOW"
+   ],
+   "stepLines": [
+    "- uses: actions/checkout@v5",
+    "- uses: actions/setup-node@v5",
+    "- name: Central token vault (only when requested)",
+    "run: node scripts/build-central-vault.mjs",
+    "- name: Mirror sql-assistant-data/ into dist/sql-assistant-data/ (marker last)",
+    "run: node scripts/publish-data.mjs --src . --dest dist --commit \"$GITHUB_SHA\" --repository \"$GITHUB_REPOSITORY\"",
+    "- name: Commit the publication",
+    "run: |",
+    "- name: Start the site publication (optional)",
+    "run: gh workflow run \"$WF\" --ref \"${{ github.event.repository.default_branch }}\""
+   ]
+  },
+  "verify-repo-pat.yml": {
+   "sha256": "c8d9e0f1ca883aad18d4f657be3291ba07640d3ea845c876077b16b18d6f99e4",
+   "triggerBlock": [
+    "on:",
+    "  schedule: [{ cron: '17 5 * * 1' }]   # every Monday 05:17 UTC",
+    "  workflow_dispatch: {}",
+    "permissions: { contents: read }"
+   ],
+   "secretAndVariableReferences": [
+    "secrets.SQLA_GITHUB_PAT"
+   ],
+   "stepLines": [
+    "- uses: actions/checkout@v5",
+    "- uses: actions/setup-node@v5",
+    "- name: Verify SQLA_GITHUB_PAT",
+    "run: node scripts/verify-pat.mjs"
+   ]
+  }
+ },
+ "testFiles": {
+  "test/v1761.test.mjs": "da46783f9a8db4f5b525f78540b21e011cf2a8d74f35ffa818765241443f0fc7",
+  "test/v1762.test.mjs": "5eb3fe834f8c92828525b8c8df375a0c92eb6da5baaab1d0205ce9ee9275adcf",
+  "test/v1763.test.mjs": "1518d95a035382c81d95bb4b4b0ff8362a493c9117bd499cac27573fdc9651f6",
+  "test/v1764.test.mjs": "78d2d75454cf107fcc0a75cead16d1ae9e24a01f422af826634b715091d24319",
+  "test/v1765.test.mjs": "78dbba175e0a7fe7aadc92557784ee11cb1e998f31a726da995b817ad8daad5d",
+  "test/v1766.test.mjs": "94a6fb3b70d082b565186d5f978a473f8155fbf7ab2307db4184a318e08b40a1",
+  "test/v1767.test.mjs": "acc1390ca0ec4b829bf79d3da3afbd8af95bbda84cd045fcfc3073a948728e12",
+  "test/v1768.test.mjs": "0acdd5aa085acddbece684708e6fd38e0717d995c3945af19dd8b8ef6fd14f13",
+  "test/v1769.test.mjs": "8b870cfab76664aa95c493829f6475c53ba224583021bd35ad5952f6420aa28b",
+  "test/v1771.test.mjs": "f4a712a90a85a9b86a16b2ed64cb7fe59a8cd6de73ba995c3b97d35037de880e",
+  "test/v1772.test.mjs": "08b38b96de24ae7e378242afedffaefa79af06df160be376c05d2dddc81f6996"
+ }
+}

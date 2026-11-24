@@ -1,0 +1,17 @@
+=== summary ===
+  PASS  install         0.1s
+  PASS  typecheck       9.0s
+  PASS  lint            0.1s
+  PASS  hygiene         0.1s
+  PASS  workflows       0.0s
+  PASS  build           21.0s
+  PASS  security        0.2s
+  PASS  artifact        0.3s
+  PASS  tests           217.6s
+  PASS  final           22.1s
+  PASS  artifact-final  0.2s
+
+CI passed: 11 stage(s), Node only.
+ℹ tests 449
+ℹ pass 449
+ℹ fail 0

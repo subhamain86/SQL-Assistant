@@ -13,13 +13,13 @@ import { execFileSync } from 'node:child_process';
 import { rmSync, mkdirSync, readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
-import { createRequire } from 'node:module';
+import { createRequire } from 'node:module'; import { resolveTypeScript } from './toolchain.mjs';
 const root = resolve(dirname(new URL(import.meta.url).pathname), '..'); const require = createRequire(import.meta.url);
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')); const dev = process.argv.includes('--dev'); const testBuild = process.argv.includes('--test'); // V17.7: --test = the browser-test build (src/testHooks.ts) → test-dist/ ONLY
 if (testBuild && dev) { console.error('::error title=Build::--test and --dev cannot be combined.'); process.exit(2); }
 // V17.6.9: the PROJECT-PINNED TypeScript (package.json devDependencies, exact version) — resolved from this project (node_modules, or $NODE_PATH), never from an environment-specific absolute path. A missing or different version stops the build with a clear message.
-let tsc; try { tsc = require.resolve('typescript/bin/tsc', { paths: [root, ...(process.env.NODE_PATH || '').split(':').filter(Boolean)] }); } catch { console.error(`::error title=Build::The project-pinned TypeScript ${pkg.devDependencies?.typescript} is not installed (run npm ci). No environment-specific fallback is used.`); process.exit(2); }
-{ const have = JSON.parse(readFileSync(join(dirname(dirname(tsc)), 'package.json'), 'utf8')).version; if (have !== pkg.devDependencies?.typescript) { console.error(`::error title=Build::TypeScript ${have} is installed but package.json pins ${pkg.devDependencies?.typescript}. Run npm ci.`); process.exit(2); } }
+// V17.7.4: no npm — the compiler is found by scripts/toolchain.mjs (TSC_PATH → the committed, checksum-verified tools/typescript → node_modules), and it must be exactly the version package.json pins; anything else stops the build with a message.
+const tsFound = resolveTypeScript(root); if (!tsFound.ok) { console.error(`::error title=Build::${tsFound.message}`); process.exit(2); } const tsc = tsFound.tsc;
 const outDir = join(root, testBuild ? 'test-dist' : dev ? 'dev-dist' : 'dist'); const bundleDir = join(root, testBuild ? 'build-test' : 'build'); const tsconfig = join(root, testBuild ? 'tsconfig.test.json' : 'tsconfig.json');
 // V17.6.3: the published copy of the repository data (dist/sql-assistant-data/**, written by publish-data.yml and committed) must survive a rebuild — it is not build output.
 const keepDir = join(outDir, 'sql-assistant-data'); const kept = []; (function snap(d) { if (!existsSync(d)) return; for (const f of readdirSync(d)) { const p = join(d, f); if (statSync(p).isDirectory()) snap(p); else kept.push([p.slice(keepDir.length), readFileSync(p)]); } })(keepDir);

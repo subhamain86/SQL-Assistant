@@ -239,3 +239,25 @@ input[data-locked][readonly] { background: var(--hover); color: var(--text-muted
 .hb-sync-now-btn { color: var(--brand); } .hb-sync-now-btn:disabled { opacity: .8; cursor: progress; } .hb-sync-status { font-size: 12px; color: var(--text-muted); padding: 0 .75rem .4rem; min-height: 1em; overflow-wrap: anywhere; }
 @media (prefers-reduced-motion: reduce) { .sync-now-btn.is-syncing .sync-now-icon, .hb-sync-now-btn.is-syncing .sync-now-icon { animation: none; } }
 @media (max-width: 1279.98px) { .sync-now-status { max-width: 90px; } }
+
+/* ── V17.7.3 additions (additive only — no existing rule is changed): the Analytics dashboard (Hamburger → Analytics) ───────────────────────── */
+.an-page .an-toolbar { margin-bottom: 1rem; } .an-toolbar-row { display: flex; align-items: flex-end; gap: .7rem; flex-wrap: wrap; } .an-spacer { flex: 1 1 auto; }
+.an-range select, .an-custom input { min-width: 150px; } .an-custom { display: inline-flex; gap: .6rem; align-items: flex-end; flex-wrap: wrap; } .an-meta { margin: .6rem 0 0 0; } .an-range-error { color: #c0392b; font-weight: 600; }
+.an-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .8rem; margin-bottom: 1rem; }
+.an-kpi { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: .85rem 1rem; box-shadow: var(--shadow-sm); min-width: 0; }
+.an-kpi-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .03em; } .an-kpi-value { font-size: 26px; font-weight: 700; line-height: 1.2; margin: .25rem 0 .15rem; overflow-wrap: anywhere; } .an-kpi-sub { font-size: 12px; color: var(--text-muted); overflow-wrap: anywhere; }
+.an-section { margin-bottom: 1rem; } .an-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; } @media (max-width: 899.98px) { .an-two { grid-template-columns: 1fr; } }
+.an-chart { width: 100%; height: auto; max-height: 280px; display: block; } .an-grid { stroke: var(--border); stroke-width: 1; } .an-axis { fill: var(--text-muted); font-size: 11px; font-family: var(--font); }
+.an-line { fill: none; stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; } .an-line-users, .an-dot-users { stroke: var(--brand); } .an-line-sessions, .an-dot-sessions { stroke: #e08a1f; } .an-dot-users { fill: var(--brand); } .an-dot-sessions { fill: #e08a1f; } .an-dot { stroke-width: 0; }
+.an-legend { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; font-size: 12.5px; margin-top: .4rem; } .an-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: .3rem; vertical-align: -1px; } .an-swatch-users { background: var(--brand); } .an-swatch-sessions { background: #e08a1f; }
+.an-cell-bar { position: relative; display: block; min-width: 90px; padding: .1rem .35rem; border-radius: 4px; overflow: hidden; } .an-cell-fill { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(47,111,237,.18); } .an-cell-bar b { position: relative; font-weight: 600; }
+.an-table tbody tr { cursor: default; }
+.an-rank { list-style: none; margin: 0; padding: 0; display: grid; gap: .5rem; } .an-rank li { display: grid; grid-template-columns: minmax(120px, 38%) minmax(60px, 1fr) auto; gap: .6rem; align-items: center; font-size: 13px; } .an-rank-label { overflow-wrap: anywhere; }
+.an-rank-bar { background: var(--hover); border-radius: 999px; height: 10px; overflow: hidden; } .an-rank-fill { display: block; height: 100%; background: var(--brand); border-radius: 999px; } .an-rank-value { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.an-empty { padding: .6rem 0; } .an-list { margin: .4rem 0 0 1.1rem; padding: 0; font-size: 13px; line-height: 1.5; } .an-list li { margin-bottom: .3rem; }
+.an-admin-panel > summary { cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: .4rem; } .an-admin-panel[open] > summary { margin-bottom: .6rem; } .an-privacy { margin-top: 1rem; } .an-auth-msg { margin: .5rem 0; min-height: 1px; }
+@media (max-width: 599.98px) { .an-rank li { grid-template-columns: 1fr; gap: .2rem; } .an-kpi-value { font-size: 22px; } }
+
+/* ── V17.7.4 additions (additive only): the serverless Analytics provider — Set up wizard, key rotation, compaction ───────────────────────── */
+.an-pin { width: 100%; font-family: var(--mono, ui-monospace, Consolas, monospace); font-size: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg-card); color: inherit; padding: .5rem; resize: vertical; }
+.an-sep { border: 0; border-top: 1px solid var(--border); margin: 1rem 0; } .an-compact { margin-top: 1rem; } #anRepoExtras h3 { display: flex; align-items: center; gap: .4rem; margin: 0 0 .4rem 0; font-size: 15px; }

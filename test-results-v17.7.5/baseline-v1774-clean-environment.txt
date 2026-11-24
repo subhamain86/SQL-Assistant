@@ -1,0 +1,4 @@
+ℹ fail 1
+ℹ pass 427
+ℹ tests 428
+✖ V17.6.3 a rebuild keeps the published copy (dist/sql-assistant-data/** is not build output) and the bundle holds no secret (91.581784ms)
