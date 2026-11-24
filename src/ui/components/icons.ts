@@ -1,5 +1,5 @@
 /** V17.2 inline SVG icon set (no icon font, no external requests). */
-export type IconName = 'menu' | 'database' | 'table' | 'filter' | 'code' | 'bug' | 'sun' | 'moon' | 'monitor' | 'info' | 'download' | 'upload' | 'lock' | 'unlock' | 'shield' | 'plus' | 'trash' | 'copy' | 'play' | 'wand' | 'compass' | 'check' | 'x' | 'chevron-right' | 'chevron-left' | 'chevron-down' | 'search' | 'save' | 'alert-triangle' | 'refresh' | 'sparkles' | 'list' | 'columns' | 'sort-asc' | 'sliders' | 'edit' | 'clipboard-check' | 'arrow-right' | 'zap' | 'settings' | 'key' | 'shield-alert' | 'folder-sync' | 'file-plus' | 'clock' | 'github' | 'folder' | 'wifi' | 'wifi-off' | 'cloud' | 'user' | 'eye' | 'route' | 'checkbox-checked' | 'history' | 'broom' | 'bot' | 'eye-off';
+export type IconName = 'menu' | 'database' | 'table' | 'filter' | 'code' | 'bug' | 'sun' | 'moon' | 'monitor' | 'info' | 'download' | 'upload' | 'lock' | 'unlock' | 'shield' | 'plus' | 'trash' | 'copy' | 'play' | 'wand' | 'compass' | 'check' | 'x' | 'chevron-right' | 'chevron-left' | 'chevron-down' | 'search' | 'save' | 'alert-triangle' | 'refresh' | 'sparkles' | 'list' | 'columns' | 'sort-asc' | 'sliders' | 'edit' | 'clipboard-check' | 'arrow-right' | 'zap' | 'settings' | 'key' | 'shield-alert' | 'folder-sync' | 'file-plus' | 'clock' | 'github' | 'folder' | 'wifi' | 'wifi-off' | 'cloud' | 'user' | 'eye' | 'route' | 'checkbox-checked' | 'history' | 'broom' | 'bot' | 'eye-off' | 'bar-chart';
 const PATHS: Record<IconName, string> = {
   'menu': '<line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>',
   'database': '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/>',
@@ -55,6 +55,7 @@ const PATHS: Record<IconName, string> = {
   'eye': '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>',
   'route': '<circle cx="6" cy="19" r="2.5"/><circle cx="18" cy="5" r="2.5"/><path d="M8.5 19h6a4 4 0 0 0 4-4v-1a4 4 0 0 0-4-4h-5a4 4 0 0 1-4-4v-.5"/>',
   'checkbox-checked': '<rect x="4" y="4" width="16" height="16" rx="3" fill="currentColor" stroke="none"/><polyline points="8,12 11,15 16,9" stroke="white" stroke-width="2.2"/>',
+  'bar-chart': '<line x1="4" y1="20" x2="20" y2="20"/><rect x="5" y="11" width="3.5" height="7" rx="1"/><rect x="10.25" y="5" width="3.5" height="13" rx="1"/><rect x="15.5" y="8" width="3.5" height="10" rx="1"/>',
   'history': '<circle cx="12" cy="12" r="9"/><polyline points="12,7 12,12 15,14"/><path d="M3.5 9 2 7.5 M3.5 9 5 7.5"/>',
   'broom': '<path d="M4 20 14 10"/><path d="M12 4l2 2-6 6-4-2z"/><path d="M6 14l-2 6 6-2"/>',
   'eye-off': '<path d="M3 3l18 18"/><path d="M10.6 10.6a3 3 0 0 0 4.2 4.2"/><path d="M9.9 5.1A10.9 10.9 0 0 1 12 5c7 0 11 7 11 7a18.6 18.6 0 0 1-3.2 4.2"/><path d="M6.6 6.6C3.6 8.4 1 12 1 12s4 7 11 7a10.8 10.8 0 0 0 4.1-.8"/>',

@@ -6,7 +6,7 @@
  * Why it moved: in V17.6.9 the same hook object was created by main.ts of the PRODUCTION bundle whenever the address contained `?e2e=1`. Through it a page could swap the repository for an empty in-memory one (which the
  * Admin Password authority then treats as an authoritative "no record" ⇒ confirmed default) or set `store.settingsUnlocked`. A test seam that can reach the authentication boundary must not ship.
  */
-import { services, secrets, setRepositoryOverride, setBrokerConfig, brokerSession, brokerEnabled, refreshBrokerConfig, refreshPublished, setPublishedState, publishedEnabled, reloadSecrets } from './ui/context';
+import { services, secrets, repository, setRepositoryOverride, setBrokerConfig, brokerSession, brokerEnabled, refreshBrokerConfig, refreshPublished, setPublishedState, publishedEnabled, reloadSecrets } from './ui/context';
 import { store } from './ui/state';
 import { lastAuthBasis, sessionAuthBasis } from './services/passwordService';
 import { memoryRepository, setRepositoryTimeoutMs } from './v17/services/githubClient';
@@ -17,10 +17,13 @@ import { githubConn, initGithubConnection, githubChecks, lastSyncAt } from './ui
 export function installTestHooks(): void {
   if (new URLSearchParams(location.search).get('e2e') !== '1') return;
   store.hasSeenWalkthrough = true; // the first-visit toast would cover the page under test
+  // V17.7.2: a suite may seed the in-memory repository BEFORE start-up (sessionStorage key __sqla_seed_repo = JSON {path: text}) — used to test that a new machine adopts the central configuration at start-up
+  try { const seed = sessionStorage.getItem('__sqla_seed_repo'); if (seed) setRepositoryOverride(memoryRepository(JSON.parse(seed))); } catch { /* no seed */ }
   (window as unknown as Record<string, unknown>).__sqla = {
     adminAuth: { diagnostics: () => services().adminPassword.diagnostics(), basis: lastAuthBasis, sessionBasis: sessionAuthBasis },
     centralSync: () => services().centralSync, services, refreshPublished, setPublishedState, publishedEnabled, refreshBrokerConfig, setBrokerConfig, brokerSession, brokerEnabled, memoryRepository, setRepositoryOverride, reloadSecrets, store,
-    render: () => renderNow(), setRepositoryTimeoutMs,
+    render: () => renderNow(), setRepositoryTimeoutMs, /** V17.7.2: text of a file of the repository connection in force (null = absent) */ repoFile: async (path: string) => { const r = repository(); const f = r ? await r.read(path) : null; return f ? f.text : null; },
+    /** V17.7.4: every file of the in-memory repository {path: text} (and the files below one folder) — used to prove what the analytics provider wrote and that none of it is readable */ repoDump: () => { const r = repository() as unknown as { files?: Map<string, { text: string }> } | null; return r && r.files ? Object.fromEntries([...r.files].map(([k, v]) => [k, v.text])) : {}; },
     /** V17.7.1: the shared GitHub connection state (no token is in it) */ github: { conn: githubConn, init: initGithubConnection, checks: githubChecks, lastSyncAt },
     /** location in force (no secret) */ repoLocation: () => [secrets.githubOwner, secrets.githubRepo, secrets.githubBranch, secrets.schemaPath],
     encryptForTest: (text: string, pass: string) => encryptSchemaRegistry(text, pass, { device: 'test-device', schemaCount: 1 }),
